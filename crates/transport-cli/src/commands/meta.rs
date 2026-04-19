@@ -693,9 +693,9 @@ static SEED: CommandMeta = CommandMeta {
         name: "preset",
         required: true,
         type_name: "identifier",
-        description: "Preset name: count_chain or trigger_demo",
+        description: "Preset name: count_chain, trigger_demo, or ui_demo",
     }],
-    examples: &["agent seed count_chain", "agent seed trigger_demo"],
+    examples: &["agent seed count_chain", "agent seed trigger_demo", "agent seed ui_demo"],
     related: &["nodes list"],
     input_schema: || {
         serde_json::json!({
@@ -703,7 +703,7 @@ static SEED: CommandMeta = CommandMeta {
             "type": "object",
             "required": ["preset"],
             "properties": {
-                "preset": { "type": "string", "enum": ["count_chain", "trigger_demo"] }
+                "preset": { "type": "string", "enum": ["count_chain", "trigger_demo", "ui_demo"] }
             }
         })
     },

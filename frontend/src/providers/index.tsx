@@ -6,6 +6,7 @@ import { QueryProvider } from "./query";
 import { AuthProvider } from "./auth";
 import { RegistryProvider } from "./registry";
 import { GraphStoreProvider } from "./graph-store";
+import { ThemeProvider } from "./theme";
 
 interface ProvidersProps {
   children: ReactNode;
@@ -14,6 +15,7 @@ interface ProvidersProps {
 export function Providers({ children }: ProvidersProps) {
   return (
     // QueryProvider wraps everything so auth + extension hooks can use useQuery.
+    <ThemeProvider>
     <QueryProvider>
       {/* RegistryProvider exposes the service map as an MF singleton. */}
       <RegistryProvider>
@@ -26,5 +28,6 @@ export function Providers({ children }: ProvidersProps) {
         </AuthProvider>
       </RegistryProvider>
     </QueryProvider>
+    </ThemeProvider>
   );
 }

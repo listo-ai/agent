@@ -10,6 +10,10 @@ containment:
     - kind: sys.engine.read_slot
     - kind: sys.engine.write_slot
     - kind: sys.core.flow
+    - kind: ui.nav
+    - kind: ui.page
+    - kind: ui.template
+    - kind: ui.widget
   cardinality_per_parent: many_per_parent
   cascade: strict
 slots: []
