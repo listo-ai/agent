@@ -54,9 +54,11 @@
 mod commands;
 mod output;
 
-pub use commands::{CliCommand, GlobalOpts};
 pub use commands::meta;
-pub use output::{CliError, OutputFormat, EXIT_INFRA_ERROR, EXIT_INTERNAL_ERROR, EXIT_SUCCESS, EXIT_USER_ERROR};
+pub use commands::{CliCommand, GlobalOpts};
+pub use output::{
+    CliError, OutputFormat, EXIT_INFRA_ERROR, EXIT_INTERNAL_ERROR, EXIT_SUCCESS, EXIT_USER_ERROR,
+};
 
 use agent_client::{AgentClient, AgentClientOptions};
 
@@ -100,4 +102,3 @@ pub async fn execute(global: &GlobalOpts, cmd: &CliCommand) {
         std::process::exit(exit_code);
     }
 }
-

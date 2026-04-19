@@ -76,7 +76,9 @@ pub enum InvalidPluginId {
     NotReverseDns(String),
     #[error("plugin id `{0}` has an empty dotted segment")]
     EmptySegment(String),
-    #[error("plugin id `{id}` segment `{segment}` contains forbidden characters (allowed: `[a-z0-9-]`)")]
+    #[error(
+        "plugin id `{id}` segment `{segment}` contains forbidden characters (allowed: `[a-z0-9-]`)"
+    )]
     BadSegment { id: String, segment: String },
 }
 

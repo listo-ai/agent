@@ -16,8 +16,9 @@ mod role;
 pub use error::ConfigError;
 pub use loader::{from_env, from_file};
 pub use model::{
-    AgentConfig, AgentConfigOverlay, DatabaseConfig, DatabaseOverlay, Defaults, LogConfig,
-    LogOverlay, PluginsConfig, PluginsOverlay,
+    default_agent_id, AgentConfig, AgentConfigOverlay, DatabaseConfig, DatabaseOverlay, Defaults,
+    FleetConfig, FleetOverlay, LogConfig, LogOverlay, PluginsConfig, PluginsOverlay,
+    ZenohFleetOverlay,
 };
 pub use role::{Role, UnknownRole};
 

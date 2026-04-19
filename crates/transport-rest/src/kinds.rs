@@ -74,16 +74,15 @@ async fn list_kinds(
 
     if let Some(parent_raw) = q.placeable_under.as_deref() {
         let parent_path = parse_path(parent_raw)?;
-        let parent = s.graph.get(&parent_path).ok_or_else(|| {
-            ApiError::not_found(format!("no node at `{parent_path}`"))
-        })?;
+        let parent = s
+            .graph
+            .get(&parent_path)
+            .ok_or_else(|| ApiError::not_found(format!("no node at `{parent_path}`")))?;
         let parent_manifest = registry
             .get(&parent.kind)
             .ok_or_else(|| ApiError::bad_request("parent kind is not registered"))?;
 
-        all.retain(|candidate| {
-            placement_allowed(&parent.kind, &parent_manifest, candidate)
-        });
+        all.retain(|candidate| placement_allowed(&parent.kind, &parent_manifest, candidate));
     }
 
     all.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
@@ -142,10 +141,7 @@ mod tests {
         }
     }
 
-    fn schema(
-        must: Vec<ParentMatcher>,
-        may: Vec<ParentMatcher>,
-    ) -> ContainmentSchema {
+    fn schema(must: Vec<ParentMatcher>, may: Vec<ParentMatcher>) -> ContainmentSchema {
         ContainmentSchema {
             must_live_under: must,
             may_contain: may,
@@ -178,9 +174,7 @@ mod tests {
             FacetSet::of([Facet::IsDriver]),
             schema(
                 vec![],
-                vec![ParentMatcher::Kind(KindId::new(
-                    "acme.driver.demo.device",
-                ))],
+                vec![ParentMatcher::Kind(KindId::new("acme.driver.demo.device"))],
             ),
         );
 
@@ -192,7 +186,11 @@ mod tests {
                 vec![],
             ),
         );
-        let free = kind("acme.core.folder", FacetSet::default(), schema(vec![], vec![]));
+        let free = kind(
+            "acme.core.folder",
+            FacetSet::default(),
+            schema(vec![], vec![]),
+        );
 
         assert!(placement_allowed(&parent.id, &parent, &bound));
         // `may_contain` doesn't admit folders — rejected even though

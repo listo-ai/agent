@@ -15,21 +15,33 @@
 //!
 //! Rust-side re-exports of generated types land here in later stages.
 
+pub mod auth;
 pub mod capabilities;
 mod containment;
 mod facets;
+pub mod fleet;
 mod ids;
 pub mod log;
 mod manifest;
 mod msg;
 mod slot_schema;
+pub mod subject;
 
+pub use auth::{
+    Actor, AuthContext, AuthError, AuthProvider, NoHeaders, RequestHeaders, Scope, ScopeSet,
+    TenantId,
+};
 pub use containment::{Cardinality, CascadePolicy, ContainmentSchema, ParentMatcher};
 pub use facets::{Facet, FacetSet};
+pub use fleet::{
+    FleetError, FleetHandler, FleetMessage, FleetTransport, HealthStatus, HealthStream,
+    NullTransport, Payload, Server, ServerHandle, SubscriptionStream,
+};
 pub use ids::{KindId, NodeId, NodePath};
 pub use manifest::{KindManifest, TriggerPolicy};
 pub use msg::{MessageId, Msg};
 pub use slot_schema::{SlotRole, SlotSchema};
+pub use subject::{Subject, SubjectBuilder, SubjectToken};
 
 /// Schema version for flow documents. Breaking changes bump this.
 pub const FLOW_SCHEMA_VERSION: u32 = 1;

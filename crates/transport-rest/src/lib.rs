@@ -9,7 +9,8 @@
 //! Routes (versioned per `docs/design/VERSIONING.md` § "Public API"):
 //! * `GET  /healthz`                              → liveness (unversioned)
 //! * `GET  /api/v1/capabilities`                  → host capability manifest
-//! * `GET  /api/v1/nodes`                         → every node snapshot
+//! * `GET  /api/v1/nodes`                         → node snapshots via the
+//!                                                  generic query surface
 //! * `GET  /api/v1/node?path=/a/b`                → one node snapshot
 //! * `POST /api/v1/nodes`   `{parent,kind,name}`  → create child
 //! * `POST /api/v1/slots`   `{path,slot,value}`   → write a slot (fires
@@ -19,8 +20,16 @@
 //! * `GET  /api/v1/events`                        → SSE stream of `GraphEvent`s
 //! * `GET  /`                                     → built-in manual-test UI
 //!
+//! `GET /api/v1/nodes` accepts the first generic query params slice:
+//! `filter`, `sort`, `page`, `size`. Response shape is the list
+//! envelope `{ data, meta }`; the higher-level Rust/TS clients unwrap
+//! `data` for the simple `list()` helpers so existing callers stay
+//! stable.
+//!
 //! All paths in request bodies / query strings are the canonical
-//! `/station/floor1/ahu-5` form — no percent-encoding required.
+//! `/station/floor1/ahu-5` form — no percent-encoding required in JSON
+//! bodies. Query-string callers should still URL-encode reserved
+//! characters.
 
 use std::sync::Arc;
 
@@ -28,7 +37,10 @@ use axum::Router;
 use graph::{EventSink, GraphEvent};
 use tokio::sync::{broadcast, mpsc};
 
+pub mod auth;
+pub mod auth_routes;
 pub mod capabilities;
+pub mod fleet;
 pub mod kinds;
 pub mod plugins;
 pub mod routes;

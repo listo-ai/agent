@@ -63,13 +63,42 @@ frontend: build-client ## Start the Rsbuild dev server (builds client first)
 frontend-build: build-client ## Production web build of the Studio UI
 	$(PNPM) --filter @acme/studio build:web
 
+# ── two-agent dev env (cloud + edge side-by-side) ────────────────────────────
+# See dev/README.md for the full port map and rationale.
+
+.PHONY: dev
+dev: ## Start cloud + edge + both Studios via overmind (Ctrl-C stops all)
+	@command -v overmind >/dev/null 2>&1 || { \
+	  echo "overmind not found. Install with 'brew install overmind' or"; \
+	  echo "'go install github.com/DarthSim/overmind/v2@latest', or run"; \
+	  echo "the four processes individually: make run-cloud / run-edge /"; \
+	  echo "studio-cloud / studio-edge."; exit 1; }
+	overmind start -f Procfile.dev
+
 .PHONY: run-cloud
-run-cloud: ## Run agent in cloud role
-	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- --role cloud
+run-cloud: ## Run the cloud agent on 127.0.0.1:8081 (config: dev/cloud.yaml)
+	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --config dev/cloud.yaml --http 127.0.0.1:8081
 
 .PHONY: run-edge
-run-edge: ## Run agent in edge role
-	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- --role edge
+run-edge: ## Run the edge agent on 127.0.0.1:8082 (config: dev/edge.yaml)
+	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --config dev/edge.yaml --http 127.0.0.1:8082
+
+.PHONY: studio-cloud
+studio-cloud: build-client ## Start Studio pointed at the cloud agent (http://localhost:3001)
+	PUBLIC_AGENT_URL=http://localhost:8081 \
+	  $(PNPM) --filter @acme/studio dev --port 3001
+
+.PHONY: studio-edge
+studio-edge: build-client ## Start Studio pointed at the edge agent (http://localhost:3002)
+	PUBLIC_AGENT_URL=http://localhost:8082 \
+	  $(PNPM) --filter @acme/studio dev --port 3002
+
+.PHONY: dev-reset
+dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)
+	rm -f dev/cloud.db dev/cloud.db-shm dev/cloud.db-wal
+	rm -f dev/edge.db  dev/edge.db-shm  dev/edge.db-wal
+	rm -rf dev/cloud-plugins/* dev/edge-plugins/*
+	@echo "dev/ reset — next boot will seed fresh graphs."
 
 # ── check / lint ──────────────────────────────────────────────────────────────
 .PHONY: check

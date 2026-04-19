@@ -109,13 +109,13 @@ let state = { nodes: [], links: [], selected: null };
 
 async function refresh() {
   try {
-    const [nodes, links] = await Promise.all([
+    const [{ data: nodes, meta }, links] = await Promise.all([
       fetch("/api/v1/nodes").then(r => r.json()),
       fetch("/api/v1/links").then(r => r.json()),
     ]);
     state.nodes = nodes;
     state.links = links;
-    countEl.textContent = nodes.length + " node" + (nodes.length === 1 ? "" : "s") +
+    countEl.textContent = meta.total + " node" + (meta.total === 1 ? "" : "s") +
                           " · " + links.length + " link" + (links.length === 1 ? "" : "s");
     renderGraph();
     renderLinks();

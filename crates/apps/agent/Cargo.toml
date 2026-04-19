@@ -29,10 +29,14 @@ data-sqlite = { workspace = true }
 config = { workspace = true }
 clap = { workspace = true }
 transport-rest = { workspace = true }
+transport-fleet-zenoh = { workspace = true }
 transport-cli = { workspace = true }
 domain-compute = { workspace = true }
 domain-logic = { workspace = true }
 domain-extensions = { workspace = true }
+dashboard-nodes = { workspace = true }
+dashboard-runtime = { workspace = true }
+dashboard-transport = { workspace = true }
 extensions-sdk = { workspace = true }
 extensions-host = { workspace = true }
 axum = { workspace = true }

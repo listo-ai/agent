@@ -24,10 +24,11 @@ export type {
   LinkBrokenEvent,
   Lifecycle,
 } from "./schemas/events.js";
-export type { NodeSnapshot, Slot } from "./schemas/node.js";
+export type { NodeSnapshot, NodeListResponse, PageMeta, Slot } from "./schemas/node.js";
 export type { Link, LinkEndpoint } from "./schemas/link.js";
 export type { Kind, Facet, SlotDefinition, SlotRole } from "./schemas/kind.js";
 export type { PluginSummary, PluginLifecycle } from "./schemas/plugin.js";
+export type { WhoAmI, Scope } from "./schemas/auth.js";
 export type {
   CapabilityManifest,
   Capability,

@@ -31,6 +31,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 
+mod auth;
 mod capabilities;
 mod config;
 mod error;
@@ -44,9 +45,11 @@ mod plugins;
 mod seed;
 mod slots;
 pub mod types;
+mod ui;
 
 pub use capabilities::CapabilityRequirement;
 pub use error::ClientError;
+pub use nodes::NodeListParams;
 
 use crate::http::HttpClient;
 
@@ -132,5 +135,13 @@ impl AgentClient {
 
     pub fn plugins(&self) -> plugins::Plugins<'_> {
         plugins::Plugins::new(&self.http, API_VERSION)
+    }
+
+    pub fn auth(&self) -> auth::Auth<'_> {
+        auth::Auth::new(&self.http, API_VERSION)
+    }
+
+    pub fn ui(&self) -> ui::Ui<'_> {
+        ui::Ui::new(&self.http, API_VERSION)
     }
 }

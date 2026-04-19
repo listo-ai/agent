@@ -19,16 +19,18 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use config::{
     default_db_path, default_plugins_dir, from_env, from_file, AgentConfig, AgentConfigOverlay,
-    DatabaseOverlay, Defaults, LogOverlay, PluginsOverlay, Role,
+    DatabaseOverlay, Defaults, FleetConfig, FleetOverlay, LogOverlay, PluginsOverlay, Role,
+    ZenohFleetOverlay,
 };
 use data_sqlite::SqliteGraphRepo;
 use engine::{kinds as engine_kinds, Engine};
 use extensions_host::PluginRegistry;
 use graph::{seed, GraphStore, KindRegistry};
-use spi::KindId;
+use spi::{FleetTransport, KindId, TenantId};
 use tokio::signal::unix::{signal, SignalKind};
-use tracing::info;
+use tracing::{info, warn};
 use transport_cli::{CliCommand, GlobalOpts};
+use transport_fleet_zenoh::{ZenohConfig, ZenohTransport};
 use transport_rest::AppState;
 
 #[derive(Debug, Parser)]
@@ -73,6 +75,28 @@ enum Command {
         /// HTTP bind address for the REST + manual-test UI.
         #[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8080")]
         http: SocketAddr,
+
+        /// Enable the embedded Zenoh fleet transport. Without this flag
+        /// the agent runs with `NullTransport` (standalone / fleet:null).
+        #[arg(long)]
+        fleet_zenoh: bool,
+
+        /// Zenoh listen endpoints (e.g. `tcp/0.0.0.0:7447`). Repeatable.
+        #[arg(long = "fleet-zenoh-listen", value_name = "ENDPOINT")]
+        fleet_zenoh_listen: Vec<String>,
+
+        /// Zenoh connect endpoints (peers / routers to dial outbound).
+        #[arg(long = "fleet-zenoh-connect", value_name = "ENDPOINT")]
+        fleet_zenoh_connect: Vec<String>,
+
+        /// Tenant id for the fleet subject prefix. Defaults to `default`.
+        #[arg(long, value_name = "TENANT", default_value = "default")]
+        fleet_tenant: String,
+
+        /// Agent id for the fleet subject prefix. Defaults to the
+        /// machine hostname, falling back to `local`.
+        #[arg(long, value_name = "ID")]
+        fleet_agent_id: Option<String>,
     },
 
     /// CLI commands that talk to a running agent.
@@ -109,8 +133,8 @@ fn try_help_json() {
     match transport_cli::meta::find_command(&cmd_name) {
         Some(info) => {
             let help = info.to_help_json();
-            let json = serde_json::to_string_pretty(&help)
-                .expect("help metadata always serialises");
+            let json =
+                serde_json::to_string_pretty(&help).expect("help metadata always serialises");
             println!("{json}"); // NO_PRINTLN_LINT:allow
             std::process::exit(0);
         }
@@ -135,7 +159,27 @@ async fn main() -> Result<()> {
             log,
             plugins_dir,
             http,
+            fleet_zenoh,
+            fleet_zenoh_listen,
+            fleet_zenoh_connect,
+            fleet_tenant,
+            fleet_agent_id,
         } => {
+            let fleet_overlay = if *fleet_zenoh {
+                Some(FleetOverlay::Zenoh(ZenohFleetOverlay {
+                    listen: (!fleet_zenoh_listen.is_empty()).then(|| fleet_zenoh_listen.clone()),
+                    connect: (!fleet_zenoh_connect.is_empty()).then(|| fleet_zenoh_connect.clone()),
+                    tenant: Some(fleet_tenant.clone()),
+                    agent_id: fleet_agent_id.clone(),
+                }))
+            } else {
+                if !fleet_zenoh_listen.is_empty() || !fleet_zenoh_connect.is_empty() {
+                    warn!(
+                        "--fleet-zenoh-listen/--fleet-zenoh-connect supplied but --fleet-zenoh is off; ignoring"
+                    );
+                }
+                None
+            };
             run_daemon(
                 *role,
                 config.clone(),
@@ -143,6 +187,7 @@ async fn main() -> Result<()> {
                 log.clone(),
                 plugins_dir.clone(),
                 *http,
+                fleet_overlay,
             )
             .await
         }
@@ -160,8 +205,9 @@ async fn run_daemon(
     log: Option<String>,
     plugins_dir: Option<PathBuf>,
     http: SocketAddr,
+    fleet: Option<FleetOverlay>,
 ) -> Result<()> {
-    let cfg = resolve_config(role, config_path, db, log, plugins_dir)?;
+    let cfg = resolve_config(role, config_path, db, log, plugins_dir, fleet)?;
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -183,8 +229,55 @@ async fn run_daemon(
     engine.start().await?;
     info!(state = ?engine.state(), "engine running");
 
-    let app_state = AppState::new(graph, engine.behaviors().clone(), events, plugins);
-    let router = transport_rest::router(app_state);
+    let mut app_state = AppState::new(graph.clone(), engine.behaviors().clone(), events, plugins);
+
+    // Optional embedded fleet transport. `NullTransport` stays in place
+    // when `fleet: null` (the default) is resolved.
+    let _fleet_servers = match &cfg.fleet {
+        FleetConfig::Null => {
+            info!("fleet: null — running without cloud transport");
+            None
+        }
+        FleetConfig::Zenoh {
+            listen,
+            connect,
+            tenant,
+            agent_id,
+        } => {
+            let tenant_id = TenantId::new(tenant);
+            info!(
+                tenant = %tenant_id,
+                agent_id,
+                ?listen,
+                ?connect,
+                "opening zenoh fleet transport",
+            );
+            let zcfg = ZenohConfig {
+                listen: listen.clone(),
+                connect: connect.clone(),
+            };
+            let transport: Arc<dyn FleetTransport> = Arc::new(
+                ZenohTransport::connect(zcfg)
+                    .await
+                    .context("zenoh connect")?,
+            );
+            app_state = app_state.with_fleet(transport);
+            let servers = transport_rest::fleet::mount(app_state.clone(), &tenant_id, agent_id)
+                .await
+                .context("mounting fleet handlers")?;
+            info!(
+                handlers = servers.len(),
+                "fleet handlers mounted on `fleet.{tenant_id}.{agent_id}.api.v1.*`"
+            );
+            Some(servers)
+        }
+    };
+
+    let dashboard_reader: Arc<dyn dashboard_runtime::NodeReader + Send + Sync> =
+        Arc::new(dashboard_transport::GraphReader::new(graph.clone()));
+    let router = transport_rest::router(app_state).merge(dashboard_transport::router(
+        dashboard_transport::DashboardState::new(dashboard_reader),
+    ));
     let listener = tokio::net::TcpListener::bind(http).await?;
     info!(addr = %http, "http surface listening");
     let server = tokio::spawn(async move {
@@ -208,18 +301,14 @@ fn resolve_config(
     db: Option<PathBuf>,
     log: Option<String>,
     plugins_dir: Option<PathBuf>,
+    fleet: Option<FleetOverlay>,
 ) -> Result<AgentConfig> {
     let cli_layer = AgentConfigOverlay {
         role,
-        database: db.map(|p| DatabaseOverlay {
-            path: Some(p),
-        }),
-        log: log.map(|f| LogOverlay {
-            filter: Some(f),
-        }),
-        plugins: plugins_dir.map(|d| PluginsOverlay {
-            dir: Some(d),
-        }),
+        database: db.map(|p| DatabaseOverlay { path: Some(p) }),
+        log: log.map(|f| LogOverlay { filter: Some(f) }),
+        plugins: plugins_dir.map(|d| PluginsOverlay { dir: Some(d) }),
+        fleet,
     };
     let env_layer = from_env().context("reading env config")?;
     let file_layer = match config_path {
@@ -253,6 +342,7 @@ async fn bootstrap(
     domain_compute::register_kinds(&kinds);
     domain_logic::register_kinds(&kinds);
     domain_extensions::register_kinds(&kinds);
+    dashboard_nodes::register_kinds(&kinds);
 
     // Scan plugins *before* opening the graph so plugin-contributed
     // kinds are in the registry the graph later validates against.
@@ -320,10 +410,7 @@ async fn bootstrap(
 /// agent itself is a node too" — plugin state lives in the graph, not
 /// in a parallel registry, so Studio subscribes via the same event
 /// bus as every other slot change.
-fn seed_plugin_nodes(
-    graph: &GraphStore,
-    plugins: &PluginRegistry,
-) -> Result<()> {
+fn seed_plugin_nodes(graph: &GraphStore, plugins: &PluginRegistry) -> Result<()> {
     use std::str::FromStr;
 
     let folder = KindId::new("acme.core.folder");

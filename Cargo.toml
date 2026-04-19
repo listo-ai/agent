@@ -19,9 +19,13 @@ members = [
     "crates/domain-devices",
     "crates/domain-extensions",
     "crates/domain-fleet",
+    "crates/dashboard-nodes",
+    "crates/dashboard-runtime",
+    "crates/dashboard-transport",
     "crates/transport-rest",
     "crates/transport-grpc",
     "crates/transport-nats",
+    "crates/transport-fleet-zenoh",
     "crates/transport-cli",
     "crates/transport-mcp",
     "crates/graph",
@@ -36,7 +40,7 @@ members = [
 [workspace.package]
 version = "0.0.1"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "Apache-2.0"
 publish = false
 
@@ -61,9 +65,13 @@ domain-flows = { path = "crates/domain-flows" }
 domain-devices = { path = "crates/domain-devices" }
 domain-extensions = { path = "crates/domain-extensions" }
 domain-fleet = { path = "crates/domain-fleet" }
+dashboard-nodes = { path = "crates/dashboard-nodes" }
+dashboard-runtime = { path = "crates/dashboard-runtime" }
+dashboard-transport = { path = "crates/dashboard-transport" }
 transport-rest = { path = "crates/transport-rest" }
 transport-grpc = { path = "crates/transport-grpc" }
 transport-nats = { path = "crates/transport-nats" }
+transport-fleet-zenoh = { path = "crates/transport-fleet-zenoh" }
 transport-cli = { path = "crates/transport-cli" }
 transport-mcp = { path = "crates/transport-mcp" }
 graph = { path = "crates/graph" }

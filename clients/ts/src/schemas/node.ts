@@ -23,5 +23,19 @@ export const NodeSnapshotSchema = z.object({
   slots: z.array(SlotSchema),
 });
 
+export const PageMetaSchema = z.object({
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  size: z.number().int().positive(),
+  pages: z.number().int().nonnegative(),
+});
+
+export const NodeListResponseSchema = z.object({
+  data: z.array(NodeSnapshotSchema),
+  meta: PageMetaSchema,
+});
+
 export type Slot = z.infer<typeof SlotSchema>;
 export type NodeSnapshot = z.infer<typeof NodeSnapshotSchema>;
+export type PageMeta = z.infer<typeof PageMetaSchema>;
+export type NodeListResponse = z.infer<typeof NodeListResponseSchema>;

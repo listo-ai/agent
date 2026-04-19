@@ -1,0 +1,46 @@
+id: ui.page
+display_name: Page
+facets: []
+containment:
+  must_live_under: []
+  may_contain:
+    - kind: ui.widget
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: title
+    role: config
+    value_schema:
+      type: string
+    writable: true
+  - name: template_ref
+    role: config
+    value_schema:
+      type: ["object", "null"]
+      description: Pinned { id, version } reference to a ui.template. Null for standalone pages.
+      properties:
+        id:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+      required: [id, version]
+    writable: true
+  - name: bound_args
+    role: config
+    value_schema:
+      type: object
+      description: Hole-name -> value map satisfying the template's `requires` contract.
+    writable: true
+  - name: layout
+    role: config
+    value_schema:
+      type: ["object", "null"]
+      description: Standalone layout JSON; populated only when template_ref is null.
+    writable: true
+  - name: page_state_schema
+    role: config
+    value_schema:
+      type: ["object", "null"]
+      description: JSON Schema for $page state validated at /ui/resolve.
+    writable: true

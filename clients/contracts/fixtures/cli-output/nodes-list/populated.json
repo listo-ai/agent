@@ -1,13 +1,21 @@
-[
-  {
-    "id": "00000000-0000-0000-0000-000000000000",
-    "kind": "acme.core.station",
-    "path": "/",
-    "parent_id": null,
-    "lifecycle": "created",
-    "slots": [
-      { "name": "notes",    "value": null, "generation": null },
-      { "name": "position", "value": null, "generation": null }
-    ]
+{
+  "data": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "kind": "acme.core.station",
+      "path": "/",
+      "parent_id": null,
+      "lifecycle": "created",
+      "slots": [
+        { "name": "notes",    "value": null, "generation": null },
+        { "name": "position", "value": null, "generation": null }
+      ]
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "page": 1,
+    "size": 100,
+    "pages": 1
   }
-]
+}

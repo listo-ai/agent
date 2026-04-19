@@ -1,0 +1,25 @@
+[package]
+name = "transport-fleet-zenoh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-stream = "0.3"
+async-trait = { workspace = true }
+futures-core = "0.3"
+serde_json = { workspace = true }
+spi = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+zenoh = "1.0"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+futures-util = { workspace = true }

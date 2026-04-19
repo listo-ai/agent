@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use config::{
-    default_db_path, default_plugins_dir, from_file, AgentConfigOverlay, DatabaseOverlay,
-    Defaults, LogOverlay, PluginsOverlay, Role,
+    default_db_path, default_plugins_dir, from_file, AgentConfigOverlay, DatabaseOverlay, Defaults,
+    LogOverlay, PluginsOverlay, Role,
 };
 
 fn defaults<'a>() -> Defaults<'a> {
@@ -28,6 +28,7 @@ fn cli_over_env_over_file_over_defaults() {
         plugins: Some(PluginsOverlay {
             dir: Some(PathBuf::from("/from/file/plugins")),
         }),
+        fleet: None,
     };
     let env = AgentConfigOverlay {
         role: Some(Role::Cloud),
@@ -36,6 +37,7 @@ fn cli_over_env_over_file_over_defaults() {
             filter: Some("warn".into()),
         }),
         plugins: None,
+        fleet: None,
     };
     let cli = AgentConfigOverlay {
         role: None,
@@ -46,6 +48,7 @@ fn cli_over_env_over_file_over_defaults() {
         plugins: Some(PluginsOverlay {
             dir: Some(PathBuf::from("/from/cli/plugins")),
         }),
+        fleet: None,
     };
 
     // Stack: cli over env over file. `role`: only file + env set, env wins.
@@ -85,7 +88,10 @@ fn edge_role_defaults_plugins_under_var_lib() {
         ..Default::default()
     };
     let resolved = overlay.resolve(defaults());
-    assert_eq!(resolved.plugins.dir, PathBuf::from("/var/lib/agent/plugins"));
+    assert_eq!(
+        resolved.plugins.dir,
+        PathBuf::from("/var/lib/agent/plugins")
+    );
 }
 
 #[test]
@@ -115,6 +121,49 @@ fn unknown_yaml_field_rejected() {
     std::fs::write(tmp.path(), "role: edge\nmystery_field: 42\n").unwrap();
     let err = from_file(tmp.path()).unwrap_err();
     assert!(format!("{err}").contains("mystery_field"));
+}
+
+#[test]
+fn fleet_zenoh_yaml_parses_and_resolves() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(
+        tmp.path(),
+        concat!(
+            "role: standalone\n",
+            "fleet:\n",
+            "  backend: zenoh\n",
+            "  listen: [\"tcp/0.0.0.0:7447\"]\n",
+            "  connect: []\n",
+            "  tenant: acme\n",
+            "  agent_id: edge-1\n",
+        ),
+    )
+    .unwrap();
+    let overlay = from_file(tmp.path()).unwrap();
+    let resolved = overlay.resolve(defaults());
+    match resolved.fleet {
+        config::FleetConfig::Zenoh {
+            listen,
+            connect,
+            tenant,
+            agent_id,
+        } => {
+            assert_eq!(listen, vec!["tcp/0.0.0.0:7447"]);
+            assert!(connect.is_empty());
+            assert_eq!(tenant, "acme");
+            assert_eq!(agent_id, "edge-1");
+        }
+        other => panic!("expected zenoh, got {other:?}"),
+    }
+}
+
+#[test]
+fn fleet_absent_yaml_resolves_to_null() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), "role: edge\n").unwrap();
+    let overlay = from_file(tmp.path()).unwrap();
+    let resolved = overlay.resolve(defaults());
+    assert_eq!(resolved.fleet, config::FleetConfig::Null);
 }
 
 #[test]

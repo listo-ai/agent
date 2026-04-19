@@ -141,6 +141,9 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &PLUGINS_ENABLE,
         &PLUGINS_DISABLE,
         &PLUGINS_RELOAD,
+        &AUTH_WHOAMI,
+        &UI_NAV,
+        &UI_RESOLVE,
     ];
     ALL
 }
@@ -210,16 +213,62 @@ static CAPABILITIES: CommandMeta = CommandMeta {
 
 static NODES_LIST: CommandMeta = CommandMeta {
     name: "nodes list",
-    summary: "List all nodes in the graph.",
-    args: &[],
-    examples: &["agent nodes list", "agent nodes list -o json"],
+    summary: "List nodes in the graph with optional filter, sort, and paging.",
+    args: &[
+        ArgInfo {
+            name: "--filter",
+            required: false,
+            type_name: "query-filter",
+            description: "Filter expression, e.g. kind==acme.core.folder",
+        },
+        ArgInfo {
+            name: "--sort",
+            required: false,
+            type_name: "query-sort",
+            description: "Sort expression, e.g. path,-kind",
+        },
+        ArgInfo {
+            name: "--page",
+            required: false,
+            type_name: "u64",
+            description: "1-based page number",
+        },
+        ArgInfo {
+            name: "--size",
+            required: false,
+            type_name: "u64",
+            description: "Page size",
+        },
+    ],
+    examples: &[
+        "agent nodes list",
+        "agent nodes list --filter 'kind==acme.core.folder' --sort=-path -o json",
+        "agent nodes list --filter 'path=prefix=/demo' --page 2 --size 50",
+    ],
     related: &["nodes get", "nodes create"],
-    input_schema: empty_input,
-    output_schema: schema_for_vec::<types::NodeSnapshot>,
-    errors: &[ErrorInfo {
-        code: "agent_unreachable",
-        exit_code: 2,
-    }],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+                "filter": { "type": "string" },
+                "sort": { "type": "string" },
+                "page": { "type": "integer", "minimum": 1 },
+                "size": { "type": "integer", "minimum": 1 }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::NodeListResponse>,
+    errors: &[
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+    ],
 };
 
 static NODES_GET: CommandMeta = CommandMeta {
@@ -245,9 +294,18 @@ static NODES_GET: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::NodeSnapshot>,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "bad_path", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -290,10 +348,22 @@ static NODES_CREATE: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::CreatedNode>,
     errors: &[
-        ErrorInfo { code: "bad_path", exit_code: 1 },
-        ErrorInfo { code: "kind_not_found", exit_code: 1 },
-        ErrorInfo { code: "placement_refused", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "kind_not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "placement_refused",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -320,9 +390,18 @@ static NODES_DELETE: CommandMeta = CommandMeta {
     },
     output_schema: status_output,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "bad_path", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -368,9 +447,18 @@ static SLOTS_WRITE: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::WriteSlotResponse>,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "bad_path", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -406,9 +494,18 @@ static CONFIG_SET: CommandMeta = CommandMeta {
     },
     output_schema: status_output,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "bad_path", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -474,9 +571,18 @@ static LINKS_CREATE: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::CreatedLink>,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "bad_path", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -503,8 +609,14 @@ static LINKS_REMOVE: CommandMeta = CommandMeta {
     },
     output_schema: status_output,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -543,10 +655,22 @@ static LIFECYCLE: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::LifecycleResponse>,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "illegal_transition", exit_code: 1 },
-        ErrorInfo { code: "bad_path", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "illegal_transition",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -573,8 +697,14 @@ static SEED: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::SeedResult>,
     errors: &[
-        ErrorInfo { code: "bad_request", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -601,9 +731,10 @@ static KINDS_LIST: CommandMeta = CommandMeta {
         })
     },
     output_schema: schema_for_vec::<types::KindDto>,
-    errors: &[
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
-    ],
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
 };
 
 // ---- plugins --------------------------------------------------------------
@@ -616,9 +747,10 @@ static PLUGINS_LIST: CommandMeta = CommandMeta {
     related: &["plugins get", "plugins reload"],
     input_schema: empty_input,
     output_schema: schema_for_vec::<types::PluginSummary>,
-    errors: &[
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
-    ],
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
 };
 
 static PLUGINS_GET: CommandMeta = CommandMeta {
@@ -644,8 +776,14 @@ static PLUGINS_GET: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::PluginSummary>,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -672,8 +810,14 @@ static PLUGINS_ENABLE: CommandMeta = CommandMeta {
     },
     output_schema: status_output,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -700,8 +844,14 @@ static PLUGINS_DISABLE: CommandMeta = CommandMeta {
     },
     output_schema: status_output,
     errors: &[
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -713,7 +863,156 @@ static PLUGINS_RELOAD: CommandMeta = CommandMeta {
     related: &["plugins list"],
     input_schema: empty_input,
     output_schema: status_output,
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
+};
+
+// ---- auth -----------------------------------------------------------------
+
+// ---- ui (dashboard) -------------------------------------------------------
+
+static UI_NAV: CommandMeta = CommandMeta {
+    name: "ui nav",
+    summary: "Fetch the ui.nav subtree rooted at a node id.",
+    args: &[ArgInfo {
+        name: "--root",
+        required: true,
+        type_name: "uuid",
+        description: "Root nav node id",
+    }],
+    examples: &[
+        "agent ui nav --root 11111111-2222-3333-4444-555555555555",
+        "agent ui nav --root <id> -o json",
+    ],
+    related: &["ui resolve"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["root"],
+            "properties": {
+                "root": { "type": "string", "format": "uuid" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::UiNavNode>,
     errors: &[
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static UI_RESOLVE: CommandMeta = CommandMeta {
+    name: "ui resolve",
+    summary: "Resolve a ui.page into a render tree and cache metadata.",
+    args: &[
+        ArgInfo {
+            name: "--page",
+            required: true,
+            type_name: "uuid",
+            description: "Page node id",
+        },
+        ArgInfo {
+            name: "--stack",
+            required: false,
+            type_name: "uuid-list",
+            description: "Comma-separated ui.nav ids forming the context stack",
+        },
+        ArgInfo {
+            name: "--page-state",
+            required: false,
+            type_name: "json",
+            description: "Page-local state as a JSON object",
+        },
+        ArgInfo {
+            name: "--dry-run",
+            required: false,
+            type_name: "bool",
+            description: "Validate only; return structured errors",
+        },
+        ArgInfo {
+            name: "--auth-subject",
+            required: false,
+            type_name: "string",
+            description: "Opaque subject id; threads into cache key and audit",
+        },
+    ],
+    examples: &[
+        "agent ui resolve --page <page-id>",
+        "agent ui resolve --page <page-id> --stack <nav1>,<nav2> --page-state '{\"row\":3}'",
+        "agent ui resolve --page <page-id> --dry-run -o json",
+    ],
+    related: &["ui nav"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["page"],
+            "properties": {
+                "page":         { "type": "string", "format": "uuid" },
+                "stack":        { "type": "string" },
+                "page_state":   { "type": "object" },
+                "dry_run":      { "type": "boolean" },
+                "auth_subject": { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::UiResolveResponse>,
+    errors: &[
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "payload_too_large",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "unprocessable_entity",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static AUTH_WHOAMI: CommandMeta = CommandMeta {
+    name: "auth whoami",
+    summary: "Show the resolved auth context — actor, tenant, scopes, provider.",
+    args: &[],
+    examples: &[
+        "agent auth whoami",
+        "AGENT_TOKEN=my-token agent auth whoami",
+    ],
+    related: &["capabilities"],
+    input_schema: empty_input,
+    output_schema: schema_for_type::<types::WhoAmIDto>,
+    errors: &[
+        ErrorInfo {
+            code: "unauthorized",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };

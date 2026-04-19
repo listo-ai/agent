@@ -55,10 +55,7 @@ async fn get_one(
         .ok_or_else(|| ApiError::not_found(format!("no plugin `{id}`")))
 }
 
-async fn enable(
-    State(s): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
+async fn enable(State(s): State<AppState>, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     let pid = parse_id(&id)?;
     s.plugins
         .set_enabled(&pid, true)
@@ -96,10 +93,7 @@ async fn reload(State(s): State<AppState>) -> Result<StatusCode, ApiError> {
 /// without pulling the `tower` crate in. Files are small and few
 /// (`remoteEntry.js` plus a handful of chunks) so a direct read is
 /// fine. Stage 4's Studio host will cache aggressively upstream.
-async fn serve_ui(
-    State(s): State<AppState>,
-    Path((id, tail)): Path<(String, String)>,
-) -> Response {
+async fn serve_ui(State(s): State<AppState>, Path((id, tail)): Path<(String, String)>) -> Response {
     let pid = match parse_id(&id) {
         Ok(p) => p,
         Err(e) => return e.into_response(),
@@ -111,8 +105,7 @@ async fn serve_ui(
         }
     };
     if !summary.has_ui {
-        return ApiError::not_found(format!("plugin `{id}` ships no UI bundle"))
-            .into_response();
+        return ApiError::not_found(format!("plugin `{id}` ships no UI bundle")).into_response();
     }
     let Some(root) = plugin_ui_root(&s, &pid) else {
         return ApiError::not_found("plugins dir unavailable").into_response();
@@ -143,10 +136,8 @@ async fn serve_ui(
 
     let mime = mime_for(&full);
     let mut resp = bytes.into_response();
-    resp.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(mime),
-    );
+    resp.headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
     resp
 }
 

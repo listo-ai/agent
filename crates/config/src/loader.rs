@@ -55,6 +55,7 @@ pub fn from_env() -> Result<AgentConfigOverlay, ConfigError> {
         database: db_path.map(|p| DatabaseOverlay { path: Some(p) }),
         log: log_filter.map(|f| LogOverlay { filter: Some(f) }),
         plugins: plugins_dir.map(|d| PluginsOverlay { dir: Some(d) }),
+        fleet: None,
     })
 }
 

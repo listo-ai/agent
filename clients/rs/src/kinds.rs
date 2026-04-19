@@ -40,7 +40,6 @@ impl<'c> Kinds<'c> {
         };
         self.http.get::<Vec<KindDto>>(&path).await
     }
-
 }
 
 fn encode_value(s: &str) -> String {

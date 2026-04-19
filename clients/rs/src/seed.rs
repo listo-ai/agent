@@ -26,8 +26,6 @@ impl<'c> Seed<'c> {
 
     /// Apply a preset. Valid presets: `"count_chain"`, `"trigger_demo"`.
     pub async fn apply(&self, preset: &str) -> Result<SeedResult, ClientError> {
-        self.http
-            .post(&self.base, &SeedReq { preset })
-            .await
+        self.http.post(&self.base, &SeedReq { preset }).await
     }
 }

@@ -28,7 +28,10 @@ impl<'c> Config<'c> {
     /// Replace a node's config blob and re-fire `on_init`.
     pub async fn set(&self, path: &str, config: &JsonValue) -> Result<(), ClientError> {
         self.http
-            .post_no_content(&format!("{}/config", self.base), &SetConfigReq { path, config })
+            .post_no_content(
+                &format!("{}/config", self.base),
+                &SetConfigReq { path, config },
+            )
             .await
     }
 }

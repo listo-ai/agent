@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use agent_client::{AgentClient, AgentClientOptions};
+use agent_client::{AgentClient, AgentClientOptions, NodeListParams};
 use engine::Engine;
 use extensions_host::PluginRegistry;
 use graph::{seed, GraphStore, KindRegistry};
@@ -44,9 +44,7 @@ async fn start_test_server() -> (SocketAddr, tokio::task::JoinHandle<()>) {
     domain_logic::register_kinds(&kinds);
 
     let graph = Arc::new(GraphStore::new(kinds, sink));
-    graph
-        .create_root(KindId::new("acme.core.station"))
-        .unwrap();
+    graph.create_root(KindId::new("acme.core.station")).unwrap();
 
     let engine = Engine::new(graph.clone(), events_rx);
     engine
@@ -65,7 +63,12 @@ async fn start_test_server() -> (SocketAddr, tokio::task::JoinHandle<()>) {
         .unwrap();
     engine.start().await.unwrap();
 
-    let app_state = AppState::new(graph, engine.behaviors().clone(), bcast, PluginRegistry::new());
+    let app_state = AppState::new(
+        graph,
+        engine.behaviors().clone(),
+        bcast,
+        PluginRegistry::new(),
+    );
     let router = transport_rest::router(app_state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -91,8 +94,7 @@ fn client(addr: SocketAddr) -> AgentClient {
 // ---- fixture helpers ------------------------------------------------------
 
 fn fixtures_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../clients/contracts/fixtures/cli-output")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../clients/contracts/fixtures/cli-output")
 }
 
 fn load_fixture(rel: &str) -> Value {
@@ -113,11 +115,9 @@ fn normalise(v: Value) -> Value {
             Value::String("00000000-0000-0000-0000-000000000000".into())
         }
         Value::Array(arr) => Value::Array(arr.into_iter().map(normalise).collect()),
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .map(|(k, v)| (k, normalise(v)))
-                .collect(),
-        ),
+        Value::Object(map) => {
+            Value::Object(map.into_iter().map(|(k, v)| (k, normalise(v))).collect())
+        }
         other => other,
     }
 }
@@ -134,7 +134,9 @@ fn is_uuid(s: &str) -> bool {
         && parts[2].len() == 4
         && parts[3].len() == 4
         && parts[4].len() == 12
-        && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_hexdigit()))
+        && parts
+            .iter()
+            .all(|p| p.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// Assert that `actual` structurally matches `fixture`.
@@ -180,9 +182,8 @@ fn assert_shape_match(actual: &Value, fixture: &Value, path: &str) {
 }
 
 fn parse_json_output(raw: &str) -> Value {
-    serde_json::from_str(raw).unwrap_or_else(|e| {
-        panic!("command output is not valid JSON: {e}\n  output: {raw}")
-    })
+    serde_json::from_str(raw)
+        .unwrap_or_else(|e| panic!("command output is not valid JSON: {e}\n  output: {raw}"))
 }
 
 // ---- tests ----------------------------------------------------------------
@@ -196,7 +197,12 @@ async fn nodes_list_empty() {
     let graph2 = Arc::new(GraphStore::new(kinds2, sink2));
     let engine2 = Engine::new(graph2.clone(), events_rx2);
     engine2.start().await.unwrap();
-    let state2 = AppState::new(graph2, engine2.behaviors().clone(), bcast2, PluginRegistry::new());
+    let state2 = AppState::new(
+        graph2,
+        engine2.behaviors().clone(),
+        bcast2,
+        PluginRegistry::new(),
+    );
     let router2 = transport_rest::router(state2);
     let listener2 = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr2 = listener2.local_addr().unwrap();
@@ -204,8 +210,12 @@ async fn nodes_list_empty() {
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     let c2 = client(addr2);
 
-    let nodes = c2.nodes().list().await.unwrap();
-    let actual = parse_json_output(&serde_json::to_string_pretty(&nodes).unwrap());
+    let page = c2
+        .nodes()
+        .list_page(&NodeListParams::default())
+        .await
+        .unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&page).unwrap());
     let fixture = load_fixture("nodes-list/empty.json");
     assert_shape_match(&actual, &fixture, "$");
 }
@@ -215,9 +225,43 @@ async fn nodes_list_populated() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    let nodes = c.nodes().list().await.unwrap();
-    let actual = parse_json_output(&serde_json::to_string_pretty(&nodes).unwrap());
+    let page = c
+        .nodes()
+        .list_page(&NodeListParams::default())
+        .await
+        .unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&page).unwrap());
     let fixture = load_fixture("nodes-list/populated.json");
+    assert_shape_match(&actual, &fixture, "$");
+}
+
+#[tokio::test]
+async fn nodes_list_query_filters_and_pages() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+
+    c.nodes()
+        .create("/", "acme.core.folder", "alpha")
+        .await
+        .unwrap();
+    c.nodes()
+        .create("/", "acme.core.folder", "beta")
+        .await
+        .unwrap();
+
+    let page = c
+        .nodes()
+        .list_page(&NodeListParams {
+            filter: Some("kind==acme.core.folder".into()),
+            sort: Some("-path".into()),
+            page: Some(1),
+            size: Some(1),
+        })
+        .await
+        .unwrap();
+
+    let actual = parse_json_output(&serde_json::to_string_pretty(&page).unwrap());
+    let fixture = load_fixture("nodes-list/filtered-page.json");
     assert_shape_match(&actual, &fixture, "$");
 }
 
@@ -226,7 +270,11 @@ async fn nodes_create_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    let created = c.nodes().create("/", "acme.core.folder", "fixture_test").await.unwrap();
+    let created = c
+        .nodes()
+        .create("/", "acme.core.folder", "fixture_test")
+        .await
+        .unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&created).unwrap());
     let fixture = load_fixture("nodes-create/ok.json");
     assert_shape_match(&actual, &fixture, "$");
@@ -241,7 +289,11 @@ async fn nodes_create_bad_path() {
     let c = client(addr);
 
     // " bad path" has a leading space — NodePath::from_str rejects it
-    let err = c.nodes().create("bad path", "acme.core.folder", "x").await.unwrap_err();
+    let err = c
+        .nodes()
+        .create("bad path", "acme.core.folder", "x")
+        .await
+        .unwrap_err();
     let cli_err = transport_cli::CliError::from_client(&err);
     let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
     let fixture = load_fixture("nodes-create/bad-path.json");
@@ -254,8 +306,15 @@ async fn slots_write_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    c.nodes().create("/", "acme.compute.count", "counter").await.unwrap();
-    let gen = c.slots().write("/counter", "in", &serde_json::json!(5)).await.unwrap();
+    c.nodes()
+        .create("/", "acme.compute.count", "counter")
+        .await
+        .unwrap();
+    let gen = c
+        .slots()
+        .write("/counter", "in", &serde_json::json!(5))
+        .await
+        .unwrap();
 
     let output = serde_json::json!({ "generation": gen });
     let actual = parse_json_output(&serde_json::to_string_pretty(&output).unwrap());
@@ -269,7 +328,11 @@ async fn slots_write_node_not_found() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    let err = c.slots().write("/nonexistent", "in", &serde_json::json!(1)).await.unwrap_err();
+    let err = c
+        .slots()
+        .write("/nonexistent", "in", &serde_json::json!(1))
+        .await
+        .unwrap_err();
     let cli_err = transport_cli::CliError::from_client(&err);
     let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
     let fixture = load_fixture("slots-write/node-not-found.json");
@@ -290,6 +353,17 @@ async fn lifecycle_illegal_transition() {
     let fixture = load_fixture("lifecycle/illegal-transition.json");
     assert_shape_match(&actual, &fixture, "$");
     assert_eq!(cli_err.code, "illegal_transition");
+}
+
+#[tokio::test]
+async fn auth_whoami_dev_null() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+
+    let who = c.auth().whoami().await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&who).unwrap());
+    let fixture = load_fixture("auth-whoami/dev-null.json");
+    assert_shape_match(&actual, &fixture, "$");
 }
 
 #[tokio::test]

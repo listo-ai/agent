@@ -1,4 +1,4 @@
-import { createContext, memo, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   addEdge,
   Background,
@@ -16,11 +16,13 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type NodeMouseHandler,
   type NodeProps,
   type OnNodeDrag,
   type OnSelectionChangeParams,
   type ReactFlowInstance,
 } from "@xyflow/react";
+import { buildNodeContextItems, NodeContextMenu } from "@/components/NodeContextMenu";
 import { cn } from "@/lib/utils";
 import {
   formatLiveValue,
@@ -108,6 +110,25 @@ function FlowCanvasInner({
 
   const nodeTypes = useMemo(() => ({ flowNode: FlowNodeCard }), []);
 
+  // ── Context menu ────────────────────────────────────────────────────────
+  type ContextMenu = { nodeId: string; nodeLabel: string; x: number; y: number } | null;
+  const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
+
+  const selectNodeById = useCallback((nodeId: string) => {
+    setCanvasNodes((current) =>
+      current.map((n) => ({ ...n, selected: n.id === nodeId }))
+    );
+  }, []);
+
+  const handleNodeContextMenu: NodeMouseHandler<Node<FlowNodeData>> = useCallback(
+    (event, node) => {
+      event.preventDefault();
+      const label = titleForKind(node.data.kind, node.data.snapshot.path.split("/").pop());
+      setContextMenu({ nodeId: node.id, nodeLabel: label, x: event.clientX, y: event.clientY });
+    },
+    [],
+  ); 
+
   const onNodesChange = (changes: NodeChange<Node<FlowNodeData>>[]) => {
     setCanvasNodes((current) => applyNodeChanges<Node<FlowNodeData>>(changes, current));
   };
@@ -133,6 +154,8 @@ function FlowCanvasInner({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={onNodeDragStop}
+        onNodeContextMenu={handleNodeContextMenu}
+        onPaneClick={() => setContextMenu(null)}
         onConnect={(connection) => {
           setCanvasEdges((current) =>
             addEdge({ ...connection, type: "smoothstep", animated: false }, current),
@@ -176,6 +199,25 @@ function FlowCanvasInner({
           />
         ) : null}
       </ReactFlow>
+
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          nodeLabel={contextMenu.nodeLabel}
+          onClose={() => setContextMenu(null)}
+          items={buildNodeContextItems({
+            onSettings: () => {
+              selectNodeById(contextMenu.nodeId);
+              setContextMenu(null);
+            },
+            onDelete: () => {
+              onDeleteNodes([contextMenu.nodeId]);
+              setContextMenu(null);
+            },
+          })}
+        />
+      )}
     </div>
   );
 }

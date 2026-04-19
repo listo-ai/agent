@@ -33,7 +33,11 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &SlotsCmd) -> Res
             let parsed: serde_json::Value = serde_json::from_str(value)
                 .unwrap_or_else(|_| serde_json::Value::String(value.clone()));
             let gen = client.slots().write(path, slot, &parsed).await?;
-            output::ok_msg(fmt, &serde_json::json!({ "generation": gen }), &format!("generation {gen}"))?;
+            output::ok_msg(
+                fmt,
+                &serde_json::json!({ "generation": gen }),
+                &format!("generation {gen}"),
+            )?;
         }
     }
     Ok(())

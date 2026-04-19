@@ -7,6 +7,7 @@ use anyhow::Result;
 
 use crate::output::OutputFormat;
 
+mod auth;
 mod capabilities;
 mod config;
 mod health;
@@ -19,12 +20,19 @@ mod plugins;
 mod schema;
 mod seed;
 mod slots;
+mod ui;
 
 /// Global options shared by every CLI subcommand.
 #[derive(Debug, Clone, clap::Args)]
 pub struct GlobalOpts {
     /// Agent URL.
-    #[arg(long, short = 'u', default_value = "http://localhost:8080", global = true, env = "AGENT_URL")]
+    #[arg(
+        long,
+        short = 'u',
+        default_value = "http://localhost:8080",
+        global = true,
+        env = "AGENT_URL"
+    )]
     pub url: String,
 
     /// Bearer token for authenticated agents.
@@ -83,6 +91,14 @@ pub enum CliCommand {
     #[command(subcommand)]
     Plugins(plugins::PluginsCmd),
 
+    /// Auth introspection.
+    #[command(subcommand)]
+    Auth(auth::AuthCmd),
+
+    /// Dashboard UI operations.
+    #[command(subcommand)]
+    Ui(ui::UiCmd),
+
     /// Seed a preset graph for testing.
     Seed {
         /// Preset name: `count_chain` or `trigger_demo`.
@@ -111,6 +127,8 @@ impl CliCommand {
             Self::Links(sub) => sub.command_name(),
             Self::Kinds(sub) => sub.command_name(),
             Self::Plugins(sub) => sub.command_name(),
+            Self::Auth(sub) => sub.command_name(),
+            Self::Ui(sub) => sub.command_name(),
             Self::Lifecycle { .. } => "lifecycle",
             Self::Seed { .. } => "seed",
             Self::Schema { .. } => "schema",
@@ -129,6 +147,8 @@ pub async fn dispatch(client: &AgentClient, global: &GlobalOpts, cmd: &CliComman
         CliCommand::Links(sub) => links::run(client, fmt, sub).await,
         CliCommand::Kinds(sub) => kinds::run(client, fmt, sub).await,
         CliCommand::Plugins(sub) => plugins::run(client, fmt, sub).await,
+        CliCommand::Auth(sub) => auth::run(client, fmt, sub).await,
+        CliCommand::Ui(sub) => ui::run(client, fmt, sub).await,
         CliCommand::Lifecycle { path, to } => lifecycle::run(client, fmt, path, to).await,
         CliCommand::Seed { preset } => seed::run(client, fmt, preset).await,
         CliCommand::Schema { all, command } => schema::run(fmt, *all, command),

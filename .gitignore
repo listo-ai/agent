@@ -24,3 +24,13 @@ examples/plugin-hello/node_modules
 plugins/com.acme.hello/ui/
 agent.db-shm
 agent.db-wal
+
+# Dev environment — configs stay, state is per-checkout
+dev/*.db
+dev/*.db-shm
+dev/*.db-wal
+dev/cloud-plugins/*
+dev/edge-plugins/*
+!dev/cloud-plugins/.gitkeep
+!dev/edge-plugins/.gitkeep
+.overmind.sock

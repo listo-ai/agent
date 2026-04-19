@@ -88,24 +88,42 @@ Key points:
 
 One crate per backend. Each implements `FleetTransport`. Cargo features gate compile-time inclusion, config picks at runtime.
 
-| Crate | Cargo feature | Provides capability | Notes |
+| Crate | Cargo feature | Provides capability | Positioning |
 |---|---|---|---|
-| `transport-fleet-nats` | `fleet-nats` | `fleet.nats.v1` | Primary. JetStream for durable, core for fire-and-forget. NATS leaf on edge, cluster in cloud. |
-| `transport-fleet-zenoh` | `fleet-zenoh` | `fleet.zenoh.v1` | Alternative. Already adjacent via crossflow. Router in cloud, client on edge. Good for mixed IoT deployments. |
+| `transport-fleet-zenoh` | `fleet-zenoh` | `fleet.zenoh.v1` | **Simple-stack primary.** Pure-Rust library — embeds in-process, no broker sidecar, no separate binary. Right default for developer laptops, standalone appliances, single-tenant clouds, demos. |
+| `transport-fleet-nats` | `fleet-nats` | `fleet.nats.v1` | **SaaS primary.** JetStream for durable buffering, NATS accounts for tenant isolation, first-class WebSocket for browser Studio, years of ops mileage. Right default for multi-tenant cloud at scale and edges with spotty connectivity that need durable command queues. |
 | `transport-fleet-mqtt` | `fleet-mqtt` | `fleet.mqtt.v1` | Future. When integrating with existing MQTT device fleets where the broker already exists. Weaker req/reply semantics. |
+
+### Which backend when
+
+| Deployment | Backend | Why |
+|---|---|---|
+| Developer laptop / standalone appliance | Zenoh (embedded) | Single binary, zero ops, `fleet: zenoh` in config just works. |
+| Small single-tenant cloud | Zenoh (embedded) | One container. No nats-server to supervise. |
+| Multi-tenant SaaS cloud | NATS cluster | Mature accounts-per-tenant, JetStream, ops tooling. |
+| Edges with long offline windows | NATS leaf + JetStream | Durable outbound buffering that's proven at scale. |
+| Browser-heavy Studio traffic | NATS (WS) | NATS-WS is production-grade; Zenoh's browser story is thinner. |
+
+Both backends implement the same trait — a deployment can start on Zenoh for simplicity and switch to NATS when scale demands it. No code above `spi::FleetTransport` changes.
 
 At least one backend must be compiled in when `role != standalone` without `--offline`. CI matrix builds every two-of-three combinations to prove no backend has leaked a direct dependency above the trait.
 
 ### Config shape
 
 ```yaml
-# Cloud agent
+# Standalone / developer laptop / single-tenant cloud — embedded Zenoh
+fleet:
+  backend: zenoh
+  listen: ["tcp/0.0.0.0:7447"]     # leave empty for client-only
+  connect: []                       # peer discovery handles the rest
+
+# Cloud agent (SaaS)
 fleet:
   backend: nats
   url: tls://fleet.yourcloud.com:4443
   cluster: true        # this agent is a cluster member
 
-# Edge agent
+# Edge agent (SaaS)
 fleet:
   backend: nats        # or: zenoh, mqtt
   url: tls://fleet.yourcloud.com:4443

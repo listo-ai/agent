@@ -172,8 +172,7 @@ impl PluginRegistry {
         }
 
         // ----- Phase 1: validate every dir into a staging set -----
-        let entries = std::fs::read_dir(&dir)
-            .map_err(|e| PluginError::DirRead(dir.clone(), e))?;
+        let entries = std::fs::read_dir(&dir).map_err(|e| PluginError::DirRead(dir.clone(), e))?;
 
         let mut staged: Vec<LoadedPlugin> = Vec::new();
         let mut staged_kinds: Vec<(PluginId, Vec<KindManifest>)> = Vec::new();
@@ -200,11 +199,7 @@ impl PluginRegistry {
                 validate_one(&path, &dir_name, self.host_caps.as_ref(), &mut seen_ids);
             staged.push(plugin);
             if let Some(k) = kinds_for {
-                let id = staged
-                    .last()
-                    .expect("just pushed")
-                    .id
-                    .clone();
+                let id = staged.last().expect("just pushed").id.clone();
                 staged_kinds.push((id, k));
             }
         }
@@ -275,8 +270,7 @@ fn validate_one(
         Ok(b) => b,
         Err(e) => {
             errors.push(format!("reading {}: {e}", manifest_path.display()));
-            let id = PluginId::parse(dir_name)
-                .unwrap_or_else(|_| fallback_id(dir_name));
+            let id = PluginId::parse(dir_name).unwrap_or_else(|_| fallback_id(dir_name));
             return (
                 LoadedPlugin {
                     id,
@@ -293,8 +287,7 @@ fn validate_one(
         Ok(m) => m,
         Err(e) => {
             errors.push(format!("parsing plugin.yaml: {e}"));
-            let id = PluginId::parse(dir_name)
-                .unwrap_or_else(|_| fallback_id(dir_name));
+            let id = PluginId::parse(dir_name).unwrap_or_else(|_| fallback_id(dir_name));
             return (
                 LoadedPlugin {
                     id,
@@ -415,8 +408,9 @@ fn validate_one(
 /// Last-resort id when everything else has failed. The plugin will be
 /// `Failed` regardless; this just keeps the error list indexable.
 fn fallback_id(dir_name: &str) -> PluginId {
-    PluginId::parse(dir_name)
-        .unwrap_or_else(|_| PluginId::parse(format!("invalid.{}", sanitize(dir_name))).expect("sanitized id"))
+    PluginId::parse(dir_name).unwrap_or_else(|_| {
+        PluginId::parse(format!("invalid.{}", sanitize(dir_name))).expect("sanitized id")
+    })
 }
 
 fn sanitize(s: &str) -> String {

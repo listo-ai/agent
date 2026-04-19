@@ -249,7 +249,11 @@ fn render_table<T>(headers: &[&str], rows: &[T], row_to_cells: impl Fn(&T) -> Ve
     println!("{line}"); // NO_PRINTLN_LINT:allow
 
     // Separator.
-    let sep: String = widths.iter().map(|w| "-".repeat(*w)).collect::<Vec<_>>().join("  ");
+    let sep: String = widths
+        .iter()
+        .map(|w| "-".repeat(*w))
+        .collect::<Vec<_>>()
+        .join("  ");
     println!("{sep}"); // NO_PRINTLN_LINT:allow
 
     // Rows.

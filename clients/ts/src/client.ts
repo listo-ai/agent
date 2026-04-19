@@ -9,6 +9,7 @@ import { createLifecycleApi } from "./domain/lifecycle.js";
 import { createSeedApi } from "./domain/seed.js";
 import { createPluginsApi } from "./domain/plugins.js";
 import { createKindsApi } from "./domain/kinds.js";
+import { createAuthApi } from "./domain/auth.js";
 import type { NodesApi } from "./domain/nodes.js";
 import type { SlotsApi } from "./domain/slots.js";
 import type { ConfigApi } from "./domain/config.js";
@@ -18,6 +19,7 @@ import type { LifecycleApi } from "./domain/lifecycle.js";
 import type { SeedApi } from "./domain/seed.js";
 import type { PluginsApi } from "./domain/plugins.js";
 import type { KindsApi } from "./domain/kinds.js";
+import type { AuthApi } from "./domain/auth.js";
 import { REST_API_VERSION } from "./version.js";
 
 export interface AgentClientOptions {
@@ -54,6 +56,7 @@ export class AgentClient {
   readonly seed: SeedApi;
   readonly plugins: PluginsApi;
   readonly kinds: KindsApi;
+  readonly auth: AuthApi;
 
   private constructor(http: HttpClient, opts: AgentClientOptions) {
     this.nodes = createNodesApi(http, REST_API_VERSION);
@@ -65,6 +68,7 @@ export class AgentClient {
     this.seed = createSeedApi(http, REST_API_VERSION);
     this.plugins = createPluginsApi(http, REST_API_VERSION);
     this.kinds = createKindsApi(http, REST_API_VERSION);
+    this.auth = createAuthApi(http, REST_API_VERSION);
   }
 
   /**

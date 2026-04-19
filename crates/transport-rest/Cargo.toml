@@ -11,6 +11,9 @@ workspace = true
 
 [dependencies]
 spi = { workspace = true }
+auth = { workspace = true }
+async-trait = { workspace = true }
+query = { workspace = true }
 graph = { workspace = true }
 engine = { workspace = true }
 extensions-sdk = { workspace = true }
@@ -26,3 +29,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 semver = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+transport-fleet-zenoh = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }

@@ -117,7 +117,11 @@ fn with_synthesised_slots(mut manifest: KindManifest) -> KindManifest {
 }
 
 fn ensure_slot(manifest: &mut KindManifest, slot: SlotSchema) {
-    if manifest.slots.iter().all(|existing| existing.name != slot.name) {
+    if manifest
+        .slots
+        .iter()
+        .all(|existing| existing.name != slot.name)
+    {
         manifest.slots.push(slot);
     }
 }

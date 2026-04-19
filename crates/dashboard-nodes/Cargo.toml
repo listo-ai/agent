@@ -1,0 +1,18 @@
+[package]
+name = "dashboard-nodes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+spi = { workspace = true }
+extensions-sdk = { workspace = true }
+graph = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

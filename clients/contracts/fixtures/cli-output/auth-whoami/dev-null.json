@@ -1,0 +1,16 @@
+{
+  "actor_kind": "dev_null",
+  "actor_id": null,
+  "actor_display": "local-dev-null",
+  "tenant": "default",
+  "scopes": [
+    "read_nodes",
+    "write_nodes",
+    "write_slots",
+    "write_config",
+    "manage_plugins",
+    "manage_fleet",
+    "admin"
+  ],
+  "provider": "dev_null"
+}

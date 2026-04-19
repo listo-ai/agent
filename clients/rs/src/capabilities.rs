@@ -45,10 +45,7 @@ impl<'c> Capabilities<'c> {
         let manifest = self.get_manifest().await?;
         let mut missing = Vec::new();
         for req in requirements {
-            let found = manifest
-                .capabilities
-                .iter()
-                .find(|c| c.id == req.id);
+            let found = manifest.capabilities.iter().find(|c| c.id == req.id);
             let satisfied = found
                 .and_then(|c| Version::parse(&c.version).ok())
                 .map(|v| req.range.matches(&v))

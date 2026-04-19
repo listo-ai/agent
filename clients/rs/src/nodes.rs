@@ -3,7 +3,7 @@
 
 use crate::error::ClientError;
 use crate::http::HttpClient;
-use crate::types::{CreatedNode, NodeSnapshot};
+use crate::types::{CreatedNode, NodeListResponse, NodeSnapshot};
 
 use serde::Serialize;
 
@@ -19,6 +19,14 @@ pub struct Nodes<'c> {
     base: String,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct NodeListParams {
+    pub filter: Option<String>,
+    pub sort: Option<String>,
+    pub page: Option<u64>,
+    pub size: Option<u64>,
+}
+
 impl<'c> Nodes<'c> {
     pub(crate) fn new(http: &'c HttpClient, api_version: u32) -> Self {
         Self {
@@ -29,8 +37,29 @@ impl<'c> Nodes<'c> {
 
     /// List every node in the graph.
     pub async fn list(&self) -> Result<Vec<NodeSnapshot>, ClientError> {
+        Ok(self.list_page(&NodeListParams::default()).await?.data)
+    }
+
+    /// List nodes using the generic query params surface.
+    pub async fn list_page(
+        &self,
+        params: &NodeListParams,
+    ) -> Result<NodeListResponse, ClientError> {
+        let mut query = Vec::new();
+        if let Some(filter) = &params.filter {
+            query.push(("filter", filter.clone()));
+        }
+        if let Some(sort) = &params.sort {
+            query.push(("sort", sort.clone()));
+        }
+        if let Some(page) = params.page {
+            query.push(("page", page.to_string()));
+        }
+        if let Some(size) = params.size {
+            query.push(("size", size.to_string()));
+        }
         self.http
-            .get::<Vec<NodeSnapshot>>(&format!("{}/nodes", self.base))
+            .get_query::<NodeListResponse>(&format!("{}/nodes", self.base), &query)
             .await
     }
 
@@ -50,7 +79,10 @@ impl<'c> Nodes<'c> {
         name: &str,
     ) -> Result<CreatedNode, ClientError> {
         self.http
-            .post(&format!("{}/nodes", self.base), &CreateNodeReq { parent, kind, name })
+            .post(
+                &format!("{}/nodes", self.base),
+                &CreateNodeReq { parent, kind, name },
+            )
             .await
     }
 

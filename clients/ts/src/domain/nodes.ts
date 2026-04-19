@@ -1,6 +1,6 @@
 import type { HttpClient } from "../transport/http.js";
-import { NodeSnapshotSchema } from "../schemas/node.js";
-import type { NodeSnapshot } from "../schemas/node.js";
+import { NodeListResponseSchema, NodeSnapshotSchema } from "../schemas/node.js";
+import type { NodeListResponse, NodeSnapshot } from "../schemas/node.js";
 
 /**
  * Node operations against the Rust REST surface
@@ -8,13 +8,16 @@ import type { NodeSnapshot } from "../schemas/node.js";
  *   `GET  /api/v1/nodes`
  *   `GET  /api/v1/node?path=...`
  *   `POST /api/v1/nodes` `{parent, kind, name}` → `{id, path}`
- *
- * Delete is not yet on the wire (Stage 9 territory) so it's omitted
- * rather than stubbed — callers hit a compile-time error instead of a
- * 404 at runtime.
+ *   `DELETE /api/v1/node?path=...`
  */
 export interface NodesApi {
   getNodes(): Promise<NodeSnapshot[]>;
+  getNodesPage(params?: {
+    filter?: string;
+    sort?: string;
+    page?: number;
+    size?: number;
+  }): Promise<NodeListResponse>;
   getNode(path: string): Promise<NodeSnapshot>;
   createNode(args: {
     parent: string;
@@ -26,12 +29,31 @@ export interface NodesApi {
 
 export function createNodesApi(http: HttpClient, apiVersion: number): NodesApi {
   const base = `/api/v${apiVersion}`;
+  const getNodesPage = async (params: {
+    filter?: string;
+    sort?: string;
+    page?: number;
+    size?: number;
+  } = {}): Promise<NodeListResponse> => {
+    const qs = new URLSearchParams();
+    if (params.filter) qs.set("filter", params.filter);
+    if (params.sort) qs.set("sort", params.sort);
+    if (params.page !== undefined) qs.set("page", String(params.page));
+    if (params.size !== undefined) qs.set("size", String(params.size));
+    const suffix = qs.toString();
+    const raw = await http.get<unknown>(
+      `${base}/nodes${suffix ? `?${suffix}` : ""}`,
+    );
+    return NodeListResponseSchema.parse(raw);
+  };
 
   return {
     async getNodes(): Promise<NodeSnapshot[]> {
-      const raw = await http.get<unknown[]>(`${base}/nodes`);
-      return raw.map((r) => NodeSnapshotSchema.parse(r));
+      const page = await getNodesPage();
+      return page.data;
     },
+
+    getNodesPage,
 
     async getNode(path: string): Promise<NodeSnapshot> {
       const raw = await http.get<unknown>(

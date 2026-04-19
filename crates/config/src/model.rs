@@ -19,6 +19,30 @@ pub struct AgentConfig {
     pub database: DatabaseConfig,
     pub log: LogConfig,
     pub plugins: PluginsConfig,
+    pub fleet: FleetConfig,
+}
+
+/// Resolved fleet-transport configuration. See
+/// `docs/design/FLEET-TRANSPORT.md` § "Backend selection".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FleetConfig {
+    /// Standalone — no cloud at all. `AppState` gets a `NullTransport`.
+    Null,
+    /// Embedded Zenoh — pure-Rust library, no broker sidecar. Right
+    /// default for dev laptops, single-tenant clouds, appliances.
+    Zenoh {
+        listen: Vec<String>,
+        connect: Vec<String>,
+        tenant: String,
+        agent_id: String,
+    },
+}
+
+impl FleetConfig {
+    /// `true` if this config wants a real transport opened at boot.
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, FleetConfig::Null)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +77,43 @@ pub struct AgentConfigOverlay {
     pub database: Option<DatabaseOverlay>,
     pub log: Option<LogOverlay>,
     pub plugins: Option<PluginsOverlay>,
+    /// Fleet transport. `fleet: null` in YAML parses as `None` here and
+    /// resolves to `FleetConfig::Null`. `fleet: { backend: zenoh, … }`
+    /// parses as `Some(FleetOverlay::Zenoh { … })`.
+    pub fleet: Option<FleetOverlay>,
+}
+
+/// Overlay form for fleet transport. Tagged on `backend` so the YAML
+/// reads:
+///
+/// ```yaml
+/// fleet:
+///   backend: zenoh
+///   listen: ["tcp/0.0.0.0:7447"]
+///   connect: []
+///   tenant: acme
+///   agent_id: edge-1
+/// ```
+///
+/// Today only `zenoh` is wired; `nats` and `mqtt` slot in as additional
+/// variants when their crates land.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "backend", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FleetOverlay {
+    Zenoh(ZenohFleetOverlay),
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ZenohFleetOverlay {
+    /// Endpoints this node listens on. Empty for client-only.
+    pub listen: Option<Vec<String>>,
+    /// Endpoints to dial outbound. Empty for multicast discovery only.
+    pub connect: Option<Vec<String>>,
+    /// Tenant id for the fleet subject prefix. Defaults to `default`.
+    pub tenant: Option<String>,
+    /// Agent id for the fleet subject prefix. Defaults to hostname.
+    pub agent_id: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -82,6 +143,7 @@ impl AgentConfigOverlay {
             database: merge_db(self.database, other.database),
             log: merge_log(self.log, other.log),
             plugins: merge_plugins(self.plugins, other.plugins),
+            fleet: merge_fleet(self.fleet, other.fleet),
         }
     }
 
@@ -104,13 +166,32 @@ impl AgentConfigOverlay {
             .as_ref()
             .and_then(|p| p.dir.clone())
             .unwrap_or_else(|| (defaults.plugins_dir)(role));
+        let fleet = match self.fleet {
+            None => FleetConfig::Null,
+            Some(FleetOverlay::Zenoh(z)) => FleetConfig::Zenoh {
+                listen: z.listen.unwrap_or_default(),
+                connect: z.connect.unwrap_or_default(),
+                tenant: z.tenant.unwrap_or_else(|| "default".to_string()),
+                agent_id: z.agent_id.unwrap_or_else(default_agent_id),
+            },
+        };
         AgentConfig {
             role,
             database: DatabaseConfig { path: db_path },
             log: LogConfig { filter: log_filter },
             plugins: PluginsConfig { dir: plugins_dir },
+            fleet,
         }
     }
+}
+
+/// Hostname, falling back to `local`. Shared with the binary so every
+/// place that defaults an agent id uses the same rule.
+pub fn default_agent_id() -> String {
+    std::env::var("HOSTNAME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "local".to_string())
 }
 
 /// Role-aware default hooks used by [`AgentConfigOverlay::resolve`].
@@ -151,5 +232,20 @@ fn merge_log(top: Option<LogOverlay>, bot: Option<LogOverlay>) -> Option<LogOver
         (Some(t), Some(b)) => Some(LogOverlay {
             filter: t.filter.or(b.filter),
         }),
+    }
+}
+
+fn merge_fleet(top: Option<FleetOverlay>, bot: Option<FleetOverlay>) -> Option<FleetOverlay> {
+    match (top, bot) {
+        (None, b) => b,
+        (Some(t), None) => Some(t),
+        (Some(FleetOverlay::Zenoh(t)), Some(FleetOverlay::Zenoh(b))) => {
+            Some(FleetOverlay::Zenoh(ZenohFleetOverlay {
+                listen: t.listen.or(b.listen),
+                connect: t.connect.or(b.connect),
+                tenant: t.tenant.or(b.tenant),
+                agent_id: t.agent_id.or(b.agent_id),
+            }))
+        }
     }
 }

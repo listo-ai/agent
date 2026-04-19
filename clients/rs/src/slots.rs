@@ -36,7 +36,10 @@ impl<'c> Slots<'c> {
     ) -> Result<u64, ClientError> {
         let resp: WriteSlotResponse = self
             .http
-            .post(&format!("{}/slots", self.base), &WriteSlotReq { path, slot, value })
+            .post(
+                &format!("{}/slots", self.base),
+                &WriteSlotReq { path, slot, value },
+            )
             .await?;
         Ok(resp.generation)
     }

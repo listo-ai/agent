@@ -1,0 +1,12 @@
+# Dev config — cloud agent.
+#
+# Run with:   make run-cloud
+# Or direct:  cargo run --bin agent -- run --config dev/cloud.yaml --http 127.0.0.1:8081
+
+role: cloud
+database:
+  path: dev/cloud.db
+log:
+  filter: info,agent=debug,extensions_host=debug
+plugins:
+  dir: dev/cloud-plugins

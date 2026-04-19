@@ -25,6 +25,20 @@ pub struct NodeSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PageMeta {
+    pub total: u64,
+    pub page: u64,
+    pub size: u64,
+    pub pages: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NodeListResponse {
+    pub data: Vec<NodeSnapshot>,
+    pub meta: PageMeta,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Slot {
     pub name: String,
     pub value: JsonValue,
@@ -390,4 +404,113 @@ pub struct PluginSummary {
 pub struct PluginActionResponse {
     pub id: String,
     pub lifecycle: PluginLifecycle,
+}
+
+// ---- auth -----------------------------------------------------------------
+
+// ---- ui (dashboard) -------------------------------------------------------
+
+/// Node in a `GET /api/v1/ui/nav` tree slice. Field order mirrors the
+/// server's `dashboard_transport::nav::NavNode`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiNavNode {
+    pub id: String,
+    pub title: Option<String>,
+    pub path: Option<String>,
+    pub icon: Option<String>,
+    pub order: Option<i64>,
+    pub frame_alias: Option<String>,
+    pub frame_ref: Option<JsonValue>,
+    pub children: Vec<UiNavNode>,
+}
+
+/// Request body for `POST /api/v1/ui/resolve`. Mirrors
+/// `dashboard_transport::resolve::ResolveRequest` exactly.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiResolveRequest {
+    pub page_ref: String,
+    #[serde(default)]
+    pub stack: Vec<String>,
+    #[serde(default)]
+    pub page_state: JsonValue,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub auth_subject: Option<String>,
+    #[serde(default)]
+    pub user_claims: std::collections::HashMap<String, JsonValue>,
+}
+
+/// Response envelope for `POST /api/v1/ui/resolve`. Serialised
+/// untagged — a successful resolve carries `{render, meta}`; a dry-run
+/// carries `{errors}`. Mirrors the server's `ResolveResponse`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum UiResolveResponse {
+    Ok {
+        render: UiRenderTree,
+        meta: UiResolveMeta,
+    },
+    DryRun {
+        errors: Vec<UiResolveIssue>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiRenderTree {
+    pub page_id: String,
+    pub title: Option<String>,
+    pub widgets: Vec<UiRenderedWidget>,
+}
+
+/// Tagged by `"kind"` — `"ui.widget"` (rendered), `"ui.widget.forbidden"`,
+/// or `"ui.widget.dangling"`. Mirrors the server's `RenderedWidget`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind")]
+pub enum UiRenderedWidget {
+    #[serde(rename = "ui.widget")]
+    Rendered {
+        id: String,
+        widget_type: String,
+        values: std::collections::HashMap<String, JsonValue>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        layout_hint: Option<JsonValue>,
+    },
+    #[serde(rename = "ui.widget.forbidden")]
+    Forbidden { id: String, reason: String },
+    #[serde(rename = "ui.widget.dangling")]
+    Dangling { id: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiResolveMeta {
+    pub cache_key: u64,
+    pub widget_count: usize,
+    pub forbidden_count: usize,
+    pub dangling_count: usize,
+    pub stack_shadowed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiResolveIssue {
+    pub location: String,
+    pub message: String,
+}
+
+// ---- auth -----------------------------------------------------------------
+
+/// Mirror of `GET /api/v1/auth/whoami`. Field order must match the
+/// server-side DTO in `crates/transport-rest/src/auth_routes.rs`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WhoAmIDto {
+    /// `"user" | "machine" | "dev_null"`.
+    pub actor_kind: String,
+    pub actor_id: Option<String>,
+    pub actor_display: String,
+    pub tenant: String,
+    /// Scopes the actor holds — snake_case strings matching
+    /// `spi::Scope`'s `rename_all = "snake_case"`.
+    pub scopes: Vec<String>,
+    /// Provider id, e.g. `"dev_null"`, `"static_token"`.
+    pub provider: String,
 }

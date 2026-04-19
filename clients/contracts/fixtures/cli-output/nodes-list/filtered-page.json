@@ -1,0 +1,21 @@
+{
+  "data": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "kind": "acme.core.folder",
+      "path": "/beta",
+      "parent_id": "00000000-0000-0000-0000-000000000000",
+      "lifecycle": "created",
+      "slots": [
+        { "name": "notes",    "value": null, "generation": null },
+        { "name": "position", "value": null, "generation": null }
+      ]
+    }
+  ],
+  "meta": {
+    "total": 2,
+    "page": 1,
+    "size": 1,
+    "pages": 2
+  }
+}

@@ -12,9 +12,10 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use futures_util::stream::Stream;
 use graph::{Lifecycle, LinkId, NodeSnapshot, SlotRef};
+use query::{FieldType, Operator, QueryRequest, QuerySchema, SortField};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use spi::{KindId, NodeId, NodePath};
+use spi::{AuthContext, KindId, NodeId, NodePath, Scope};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 use tower_http::cors::CorsLayer;
@@ -52,6 +53,7 @@ pub fn mount(state: AppState) -> Router {
         // module, merged in so the tower layers below apply uniformly.
         .merge(crate::plugins::routes())
         .merge(crate::kinds::routes())
+        .merge(crate::auth_routes::routes())
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -64,8 +66,8 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-#[derive(Serialize)]
-struct NodeDto {
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct NodeDto {
     id: String,
     kind: String,
     path: String,
@@ -74,8 +76,8 @@ struct NodeDto {
     slots: Vec<SlotDto>,
 }
 
-#[derive(Serialize)]
-struct SlotDto {
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct SlotDto {
     name: String,
     value: JsonValue,
     generation: u64,
@@ -102,10 +104,73 @@ impl From<NodeSnapshot> for NodeDto {
     }
 }
 
-async fn list_nodes(State(s): State<AppState>) -> Json<Vec<NodeDto>> {
-    let mut out: Vec<NodeDto> = s.graph.snapshots().into_iter().map(NodeDto::from).collect();
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub(crate) struct ListNodesQuery {
+    pub filter: Option<String>,
+    pub sort: Option<String>,
+    pub page: Option<usize>,
+    pub size: Option<usize>,
+}
+
+fn node_query_schema() -> QuerySchema {
+    QuerySchema::new(100, 1000)
+        .field(
+            "id",
+            FieldType::Text,
+            [Operator::Eq, Operator::Ne, Operator::Prefix],
+        )
+        .field(
+            "kind",
+            FieldType::Text,
+            [Operator::Eq, Operator::Ne, Operator::Prefix],
+        )
+        .field(
+            "path",
+            FieldType::Text,
+            [Operator::Eq, Operator::Ne, Operator::Prefix],
+        )
+        .field(
+            "parent_id",
+            FieldType::Text,
+            [Operator::Eq, Operator::Ne, Operator::Prefix],
+        )
+        .field("lifecycle", FieldType::Text, [Operator::Eq, Operator::Ne])
+        .default_sort([SortField::asc("path")])
+}
+
+/// Core logic for `GET /api/v1/nodes`. Shared by the axum handler and
+/// the fleet `api.v1.nodes.list` handler — one function, two surfaces.
+pub(crate) fn list_nodes_core(
+    state: &AppState,
+    raw: ListNodesQuery,
+) -> Result<query::Page<NodeDto>, ApiError> {
+    let mut out: Vec<NodeDto> = state
+        .graph
+        .snapshots()
+        .into_iter()
+        .map(NodeDto::from)
+        .collect();
     out.sort_by(|a, b| a.path.cmp(&b.path));
-    Json(out)
+    let query = query::validate(
+        &node_query_schema(),
+        QueryRequest {
+            filter: raw.filter,
+            sort: raw.sort,
+            page: raw.page,
+            size: raw.size,
+        },
+    )
+    .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    query::execute(out, &query).map_err(|e| ApiError::bad_request(e.to_string()))
+}
+
+async fn list_nodes(
+    ctx: AuthContext,
+    State(s): State<AppState>,
+    Query(raw): Query<ListNodesQuery>,
+) -> Result<Json<query::Page<NodeDto>>, ApiError> {
+    ctx.require(Scope::ReadNodes).map_err(ApiError::from_auth)?;
+    list_nodes_core(&s, raw).map(Json)
 }
 
 #[derive(Deserialize)]
@@ -176,9 +241,12 @@ struct WriteSlotResp {
 }
 
 async fn write_slot(
+    ctx: AuthContext,
     State(s): State<AppState>,
     Json(req): Json<WriteSlotReq>,
 ) -> Result<Json<WriteSlotResp>, ApiError> {
+    ctx.require(Scope::WriteSlots)
+        .map_err(ApiError::from_auth)?;
     let path = parse_path(&req.path)?;
     let gen = s
         .graph
@@ -430,10 +498,97 @@ impl ApiError {
             error: err.to_string(),
         }
     }
+
+    /// Map an `AuthError` from a scope check. The extractor-level
+    /// failures (missing / invalid credentials) are surfaced by the
+    /// `AuthErrorResponse` wrapper before a handler runs; this helper
+    /// covers the `ctx.require(Scope::X)?` path inside a handler body.
+    pub(crate) fn from_auth(err: spi::AuthError) -> Self {
+        let status = match &err {
+            spi::AuthError::MissingCredentials | spi::AuthError::InvalidCredentials { .. } => {
+                StatusCode::UNAUTHORIZED
+            }
+            spi::AuthError::MissingScope { .. } | spi::AuthError::WrongTenant => {
+                StatusCode::FORBIDDEN
+            }
+            spi::AuthError::Provider(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Self {
+            status,
+            error: err.to_string(),
+        }
+    }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.status, Json(self)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use engine::BehaviorRegistry;
+    use extensions_host::PluginRegistry;
+    use graph::{seed, GraphStore, KindRegistry};
+    use tokio::sync::broadcast;
+
+    use super::*;
+
+    fn test_state() -> AppState {
+        let kinds = KindRegistry::new();
+        seed::register_builtins(&kinds);
+        let graph = Arc::new(GraphStore::new(kinds, Arc::new(graph::NullSink)));
+        graph.create_root(KindId::new("acme.core.station")).unwrap();
+        graph
+            .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "alpha")
+            .unwrap();
+        graph
+            .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "beta")
+            .unwrap();
+        let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
+        let (events, _) = broadcast::channel(16);
+        AppState::new(graph, behaviors, events, PluginRegistry::new())
+    }
+
+    #[tokio::test]
+    async fn list_nodes_applies_filter_sort_and_paging() {
+        let state = test_state();
+        let page = list_nodes_core(
+            &state,
+            ListNodesQuery {
+                filter: Some("kind==acme.core.folder".into()),
+                sort: Some("-path".into()),
+                page: Some(1),
+                size: Some(1),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(page.meta.total, 2);
+        assert_eq!(page.meta.page, 1);
+        assert_eq!(page.meta.size, 1);
+        assert_eq!(page.meta.pages, 2);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].path, "/beta");
+    }
+
+    #[tokio::test]
+    async fn list_nodes_rejects_unknown_query_fields() {
+        let err = list_nodes_core(
+            &test_state(),
+            ListNodesQuery {
+                filter: Some("nope==x".into()),
+                sort: None,
+                page: None,
+                size: None,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert!(err.error.contains("unknown field"));
     }
 }

@@ -1,0 +1,28 @@
+[package]
+name = "dashboard-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+spi = { workspace = true }
+graph = { workspace = true }
+dashboard-nodes = { workspace = true }
+dashboard-runtime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+axum = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+test-helpers = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+dashboard-transport = { path = ".", features = ["test-helpers"] }

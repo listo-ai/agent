@@ -1,0 +1,48 @@
+id: ui.nav
+display_name: Navigation entry
+facets: []
+containment:
+  must_live_under: []
+  may_contain:
+    - kind: ui.nav
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: title
+    role: config
+    value_schema:
+      type: string
+    writable: true
+  - name: path
+    role: config
+    value_schema:
+      type: string
+      description: URL path segment contributed by this nav entry.
+    writable: true
+  - name: icon
+    role: config
+    value_schema:
+      type: ["string", "null"]
+    writable: true
+  - name: order
+    role: config
+    value_schema:
+      type: integer
+      default: 0
+    writable: true
+  - name: frame_alias
+    role: config
+    value_schema:
+      type: ["string", "null"]
+      description: Alias this nav contributes to the context stack. Null = contributes no frame.
+    writable: true
+  - name: frame_ref
+    role: config
+    value_schema:
+      type: ["object", "null"]
+      description: NodeRef this nav contributes to the context stack.
+      properties:
+        id:
+          type: string
+      required: [id]
+    writable: true

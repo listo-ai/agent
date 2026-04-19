@@ -47,24 +47,19 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &LinksCmd) -> Res
     match cmd {
         LinksCmd::List => {
             let links = client.links().list().await?;
-            output::ok_table(
-                fmt,
-                &["ID", "SOURCE", "TARGET"],
-                &links,
-                |l| {
-                    let src = format!(
-                        "{}:{}",
-                        l.source.path.as_deref().unwrap_or(&l.source.node_id),
-                        l.source.slot,
-                    );
-                    let tgt = format!(
-                        "{}:{}",
-                        l.target.path.as_deref().unwrap_or(&l.target.node_id),
-                        l.target.slot,
-                    );
-                    vec![l.id.clone(), src, tgt]
-                },
-            )?;
+            output::ok_table(fmt, &["ID", "SOURCE", "TARGET"], &links, |l| {
+                let src = format!(
+                    "{}:{}",
+                    l.source.path.as_deref().unwrap_or(&l.source.node_id),
+                    l.source.slot,
+                );
+                let tgt = format!(
+                    "{}:{}",
+                    l.target.path.as_deref().unwrap_or(&l.target.node_id),
+                    l.target.slot,
+                );
+                vec![l.id.clone(), src, tgt]
+            })?;
         }
         LinksCmd::Create {
             source_path,
@@ -75,7 +70,11 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &LinksCmd) -> Res
             let source = LinkEndpointRef::by_path(source_path.clone(), source_slot.clone());
             let target = LinkEndpointRef::by_path(target_path.clone(), target_slot.clone());
             let id = client.links().create(&source, &target).await?;
-            output::ok_msg(fmt, &serde_json::json!({ "id": id }), &format!("created {id}"))?;
+            output::ok_msg(
+                fmt,
+                &serde_json::json!({ "id": id }),
+                &format!("created {id}"),
+            )?;
         }
         LinksCmd::Remove { id } => {
             client.links().remove(id).await?;

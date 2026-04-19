@@ -53,12 +53,7 @@ impl NodeBehavior for Heartbeat {
 
     // No input slots on this kind, so `on_message` is never called by
     // the dispatcher. Required by the trait; unreachable in practice.
-    fn on_message(
-        &self,
-        _ctx: &NodeCtx,
-        _port: InputPort,
-        _msg: Msg,
-    ) -> Result<(), NodeError> {
+    fn on_message(&self, _ctx: &NodeCtx, _port: InputPort, _msg: Msg) -> Result<(), NodeError> {
         Ok(())
     }
 
@@ -84,10 +79,7 @@ impl NodeBehavior for Heartbeat {
     }
 
     fn on_timer(&self, ctx: &NodeCtx, handle: TimerHandle) -> Result<(), NodeError> {
-        let pending = ctx
-            .read_status(PENDING_TIMER)
-            .ok()
-            .and_then(|v| v.as_u64());
+        let pending = ctx.read_status(PENDING_TIMER).ok().and_then(|v| v.as_u64());
         if pending != Some(handle.0) {
             return Ok(());
         }
@@ -148,8 +140,7 @@ mod tests {
 
     #[test]
     fn config_accepts_partial_override() {
-        let cfg: HeartbeatConfig =
-            serde_json::from_value(json!({"interval_ms": 500})).unwrap();
+        let cfg: HeartbeatConfig = serde_json::from_value(json!({"interval_ms": 500})).unwrap();
         assert_eq!(cfg.interval_ms, 500);
         assert!(cfg.enabled);
     }

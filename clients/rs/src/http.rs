@@ -45,6 +45,16 @@ impl HttpClient {
         handle_json(res).await
     }
 
+    pub async fn get_query<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+    ) -> Result<T, ClientError> {
+        let req = self.apply_auth(self.client.get(self.url(path)).query(query));
+        let res = req.send().await?;
+        handle_json(res).await
+    }
+
     pub async fn post<T: DeserializeOwned, B: Serialize>(
         &self,
         path: &str,

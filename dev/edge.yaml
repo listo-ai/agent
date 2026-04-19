@@ -1,0 +1,12 @@
+# Dev config — edge agent.
+#
+# Run with:   make run-edge
+# Or direct:  cargo run --bin agent -- run --config dev/edge.yaml --http 127.0.0.1:8082
+
+role: edge
+database:
+  path: dev/edge.db
+log:
+  filter: info,agent=debug,extensions_host=debug
+plugins:
+  dir: dev/edge-plugins
