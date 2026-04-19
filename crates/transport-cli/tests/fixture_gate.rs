@@ -434,6 +434,39 @@ async fn slots_write_ok() {
 }
 
 #[tokio::test]
+async fn slots_write_generation_mismatch() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+
+    c.nodes()
+        .create("/", "sys.compute.count", "occ_counter")
+        .await
+        .unwrap();
+    // Bump the slot once so `current_generation == 1`, then try with
+    // expected == 0 — must 409.
+    c.slots()
+        .write("/occ_counter", "in", &serde_json::json!(1))
+        .await
+        .unwrap();
+    let err = c
+        .slots()
+        .write_with_generation("/occ_counter", "in", &serde_json::json!(2), 0)
+        .await
+        .unwrap_err();
+    match &err {
+        agent_client::ClientError::GenerationMismatch { current } => {
+            assert!(*current >= 1);
+        }
+        other => panic!("expected GenerationMismatch, got {other:?}"),
+    }
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("slots-write/generation-mismatch.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "generation_mismatch");
+}
+
+#[tokio::test]
 async fn slots_write_node_not_found() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);

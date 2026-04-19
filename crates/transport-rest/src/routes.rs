@@ -250,6 +250,8 @@ struct WriteSlotReq {
     path: String,
     slot: String,
     value: JsonValue,
+    #[serde(default)]
+    expected_generation: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -261,15 +263,28 @@ async fn write_slot(
     ctx: AuthContext,
     State(s): State<AppState>,
     Json(req): Json<WriteSlotReq>,
-) -> Result<Json<WriteSlotResp>, ApiError> {
+) -> Result<Response, ApiError> {
     ctx.require(Scope::WriteSlots)
         .map_err(ApiError::from_auth)?;
     let path = parse_path(&req.path)?;
-    let gen = s
-        .graph
-        .write_slot(&path, &req.slot, req.value)
-        .map_err(ApiError::from_graph)?;
-    Ok(Json(WriteSlotResp { generation: gen }))
+    let result = match req.expected_generation {
+        Some(expected) => s
+            .graph
+            .write_slot_expected(&path, &req.slot, req.value, expected),
+        None => s.graph.write_slot(&path, &req.slot, req.value),
+    };
+    match result {
+        Ok(gen) => Ok(Json(WriteSlotResp { generation: gen }).into_response()),
+        Err(graph::GraphError::GenerationMismatch { current, .. }) => Ok((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "code": "generation_mismatch",
+                "current_generation": current,
+            })),
+        )
+            .into_response()),
+        Err(e) => Err(ApiError::from_graph(e)),
+    }
 }
 
 #[derive(Deserialize)]

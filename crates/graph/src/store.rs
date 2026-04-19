@@ -396,6 +396,19 @@ impl GraphStore {
         Ok(())
     }
 
+    /// Write a value to a slot, requiring the slot's current
+    /// generation to match `expected`. Returns `GenerationMismatch` on
+    /// conflict. Used by the builder's OCC invariant.
+    pub fn write_slot_expected(
+        &self,
+        path: &NodePath,
+        slot: &str,
+        value: JsonValue,
+        expected: u64,
+    ) -> Result<u64, GraphError> {
+        self.write_slot_inner(path, slot, value, Some(expected))
+    }
+
     /// Write a value to a slot. The slot must exist on the node and be
     /// declared `writable` by the kind manifest.
     pub fn write_slot(
@@ -403,6 +416,16 @@ impl GraphStore {
         path: &NodePath,
         slot: &str,
         value: JsonValue,
+    ) -> Result<u64, GraphError> {
+        self.write_slot_inner(path, slot, value, None)
+    }
+
+    fn write_slot_inner(
+        &self,
+        path: &NodePath,
+        slot: &str,
+        value: JsonValue,
+        expected: Option<u64>,
     ) -> Result<u64, GraphError> {
         let mut g = self.write_inner();
         let id = *g
@@ -430,6 +453,11 @@ impl GraphStore {
         let current = rec.slots.current_generation(slot).ok_or_else(|| {
             GraphError::BadLink(format!("slot `{slot}` not declared on `{path}`"))
         })?;
+        if let Some(expected) = expected {
+            if expected != current {
+                return Err(GraphError::GenerationMismatch { expected, current });
+            }
+        }
         let new_gen = current + 1;
         // Repo first — commit to memory only if the DB accepts.
         self.repo_save_slot(id, &schema, &value, new_gen)?;

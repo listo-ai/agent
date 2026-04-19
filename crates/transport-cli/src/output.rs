@@ -95,6 +95,12 @@ impl CliError {
                 details: Value::Object(Default::default()),
                 exit_code: EXIT_USER_ERROR,
             },
+            ClientError::GenerationMismatch { current } => Self {
+                code: "generation_mismatch".into(),
+                message: format!("generation mismatch: current {current}"),
+                details: serde_json::json!({ "current_generation": current }),
+                exit_code: EXIT_USER_ERROR,
+            },
         }
     }
 

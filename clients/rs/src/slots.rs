@@ -12,12 +12,22 @@ struct WriteSlotReq<'a> {
     path: &'a str,
     slot: &'a str,
     value: &'a JsonValue,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_generation: Option<u64>,
 }
 
 #[derive(Serialize)]
 struct RecordReq<'a> {
     path: &'a str,
     slot: &'a str,
+}
+
+fn parse_generation_mismatch(raw: &str) -> Option<u64> {
+    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+    if v.get("code").and_then(|c| c.as_str()) != Some("generation_mismatch") {
+        return None;
+    }
+    v.get("current_generation").and_then(|n| n.as_u64())
 }
 
 pub struct Slots<'c> {
@@ -44,10 +54,54 @@ impl<'c> Slots<'c> {
             .http
             .post(
                 &format!("{}/slots", self.base),
-                &WriteSlotReq { path, slot, value },
+                &WriteSlotReq {
+                    path,
+                    slot,
+                    value,
+                    expected_generation: None,
+                },
             )
             .await?;
         Ok(resp.generation)
+    }
+
+    /// Write a slot value with an OCC guard. The server compares
+    /// `expected` against the slot's current generation and returns
+    /// [`ClientError::GenerationMismatch`] on conflict.
+    pub async fn write_with_generation(
+        &self,
+        path: &str,
+        slot: &str,
+        value: &JsonValue,
+        expected: u64,
+    ) -> Result<u64, ClientError> {
+        let req = WriteSlotReq {
+            path,
+            slot,
+            value,
+            expected_generation: Some(expected),
+        };
+        match self
+            .http
+            .post::<WriteSlotResponse, _>(&format!("{}/slots", self.base), &req)
+            .await
+        {
+            Ok(resp) => Ok(resp.generation),
+            Err(ClientError::Http { status: 409, message }) => {
+                // Server sent `{"code":"generation_mismatch","current_generation":N}`;
+                // the HTTP layer stringifies anything without an `error` key into
+                // `message`. Parse it back to the typed error.
+                if let Some(current) = parse_generation_mismatch(&message) {
+                    Err(ClientError::GenerationMismatch { current })
+                } else {
+                    Err(ClientError::Http {
+                        status: 409,
+                        message,
+                    })
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Query structured history (String / Json / Binary slots).

@@ -449,10 +449,17 @@ static SLOTS_WRITE: CommandMeta = CommandMeta {
             type_name: "json",
             description: "Value as JSON (e.g. 42, \"hello\", {\"x\":1})",
         },
+        ArgInfo {
+            name: "--expected-generation",
+            required: false,
+            type_name: "u64",
+            description: "OCC guard: require the slot's current generation to match",
+        },
     ],
     examples: &[
         "agent slots write /station/counter in 42",
         "agent slots write /station/counter in '\"hello\"'",
+        "agent slots write /station/counter in 42 --expected-generation 7",
     ],
     related: &["nodes get"],
     input_schema: || {
@@ -463,7 +470,8 @@ static SLOTS_WRITE: CommandMeta = CommandMeta {
             "properties": {
                 "path":  { "type": "string", "format": "node-path" },
                 "slot":  { "type": "string" },
-                "value": {}
+                "value": {},
+                "expected_generation": { "type": "integer", "minimum": 0 }
             }
         })
     },
@@ -475,6 +483,10 @@ static SLOTS_WRITE: CommandMeta = CommandMeta {
         },
         ErrorInfo {
             code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "generation_mismatch",
             exit_code: 1,
         },
         ErrorInfo {

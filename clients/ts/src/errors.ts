@@ -26,6 +26,19 @@ export interface TimeoutError {
   message: string;
 }
 
+/**
+ * Thrown by `slots.writeSlot` when the server 409s an OCC-guarded
+ * write. Builder UI converts this to the conflict banner.
+ */
+export class GenerationMismatchError extends Error {
+  readonly kind = "GenerationMismatch" as const;
+  readonly status = 409 as const;
+  constructor(public readonly currentGeneration: number) {
+    super(`generation mismatch: current ${currentGeneration}`);
+    this.name = "GenerationMismatchError";
+  }
+}
+
 export type ClientError =
   | HttpError
   | CapabilityMismatchError

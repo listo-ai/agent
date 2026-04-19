@@ -20,6 +20,12 @@ pub enum ClientError {
     /// Failed to parse the response body.
     #[error("parse: {0}")]
     Parse(String),
+
+    /// 409 from a slot write with `expected_generation` — the server's
+    /// current generation is different. Lets the builder render a
+    /// conflict banner without parsing the HTTP error body.
+    #[error("generation mismatch: current {current}")]
+    GenerationMismatch { current: u64 },
 }
 
 impl ClientError {

@@ -47,4 +47,7 @@ pub enum GraphError {
 
     #[error("restore failed: {0}")]
     Restore(String),
+
+    #[error("generation mismatch: expected {expected}, current {current}")]
+    GenerationMismatch { expected: u64, current: u64 },
 }

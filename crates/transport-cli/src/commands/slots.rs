@@ -16,6 +16,9 @@ pub enum SlotsCmd {
         slot: String,
         /// Value as JSON (e.g. `42`, `"hello"`, `{"x":1}`).
         value: String,
+        /// OCC guard: require the slot's current generation to match.
+        #[arg(long)]
+        expected_generation: Option<u64>,
     },
 
     /// Structured history operations (String / Json / Binary slots).
@@ -111,10 +114,23 @@ impl TelemetryCmd {
 
 pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &SlotsCmd) -> Result<()> {
     match cmd {
-        SlotsCmd::Write { path, slot, value } => {
+        SlotsCmd::Write {
+            path,
+            slot,
+            value,
+            expected_generation,
+        } => {
             let parsed: serde_json::Value = serde_json::from_str(value)
                 .unwrap_or_else(|_| serde_json::Value::String(value.clone()));
-            let gen = client.slots().write(path, slot, &parsed).await?;
+            let gen = match expected_generation {
+                Some(expected) => {
+                    client
+                        .slots()
+                        .write_with_generation(path, slot, &parsed, *expected)
+                        .await?
+                }
+                None => client.slots().write(path, slot, &parsed).await?,
+            };
             output::ok_msg(
                 fmt,
                 &serde_json::json!({ "generation": gen }),
