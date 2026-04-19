@@ -66,7 +66,7 @@ struct NodeDto {
     kind: String,
     path: String,
     parent_id: Option<String>,
-    lifecycle: String,
+    lifecycle: Lifecycle,
     slots: Vec<SlotDto>,
 }
 
@@ -84,7 +84,7 @@ impl From<NodeSnapshot> for NodeDto {
             kind: s.kind.as_str().to_string(),
             path: s.path.to_string(),
             parent_id: s.parent.map(|p| p.to_string()),
-            lifecycle: format!("{:?}", s.lifecycle),
+            lifecycle: s.lifecycle,
             slots: s
                 .slot_values
                 .into_iter()

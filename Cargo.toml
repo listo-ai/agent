@@ -30,6 +30,7 @@ members = [
     "crates/extensions-sdk-macros",
     "crates/extensions-host",
     "crates/apps/agent",
+    "clients/rs",
 ]
 
 [workspace.package]
@@ -70,6 +71,7 @@ engine = { path = "crates/engine" }
 extensions-sdk = { path = "crates/extensions-sdk" }
 extensions-sdk-macros = { path = "crates/extensions-sdk-macros" }
 extensions-host = { path = "crates/extensions-host" }
+agent-client = { path = "clients/rs" }
 
 # Third-party.
 async-trait = "0.1"
@@ -88,6 +90,7 @@ futures-util = "0.3"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 semver = { version = "1", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
