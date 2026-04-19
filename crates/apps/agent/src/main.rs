@@ -29,6 +29,7 @@ use data_sqlite::SqliteGraphRepo;
 use data_sqlite::SqliteHistoryRepo;
 use data_sqlite::SqlitePreferencesRepo;
 use data_tsdb::sqlite::SqliteTelemetryRepo;
+use domain_history::{HistoryConfig, HistoryConfigSettings, Historizer};
 use domain_flows::FlowService;
 use engine::{kinds as engine_kinds, Engine};
 use extensions_host::{HostPolicy, PluginHost, PluginRegistry};
@@ -327,7 +328,134 @@ async fn run_daemon(
                 tracing::warn!(error = %e, "failed to open telemetry repo — scalar history endpoints unavailable");
             }
         }
-    }
+
+        // Wire Historizer — drives automatic COV / interval recording.
+        if let (Some(hist_repo), Some(tel_repo)) =
+            (app_state.history_repo.clone(), app_state.telemetry_repo.clone())
+        {
+            let historizer = Arc::new(Historizer::new(
+                domain_history::historizer::HistorizerConfig::default(),
+                tel_repo,
+                hist_repo,
+            ));
+            app_state = app_state.with_historizer(historizer.clone());
+
+            // Restore any existing sys.core.history.config nodes from the graph.
+            for node in graph.snapshots() {
+                if node.kind.as_str() == domain_history::config::KIND_ID {
+                    if let Some(parent_id) = node.parent {
+                        let settings_json = node
+                            .slot_values
+                            .iter()
+                            .find(|(n, _)| n == "settings")
+                            .and_then(|(_, sv)| serde_json::from_value::<HistoryConfigSettings>(sv.value.clone()).ok())
+                            .unwrap_or_default();
+                        let cfg = HistoryConfig {
+                            config_node_id: node.id.0,
+                            parent_node_id: parent_id.0,
+                            settings: settings_json,
+                        };
+                        historizer.register_config(parent_id.0, cfg);
+                    }
+                }
+            }
+
+            // Subscribe to graph events: wire slot changes + config node lifecycle.
+            let hist_task = historizer.clone();
+            let graph_task = graph.clone();
+            let mut event_rx = app_state.events.subscribe();
+            tokio::spawn(async move {
+                use graph::GraphEvent;
+                use spi::SlotValueKind;
+                use std::time::{SystemTime, UNIX_EPOCH};
+
+                fn now_ms() -> i64 {
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_millis() as i64)
+                        .unwrap_or(0)
+                }
+
+                fn kind_from_value(v: &serde_json::Value) -> SlotValueKind {
+                    match v {
+                        serde_json::Value::Bool(_) => SlotValueKind::Bool,
+                        serde_json::Value::Number(_) => SlotValueKind::Number,
+                        serde_json::Value::String(_) => SlotValueKind::String,
+                        serde_json::Value::Null => SlotValueKind::Null,
+                        _ => SlotValueKind::Json,
+                    }
+                }
+
+                loop {
+                    match event_rx.recv().await {
+                        Ok(seq) => match seq.event {
+                            GraphEvent::SlotChanged { id, slot, value, .. } => {
+                                // If this is a settings update on a history config node, re-register.
+                                if slot == "settings" {
+                                if let Some(node) = graph_task.get_by_id(id) {
+                                    if node.kind.as_str() == domain_history::config::KIND_ID {
+                                        if let Some(parent_id) = node.parent {
+                                                if let Ok(settings) = serde_json::from_value::<HistoryConfigSettings>(value.clone()) {
+                                                    let cfg = HistoryConfig {
+                                                        config_node_id: id.0,
+                                                        parent_node_id: parent_id.0,
+                                                        settings,
+                                                    };
+                                                    hist_task.register_config(parent_id.0, cfg);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                let vk = kind_from_value(&value);
+                                let _ = hist_task.on_slot_changed(id.0, &slot, value, vk, now_ms());
+                            }
+                            GraphEvent::NodeCreated { id, kind, .. }
+                                if kind.as_str() == domain_history::config::KIND_ID =>
+                            {
+                                // Register empty config — settings write will update it.
+                                if let Some(node) = graph_task.get_by_id(id) {
+                                    if let Some(parent_id) = node.parent {
+                                        let cfg = HistoryConfig {
+                                            config_node_id: id.0,
+                                            parent_node_id: parent_id.0,
+                                            settings: HistoryConfigSettings::default(),
+                                        };
+                                        hist_task.register_config(parent_id.0, cfg);
+                                    }
+                                }
+                            }
+                            GraphEvent::NodeRemoved { id, kind, .. }
+                                if kind.as_str() == domain_history::config::KIND_ID =>
+                            {
+                                hist_task.unregister_config(&id.0);
+                            }
+                            _ => {}
+                        },
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!(dropped = n, "historizer event lag — some slot changes may not be recorded");
+                        }
+                    }
+                }
+            });
+
+            // Flush timer — drain the ring buffer every 5 s.
+            let hist_flush = historizer.clone();
+            tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5));
+                ticker.tick().await; // skip first immediate tick
+                loop {
+                    ticker.tick().await;
+                    if let Err(e) = hist_flush.flush() {
+                        tracing::warn!(error = %e, "historizer flush error");
+                    }
+                }
+            });
+
+            info!("historizer attached");
+        }
+    } // end if let Some(path) = db_path
 
     // Optional embedded fleet transport. `NullTransport` stays in place
     // when `fleet: null` (the default) is resolved.
@@ -446,6 +574,7 @@ async fn bootstrap(
     engine_kinds::register(&kinds);
     domain_compute::register_kinds(&kinds);
     domain_logic::register_kinds(&kinds);
+    domain_history::register_kinds(&kinds);
     domain_extensions::register_kinds(&kinds);
     domain_fleet::register_kinds(&kinds);
     dashboard_nodes::register_kinds(&kinds);

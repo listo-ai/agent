@@ -1,10 +1,14 @@
 /**
- * Dashboard page — lists all `ui.page` nodes in the graph, each linking
- * to `/ui/:nodeId` which renders them through the SDUI renderer.
+ * Lists every `ui.page` node in the graph. Pages are nodes — this is a
+ * filtered view over `/api/v1/nodes`, not a dedicated endpoint.
+ *
+ * Each card links to `/ui/:nodeId` (read-only SDUI render). The builder
+ * edit link at `/pages/:nodeId/edit` lands with Stage 1 of
+ * DASHBOARD-BUILDER.md.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, FileText, ArrowRight } from "lucide-react";
+import { FileText, ArrowRight } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -35,14 +39,14 @@ function useUiPages() {
   });
 }
 
-export function DashboardPage() {
+export function PagesListPage() {
   const { data: pages, isLoading, isError } = useUiPages();
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center gap-3">
-        <LayoutDashboard size={18} className="text-primary" />
-        <h1 className="text-base font-semibold">Dashboard</h1>
+        <FileText size={18} className="text-primary" />
+        <h1 className="text-base font-semibold">Pages</h1>
       </header>
 
       {isLoading && (
@@ -57,11 +61,11 @@ export function DashboardPage() {
         <Card className="max-w-md">
           <CardHeader>
             <CardTitle>No pages yet</CardTitle>
-            <CardDescription>Create your first SDUI page via the CLI</CardDescription>
+            <CardDescription>Create your first ui.page via the CLI</CardDescription>
           </CardHeader>
           <CardContent>
             <pre className="rounded bg-muted p-2 text-xs leading-relaxed">
-              {`agent nodes create /dashboards ui.page my-page\nagent slots write /dashboards/my-page layout \\\n  '{"type":"page","ir_version":1,"title":"Hello","children":[{"type":"text","content":"Hello from SDUI!"}]}'`}
+              {`agent nodes create / ui.page my-page\nagent slots write /my-page layout \\\n  '{"ir_version":1,"root":{"type":"page","id":"root","title":"Hello","children":[{"type":"text","content":"Hello from SDUI!"}]}}'`}
             </pre>
           </CardContent>
         </Card>

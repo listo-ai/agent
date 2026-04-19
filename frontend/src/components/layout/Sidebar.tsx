@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useMatch } from "react-router-dom";
 import { useStore, create } from "zustand";
 import {
   GitBranch,
-  LayoutDashboard,
+  FileText,
   Package,
   Puzzle,
   Settings,
@@ -38,7 +38,7 @@ import {
 interface NavItem { label: string; to: string; icon: React.ElementType; }
 
 const BOTTOM_NAV: NavItem[] = [
-  { label: "Dashboard",  to: "/dashboard",  icon: LayoutDashboard },
+  { label: "Pages",      to: "/pages",      icon: FileText },
   { label: "Extensions", to: "/extensions", icon: Puzzle },
   { label: "Plugins",    to: "/plugins",    icon: Package },
   { label: "Settings",   to: "/settings",   icon: Settings },

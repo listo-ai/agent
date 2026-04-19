@@ -4,3 +4,4 @@ export { SlotHistoryPanel } from "./SlotHistoryPanel";
 export { SmartSlotHistoryPanel } from "./SmartSlotHistoryPanel";
 export { SlotHistoryDialog } from "./SlotHistoryDialog";
 export { RecordHistoryButton } from "./RecordHistoryButton";
+export { SlotHistoryConfigPanel } from "./SlotHistoryConfigPanel";

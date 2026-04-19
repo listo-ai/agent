@@ -38,6 +38,7 @@ dependencies = [
  "domain-extensions",
  "domain-fleet",
  "domain-flows",
+ "domain-history",
  "domain-logic",
  "engine",
  "extensions-host",

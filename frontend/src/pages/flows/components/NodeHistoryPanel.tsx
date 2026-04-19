@@ -4,6 +4,7 @@ import type { NodeSnapshot } from "@sys/agent-client";
 
 import { SmartSlotHistoryPanel } from "@/components/slot-history/SmartSlotHistoryPanel";
 import { RecordHistoryButton } from "@/components/slot-history/RecordHistoryButton";
+import { SlotHistoryConfigPanel } from "@/components/slot-history/SlotHistoryConfigPanel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { mergedSlots } from "../flow-model";
 
 /** Slots managed by the canvas that aren't useful to track history for. */
@@ -102,31 +104,65 @@ export function NodeHistoryPanel({ node, onClose }: NodeHistoryPanelProps) {
         )}
       </div>
 
-      {/* History data */}
-      <ScrollArea className="min-h-0 flex-1 px-5 py-4">
-        {validSlot ? (
-          <SmartSlotHistoryPanel
-            nodePath={node.path}
-            slot={validSlot}
-            currentValue={currentSlotDef?.value}
-          />
-        ) : (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Select a slot above to view its history.
-          </p>
-        )}
-      </ScrollArea>
-
-      {/* Footer: record button */}
-      {validSlot && (
-        <div className="border-t border-border px-5 py-3">
-          <RecordHistoryButton
-            nodePath={node.path}
-            slot={validSlot}
-            className="w-full"
-          />
+      {/* Tabs: View / Configure */}
+      <Tabs defaultValue="view" className="flex min-h-0 flex-1 flex-col">
+        <div className="border-b border-border px-5">
+          <TabsList className="h-8 rounded-none bg-transparent p-0">
+            <TabsTrigger
+              value="view"
+              className="rounded-none border-b-2 border-transparent px-3 py-1.5 text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent"
+            >
+              View
+            </TabsTrigger>
+            <TabsTrigger
+              value="configure"
+              className="rounded-none border-b-2 border-transparent px-3 py-1.5 text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent"
+            >
+              Configure
+            </TabsTrigger>
+          </TabsList>
         </div>
-      )}
+
+        {/* View tab */}
+        <TabsContent value="view" className="flex min-h-0 flex-1 flex-col mt-0">
+          <ScrollArea className="min-h-0 flex-1 px-5 py-4">
+            {validSlot ? (
+              <SmartSlotHistoryPanel
+                nodePath={node.path}
+                slot={validSlot}
+                currentValue={currentSlotDef?.value}
+              />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Select a slot above to view its history.
+              </p>
+            )}
+          </ScrollArea>
+          {validSlot && (
+            <div className="border-t border-border px-5 py-3">
+              <RecordHistoryButton
+                nodePath={node.path}
+                slot={validSlot}
+                className="w-full"
+              />
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Configure tab */}
+        <TabsContent value="configure" className="mt-0 flex-1 overflow-auto px-5 py-4">
+          {validSlot ? (
+            <SlotHistoryConfigPanel
+              nodePath={node.path}
+              slot={validSlot}
+            />
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Select a slot above to configure auto-recording.
+            </p>
+          )}
+        </TabsContent>
+      </Tabs>
     </aside>
   );
 }
