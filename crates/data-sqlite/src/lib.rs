@@ -7,9 +7,13 @@
 
 mod connection;
 mod error;
+mod flow_revision_repo;
 mod graph_repo;
+mod history_repo;
 mod migrations;
 
 pub use connection::Location;
 pub use error::SqliteError;
+pub use flow_revision_repo::SqliteFlowRevisionRepo;
 pub use graph_repo::SqliteGraphRepo;
+pub use history_repo::SqliteHistoryRepo;

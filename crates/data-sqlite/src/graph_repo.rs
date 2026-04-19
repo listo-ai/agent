@@ -104,7 +104,7 @@ fn load_all(conn: &mut Connection) -> Result<GraphSnapshot, SqliteError> {
         .collect::<Result<_, rusqlite::Error>>()?;
 
     let mut slots_stmt = conn.prepare(
-        "SELECT node_id, name, role, value, generation FROM slots ORDER BY node_id, name",
+        "SELECT node_id, name, role, value, generation, kind FROM slots ORDER BY node_id, name",
     )?;
     let slots: Vec<PersistedSlot> = slots_stmt
         .query_map([], |row| {
@@ -122,6 +122,7 @@ fn load_all(conn: &mut Connection) -> Result<GraphSnapshot, SqliteError> {
                 role: row.get(2)?,
                 value,
                 generation: row.get(4)?,
+                kind: row.get(5)?,
             })
         })?
         .collect::<Result<_, rusqlite::Error>>()?;
@@ -184,13 +185,14 @@ fn delete_node_rows(conn: &mut Connection, ids: &[Uuid]) -> Result<(), SqliteErr
 fn upsert_slot_row(conn: &mut Connection, s: &PersistedSlot) -> Result<(), SqliteError> {
     let value = serde_json::to_string(&s.value)?;
     conn.execute(
-        "INSERT INTO slots (node_id, name, role, value, generation)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO slots (node_id, name, role, value, generation, kind)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(node_id, name) DO UPDATE SET
             role=excluded.role,
             value=excluded.value,
-            generation=excluded.generation",
-        params![s.node_id.to_string(), s.name, s.role, value, s.generation],
+            generation=excluded.generation,
+            kind=excluded.kind",
+        params![s.node_id.to_string(), s.name, s.role, value, s.generation, s.kind],
     )?;
     Ok(())
 }

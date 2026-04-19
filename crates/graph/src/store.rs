@@ -150,6 +150,7 @@ impl GraphStore {
                 node_id,
                 &schema.name,
                 schema.role,
+                schema.value_kind,
                 value,
                 generation,
             )))?;

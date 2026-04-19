@@ -1,5 +1,5 @@
 [package]
-name = "data-tsdb"
+name = "domain-history"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,10 +11,18 @@ workspace = true
 
 [dependencies]
 spi = { workspace = true }
+graph = { workspace = true }
 data-repos = { workspace = true }
-rusqlite = { version = "0.32", features = ["bundled"] }
+data-tsdb = { workspace = true }
+extensions-sdk = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+data-sqlite = { workspace = true }
+engine = { workspace = true }
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "test-util", "sync"] }

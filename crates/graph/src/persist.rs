@@ -6,7 +6,7 @@
 
 use data_repos::{GraphRepo, GraphSnapshot, PersistedLink, PersistedNode, PersistedSlot};
 use serde_json::Value as JsonValue;
-use spi::{NodeId, NodePath, SlotRole};
+use spi::{NodeId, NodePath, SlotRole, SlotValueKind};
 
 use crate::error::GraphError;
 use crate::lifecycle::Lifecycle;
@@ -38,6 +38,7 @@ pub(crate) fn slot_to_persisted(
     node_id: NodeId,
     name: &str,
     role: SlotRole,
+    value_kind: SlotValueKind,
     value: &JsonValue,
     generation: u64,
 ) -> PersistedSlot {
@@ -47,6 +48,7 @@ pub(crate) fn slot_to_persisted(
         role: slot_role_to_str(role).to_string(),
         value: value.clone(),
         generation: generation as i64,
+        kind: Some(value_kind.as_str().to_string()),
     }
 }
 

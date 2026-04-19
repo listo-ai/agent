@@ -41,6 +41,7 @@ pub mod auth;
 pub mod auth_routes;
 pub mod capabilities;
 pub mod fleet;
+pub mod flows;
 pub mod kinds;
 pub mod plugins;
 pub mod routes;

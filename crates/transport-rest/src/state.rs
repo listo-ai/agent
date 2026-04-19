@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use auth::DevNullProvider;
+use domain_flows::FlowService;
 use engine::BehaviorRegistry;
 use extensions_host::PluginRegistry;
 use graph::{GraphEvent, GraphStore};
@@ -25,6 +26,9 @@ pub struct AppState {
     /// which the agent refuses to launch with in `role=cloud` +
     /// `--release` (see `docs/sessions/AUTH-SEAM.md`).
     pub auth_provider: Arc<dyn AuthProvider>,
+    /// Flow document + revision service.  `None` when the agent runs
+    /// without a database path (in-memory, no persistence).
+    pub flows: Option<FlowService>,
 }
 
 impl AppState {
@@ -41,6 +45,7 @@ impl AppState {
             plugins,
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),
+            flows: None,
         }
     }
 
@@ -54,6 +59,12 @@ impl AppState {
     /// future `ZitadelProvider`).
     pub fn with_auth_provider(mut self, provider: Arc<dyn AuthProvider>) -> Self {
         self.auth_provider = provider;
+        self
+    }
+
+    /// Provide the flow document + revision service.
+    pub fn with_flow_service(mut self, svc: FlowService) -> Self {
+        self.flows = Some(svc);
         self
     }
 }

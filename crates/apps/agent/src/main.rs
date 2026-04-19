@@ -23,6 +23,8 @@ use config::{
     ZenohFleetOverlay,
 };
 use data_sqlite::SqliteGraphRepo;
+use data_sqlite::SqliteFlowRevisionRepo;
+use domain_flows::FlowService;
 use engine::{kinds as engine_kinds, Engine};
 use extensions_host::PluginRegistry;
 use graph::{seed, GraphStore, KindRegistry};
@@ -230,6 +232,20 @@ async fn run_daemon(
     info!(state = ?engine.state(), "engine running");
 
     let mut app_state = AppState::new(graph.clone(), engine.behaviors().clone(), events, plugins);
+
+    // Wire flow service when a DB path is configured.
+    if let Some(ref path) = cfg.database.path {
+        match SqliteFlowRevisionRepo::open_file(path) {
+            Ok(repo) => {
+                let svc = FlowService::new(std::sync::Arc::new(repo));
+                app_state = app_state.with_flow_service(svc);
+                info!("flow revision service attached");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to open flow revision repo — undo/redo unavailable");
+            }
+        }
+    }
 
     // Optional embedded fleet transport. `NullTransport` stays in place
     // when `fleet: null` (the default) is resolved.

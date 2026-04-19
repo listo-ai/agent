@@ -19,6 +19,7 @@ members = [
     "crates/domain-devices",
     "crates/domain-extensions",
     "crates/domain-fleet",
+    "crates/domain-history",
     "crates/dashboard-nodes",
     "crates/dashboard-runtime",
     "crates/dashboard-transport",
@@ -65,6 +66,7 @@ domain-flows = { path = "crates/domain-flows" }
 domain-devices = { path = "crates/domain-devices" }
 domain-extensions = { path = "crates/domain-extensions" }
 domain-fleet = { path = "crates/domain-fleet" }
+domain-history = { path = "crates/domain-history" }
 dashboard-nodes = { path = "crates/dashboard-nodes" }
 dashboard-runtime = { path = "crates/dashboard-runtime" }
 dashboard-transport = { path = "crates/dashboard-transport" }

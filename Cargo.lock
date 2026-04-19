@@ -34,6 +34,7 @@ dependencies = [
  "data-sqlite",
  "domain-compute",
  "domain-extensions",
+ "domain-flows",
  "domain-logic",
  "engine",
  "extensions-host",
@@ -709,6 +710,7 @@ name = "data-entities"
 version = "0.0.1"
 dependencies = [
  "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -749,6 +751,16 @@ dependencies = [
 [[package]]
 name = "data-tsdb"
 version = "0.0.1"
+dependencies = [
+ "data-repos",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "spi",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "der"
@@ -870,6 +882,31 @@ version = "0.0.1"
 dependencies = [
  "data-entities",
  "data-repos",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "domain-history"
+version = "0.0.1"
+dependencies = [
+ "data-repos",
+ "data-sqlite",
+ "data-tsdb",
+ "engine",
+ "extensions-sdk",
+ "graph",
+ "serde",
+ "serde_json",
+ "spi",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -3787,6 +3824,8 @@ dependencies = [
  "async-trait",
  "auth",
  "axum",
+ "data-entities",
+ "domain-flows",
  "engine",
  "extensions-host",
  "extensions-sdk",

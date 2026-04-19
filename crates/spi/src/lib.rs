@@ -40,7 +40,7 @@ pub use fleet::{
 pub use ids::{KindId, NodeId, NodePath};
 pub use manifest::{KindManifest, TriggerPolicy};
 pub use msg::{MessageId, Msg};
-pub use slot_schema::{SlotRole, SlotSchema};
+pub use slot_schema::{SlotRole, SlotSchema, SlotValueKind};
 pub use subject::{Subject, SubjectBuilder, SubjectToken};
 
 /// Schema version for flow documents. Breaking changes bump this.

@@ -59,6 +59,7 @@ fn save_then_load_roundtrip<R: GraphRepo>(r: &R) {
         role: "output".into(),
         value: json!(42),
         generation: 1,
+        kind: None,
     })
     .unwrap();
     let link_id = Uuid::new_v4();
@@ -138,6 +139,7 @@ fn slot_upsert_bumps_generation<R: GraphRepo>(r: &R) {
             role: "output".into(),
             value: json!(gen),
             generation: gen,
+            kind: None,
         })
         .unwrap();
     }

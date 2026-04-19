@@ -8,7 +8,9 @@
 mod device_repo;
 mod error;
 mod flow_repo;
+mod flow_revision_repo;
 mod graph_repo;
+mod history_repo;
 
 #[cfg(feature = "testing")]
 pub mod testing;
@@ -16,4 +18,6 @@ pub mod testing;
 pub use device_repo::{Device, DeviceQuery, DeviceRepo};
 pub use error::RepoError;
 pub use flow_repo::{Flow, FlowQuery, FlowRepo};
+pub use flow_revision_repo::FlowRevisionRepo;
 pub use graph_repo::{GraphRepo, GraphSnapshot, PersistedLink, PersistedNode, PersistedSlot};
+pub use history_repo::{HistoryQuery, HistoryRecord, HistoryRepo, HistorySlotKind};

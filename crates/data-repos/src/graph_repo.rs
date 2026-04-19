@@ -37,6 +37,10 @@ pub struct PersistedSlot {
     pub role: String,
     pub value: JsonValue,
     pub generation: i64,
+    /// `SlotValueKind` encoded as lower-snake. `None` for slots persisted
+    /// before the kind column was added (schema v2); treated as `json`
+    /// by the historizer.
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

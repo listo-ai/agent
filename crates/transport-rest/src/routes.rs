@@ -54,6 +54,7 @@ pub fn mount(state: AppState) -> Router {
         .merge(crate::plugins::routes())
         .merge(crate::kinds::routes())
         .merge(crate::auth_routes::routes())
+        .merge(crate::flows::routes())
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

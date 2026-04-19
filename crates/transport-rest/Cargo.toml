@@ -18,6 +18,8 @@ graph = { workspace = true }
 engine = { workspace = true }
 extensions-sdk = { workspace = true }
 extensions-host = { workspace = true }
+domain-flows = { workspace = true }
+data-entities = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
