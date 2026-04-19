@@ -1,10 +1,12 @@
-# Reactive UI — Scope
+# Reactive UI — Implementation
 
 Wire every Studio surface that reads the graph — the **flows sidebar**, the **flow canvas**, the **property panel** — to the same live cache so they stay 100% in sync across clients. Lazy-load on demand, CRUD from any surface (CLI, another Studio tab, a plugin, a fleet command, the engine itself) appears everywhere within one round-trip, and the local cache reconciles deterministically after network interruptions.
 
+> **Status: complete.** All six stages (1a–1f) are shipped. This doc reflects the as-built design.
+
 This covers two rendering surfaces, one mechanism:
 
-- **Sidebar tree** ([`frontend/src/pages/flows/FlowSidebar.tsx`](../../frontend/src/pages/flows/FlowSidebar.tsx)) — hierarchical: `flows → flow → node → …`, lazy-expand per branch.
+- **Sidebar tree** ([`frontend/src/components/layout/Sidebar.tsx`](../../frontend/src/components/layout/Sidebar.tsx)) — hierarchical: `flows → flow → node → …`, lazily expanded to any depth.
 - **Flow canvas** ([`frontend/src/pages/flows/FlowCanvas.tsx`](../../frontend/src/pages/flows/FlowCanvas.tsx)) — one flow's subtree rendered as the node/link graph; property panel edits round-trip back through the same events.
 
 Both read from the same path-keyed client store and subscribe to the same SSE stream. Same subscribe-before-fetch contract, same event handlers, same reconnect semantics. A slot edit in the property panel, a fleet-command-driven node creation, and a CLI `nodes create` all surface identically in every open client.
@@ -42,9 +44,9 @@ Both views read from the same `GraphStore` (client-side), subscribe to the same 
 
 | | Sidebar | Flow canvas |
 |---|---|---|
-| File | [`FlowSidebar.tsx`](../../frontend/src/pages/flows/FlowSidebar.tsx) | [`FlowCanvas.tsx`](../../frontend/src/pages/flows/FlowCanvas.tsx) + [`FlowPropertyPanel.tsx`](../../frontend/src/pages/flows/FlowPropertyPanel.tsx) |
-| Selection | `children of <path>` where `<path>` is each expanded tree row | `nodes with parent_path == <active flow path>` + every link with both endpoints inside that subtree |
-| Load trigger | User clicks a row's chevron | User opens a flow (route param change) |
+| File | [`Sidebar.tsx`](../../frontend/src/components/layout/Sidebar.tsx) | [`FlowCanvas.tsx`](../../frontend/src/pages/flows/FlowCanvas.tsx) + [`FlowPropertyPanel.tsx`](../../frontend/src/pages/flows/FlowPropertyPanel.tsx) |
+| Selection | children of each expanded path, recursively to any depth | nodes with `parent_path` inside active flow + links with both endpoints in that subtree |
+| Load trigger | User clicks a chevron (or sidebar mounts, which auto-expands `/`) | User opens a flow (route param change) |
 | Writes back | None in v1 (display only) | Property-panel slot edits, node add, node delete, link add/remove |
 | Expected cache hit rate on reload | Low — tree is mostly collapsed | High — a flow's subtree usually fits; canvas reopens are free |
 
@@ -116,22 +118,34 @@ Computed from `GraphStore` — every store knows its own child count, so this is
 
 ### 2. Event sequence numbers + resumable SSE
 
+`seq` and `ts` are **transport-layer fields**, not domain fields. The domain `GraphEvent` stays clean. The SSE transport wraps every event in a `SequencedEvent` before writing to the wire:
+
 ```rust
-// crates/graph/src/event.rs
-pub struct GraphEvent {
-    pub seq: u64,           // ← new, monotonic per agent lifetime
-    pub ts: DateTime,
-    // … existing fields …
+// crates/transport-rest/src/event.rs
+pub struct SequencedEvent {
+    pub seq: u64,   // monotonic per agent lifetime; AtomicU64 fetch-add on publish
+    pub ts: u64,    // ms since Unix epoch (u64, not DateTime — avoids chrono dep)
+    #[serde(flatten)]
+    pub event: GraphEvent,
+}
+
+// First frame on every new SSE connection — tells the client where "now" is
+// before it has consumed any events.
+pub struct HelloFrame {
+    pub event: &'static str, // always "hello"
+    pub seq: u64,
 }
 ```
 
-Server-side:
-- `GraphStore` assigns `seq` on every event emission. `AtomicU64`, fetch-add on publish.
-- Agent holds a bounded ring of the last N events (config: `events.replay_capacity`, default 1024).
-- `GET /api/v1/events?since=<n>`:
-  - If `n` is still in the ring → flush those events first, then stream live from the next boundary.
-  - If `n` is below the ring's lower bound → respond with `409 Conflict + { error: "cursor_too_old", available_from: <m> }`. Client refetches everything it cares about and resubscribes from current.
-- Every SSE connection's first message is a `hello` event containing the current `seq` so clients know where "now" is.
+The `AgentSink` in `transport-rest` holds an `AtomicU64` counter and an `EventRing`. On every `emit()` it assigns `seq`/`ts`, pushes into the ring, and broadcasts the `SequencedEvent` to all live SSE connections.
+
+The domain `GraphEvent` itself has **no** `seq` or `ts` fields — that separation keeps the graph crate independent of transport concerns.
+
+Server-side behaviour of `GET /api/v1/events?since=<n>`:
+- If `n` is still in the ring → flush those events first, then stream live.
+- If `n` is below the ring's lower bound → `409 Conflict + { error: "cursor_too_old", available_from: <m> }`. Client refetches everything it cares about and resubscribes from current.
+- Every connection's first frame is `hello { event: "hello", seq: N }` so clients know where "now" is even if the ring is empty.
+- Default ring capacity: **1024** (`DEFAULT_RING_CAPACITY` in `transport-rest/src/ring.rs`).
 
 This is the single-biggest reliability win for the frontend. Without it, SSE reconnect silently drops events and caches drift. With it, "was I up to date?" has a deterministic answer.
 
@@ -156,14 +170,16 @@ This is the single-biggest reliability win for the frontend. Without it, SSE rec
 │   │   expanded:    Set<path>         // sidebar    │     │
 │   │   openFlow:    path | null       // canvas     │     │
 │   │   selection:   path | null       // panel      │     │
-│   │   pending:     Map<path+slot, gen> // optim.   │     │
+│   │   pending:     Map<path+slot, PendingWrite>     │     │
+│   │   conflicts:   Map<path+slot, unknown>          │     │
 │   │   lastSeq:     number                          │     │
+│   │   loadingPaths: Set<path>                      │     │
 │   │                                                │     │
 │   │   actions:   expand(path) / collapse(path)     │     │
-│   │              openFlow(path) / select(path)     │     │
+│   │              setOpenFlow(path) / setSelection  │     │
 │   │              writeSlot(path, slot, value)      │     │
 │   │              applyEvent(GraphEvent)            │     │
-│   │              reconcile() on reconnect          │     │
+│   │              reconcile() on cursor_too_old     │     │
 │   └──────┬─────────────────────────┬───────────────┘     │
 │          │                         │                      │
 │    fetch children             SSE events                  │
@@ -172,12 +188,16 @@ This is the single-biggest reliability win for the frontend. Without it, SSE rec
            ▼                         ▼
    ┌────────────────────────────────────────────┐
    │       AgentClient (@acme/agent-client)     │
-   │  - nodes.list({ filter: parent_path==X })  │
-   │  - events.subscribe(onEvent, sinceSeq)     │
+   │  - nodes.getNodesPage({ filter: … })       │
+   │  - events.subscribe({ sinceSeq, onOpen })  │
    └────────────────────────────────────────────┘
 ```
 
-One store per `AgentClient` instance. Fans out to many components; components never talk to `AgentClient` directly — they subscribe to store selectors.
+One store per `AgentClient` instance, created by `createGraphStore(client)` in `frontend/src/store/graph-store.ts`. The store is mounted at the app root by `GraphStoreProvider` (`frontend/src/providers/graph-store.tsx`) and exposed via `GraphStoreContext`. Components never talk to `AgentClient` directly — they subscribe to store selectors via `useStore(graphStore, selector)`.
+
+### Provider boot sequence
+
+`GraphStoreProvider` resolves `agentPromise` (the singleton `AgentClient`), then calls `createGraphStore(client)` and stores the result in React state. **Important:** Zustand stores are callable functions (`UseBoundStore`), so you must use `setStore(() => created)` — not `setStore(created)` — or React treats it as a functional state-update and calls the store as a reducer outside a component.
 
 ### Startup protocol (the ordering guarantee)
 
@@ -279,29 +299,47 @@ Most reconnects are fast and within the ring; rare long outages fall back to ref
 
 ### The hooks
 
-Concrete surfaces each view uses:
+Concrete surfaces each view uses (all in `frontend/src/store/graph-hooks.ts`):
 
 ```ts
-// One store, one SSE connection per client. Held at the Studio root.
-const store = createGraphStore(client);
+// One store, one SSE connection per client.
+// Created by createGraphStore(client) in graph-store.ts.
+// Consumed via GraphStoreContext; use useGraphStoreOptional() in pages
+// that render before the agent handshake resolves.
 
-// ── Sidebar row ──────────────────────────────────────────
-const { children, loading, hasChildren } = useNodeChildren(store, path);
-const expanded = useExpanded(store, path);
-store.expand(path);    // triggers lazy fetch if not loaded
-store.collapse(path);  // purely local; cache stays until LRU'd
+// ── Sidebar tree (Sidebar.tsx) ───────────────────────────
+// childrenOf is a Map<parentPath, NodeSnapshot[]> built from the
+// full node cache — so any depth is covered with one useMemo.
+const nodeMap = useStore(graphStore, (s) => s.nodes);
+// expand() triggers a lazy fetch of parent_path==path children
+// collapse() is cosmetic; cache stays
+const expanded = useStore(graphStore, (s) => s.expanded);
+const loading  = useStore(graphStore, (s) => s.loadingPaths);
 
-// ── Flow canvas ──────────────────────────────────────────
-const { nodes, links, loading } = useFlowSubtree(store, flowPath);
-store.openFlow(flowPath);  // triggers subtree fetch + link fetch once
+// ── Flows list page (FlowsListPage.tsx) ──────────────────
+// Same nodeMap + linkMap from GraphStore — reactive to SSE events
+// without manual invalidateQueries calls.
+
+// ── Flow canvas (useFlowPageData.ts) ─────────────────────
+const nodeMap = useStore(activeStore, (s) => s.nodes);
+const linkMap = useStore(activeStore, (s) => s.links);
+// setOpenFlow() triggers subtree + link fetch; wired via useEffect
 
 // ── Property panel ───────────────────────────────────────
-const node = useNode(store, selectedPath);
-const { write, pending, conflict } = useSlotWrite(store, node.path, "value");
-write(42);  // optimistic; resolves on matching SlotChanged, reverts on conflict
+const { value, isPending, conflict, write } = useSlotWrite(store, path, "value");
+write(42); // optimistic; resolves on matching SlotChanged, reverts on conflict
 ```
 
-`useNodeChildren(path)` reads `parent_path === path` entries from the cache. Single selector; re-renders only when that branch changes. Collapse doesn't evict — reopens are instant unless an event marked the branch stale.
+**Selector stability rule:** selectors must return stable references or primitives. Selectors that return `new Map(...)` or `[...values()]` inline cause Zustand to see a new reference on every render → infinite re-render loop. The pattern used throughout is:
+
+```ts
+// ✅ Select the stable Map reference; spread in useMemo
+const nodeMap = useStore(store, (s) => s.nodes);          // stable ref
+const nodes = useMemo(() => [...nodeMap.values()], [nodeMap]);
+
+// ❌ Inline spread — new array every call, infinite loop
+const nodes = useStore(store, (s) => [...s.nodes.values()]);
+```
 
 ### State invariants the store enforces
 
@@ -315,16 +353,23 @@ write(42);  // optimistic; resolves on matching SlotChanged, reverts on conflict
 
 ## Staged landing
 
-| Stage | What | Bail-out signal |
-|---|---|---|
-| **1a — `has_children` + `id=in=` operator** | Add `has_children: bool` to `NodeDto`. Add `In` to the query schema's supported operators for the `id` field (unlocks the batched NodeCreated fetch). Mirror in Rust + TS clients, update fixtures. Single small PR following [NEW-API.md](../design/NEW-API.md). | No — smallest PR, straightforward. |
-| **1b — Event `seq` + `ts` + ring buffer** | `graph::GraphEvent` grows `seq: u64` + `ts: DateTime`. `GraphStore` assigns `seq` via `AtomicU64`. `AppState` owns the ring (capacity config, default 1024). Tests: monotonicity under concurrent writes, wrap-around, retrieve-since-cursor. Still non-resumable on the wire — the existing `/api/v1/events` handler is left alone in this stage. | Ring fill rate pathological on noisy agents → bump default capacity to 4096 and document the memory tradeoff. |
-| **1c — `?since=` resumable SSE + `hello` frame** | Extract the existing `stream_events` handler, add `since` query param, replay from ring, fall through to live stream. First emitted frame is `hello { seq }`. `409 cursor_too_old` with `{ available_from: <n> }` when cursor is below the ring's lower bound. Ships separately from 1b because the transport wire change is independently testable. | Backpressure on a large replay → chunk replays; cap at one frame per poll loop. |
-| **1d — Frontend `GraphStore`** | Path-keyed node cache, id-keyed link cache, expanded set, `openFlow`, `selection`, `pending` optimistic map, `lastSeq`. Subscribe-before-fetch startup. Batched-NodeCreated-fetch debouncer. Reconnect iterating over `stalePaths = expanded ∪ {openFlow}`. First-signal-wins optimistic resolution. Unit tests on every event-type mutation + rename subtree rewrite + `cursor_too_old` recovery + batch coalescing + event-first vs HTTP-first ordering. | Rename subtree rewrite complexity → deferrable as an explicit "cold-reconcile on rename" shortcut for v1; note the follow-up. |
-| **1e — Sidebar bindings** | `useNodeChildren`, `useExpanded`, tree rows with chevrons keyed off `has_children`. Wire [`FlowSidebar.tsx`](../../frontend/src/pages/flows/FlowSidebar.tsx) to the store — *not* to `AgentClient` directly. | Re-render performance on wide trees → memoise row selectors; if still slow, that's the trigger to add virtualisation (a separate follow-up per non-goals). |
-| **1f — Flow canvas + property panel bindings** | `useFlowSubtree(flowPath)`, selection hooks, `useSlotWrite` with first-signal-wins reconciliation. Wire [`FlowCanvas.tsx`](../../frontend/src/pages/flows/FlowCanvas.tsx) + [`FlowPropertyPanel.tsx`](../../frontend/src/pages/flows/FlowPropertyPanel.tsx) to the store. Reuse existing [`useFlowLiveData.ts`](../../frontend/src/pages/flows/useFlowLiveData.ts) as the migration target. | Property-panel optimistic-write conflict UX → if "revert and reload" feels too aggressive, fall back to "read-only banner + explicit reload button"; note in FLOW-UI.md. |
+All stages are complete.
 
-**PR boundaries:** 1a ships on its own (cheap, no dependency on anything else). 1b and 1c are separate PRs — the `seq`/`ts`/ring change (1b) is internal and has its own fixture surface; the `?since=` wire change (1c) modifies the public HTTP contract and warrants its own NEW-API.md round of client + TS + CLI mirroring. 1d lands the store shared by every UI surface. 1e and 1f are the two binding landings — both consume the same store and can ship in either order once 1d is in.
+| Stage | What | Status |
+|---|---|---|
+| **1a — `has_children` + `id=in=` operator** | `has_children: bool` on `NodeDto`. `In` operator added to query schema for the `id` field. Mirrored in Rust + TS clients, fixtures updated. | ✅ Done |
+| **1b — Event `seq` + `ts` + ring buffer** | Transport-layer `SequencedEvent { seq, ts, #[serde(flatten)] event }` wraps every `GraphEvent` on the wire. `AgentSink` assigns seq via `AtomicU64`, pushes into `EventRing` (capacity 1024). `HelloFrame` sent as first SSE frame. `AppState` holds both the broadcast sender and the ring. | ✅ Done |
+| **1c — `?since=` resumable SSE + `hello` frame** | `stream_events` handler accepts `?since=<seq>`. First frame is always `hello { seq }`. Replay from ring on valid cursor; `409 cursor_too_old` with `available_from` when cursor is below ring's lower bound. TS client updated: `subscribe({ sinceSeq, onOpen, onCursorTooOld })`. | ✅ Done |
+| **1d — Frontend `GraphStore`** | `createGraphStore(client)` in `graph-store.ts`. Path-keyed node cache, id-keyed link cache, `expanded`, `openFlow`, `selection`, `pending`/`conflicts` optimistic maps, `loadingPaths`, `lastSeq`. Subscribe-before-fetch startup. Batched-NodeCreated-fetch (25 ms debounce, max 200/request). First-signal-wins optimistic writes with 5 s revert timeout. `reconcile()` for `cursor_too_old`. `destroy()` closes SSE. | ✅ Done |
+| **1e — Sidebar bindings** | `Sidebar.tsx` rewritten as a recursive `TreeNode` component tree. `childrenOf` Map indexes all cached nodes by `parent_path` so any depth is covered. On mount, auto-expands `/` to load top-level flows. Chevron click calls `graphStore.expand(path)` for lazy fetch. Flows list page (`FlowsListPage.tsx`) migrated from `useNodes()`/`useLinks()` TanStack Query hooks to `useStore(graphStore, …)`. | ✅ Done |
+| **1f — Flow canvas + property panel bindings** | `useFlowPageData.ts` migrated from TanStack Query to GraphStore. `activeStore = graphStore ?? emptyFlowStore` pattern for pre-connect renders. `setOpenFlow()` called via `useEffect` to trigger subtree + link fetch. Synthetic `nodesQuery`/`linksQuery` objects keep `FlowsPage` loading/error guards working without changes. | ✅ Done |
+
+**Key implementation notes:**
+
+- `seq`/`ts` are **not** on `GraphEvent` — they live on the transport-layer `SequencedEvent` wrapper. The domain crate stays independent of transport metadata.
+- The Zustand store is a function (`UseBoundStore`). `GraphStoreProvider` uses `setStore(() => created)` — not `setStore(created)` — to prevent React from calling it as a functional state updater.
+- `useStore` selectors that return `new Array` or spread a `Map` inline cause infinite re-render loops (Zustand uses `Object.is`). Always select the stable `Map`/`Set` reference and spread inside `useMemo`.
+- `FlowSidebar.tsx` (the kind palette inside the flow editor) is **not** the tree sidebar. The global nav sidebar is `Sidebar.tsx` in `components/layout/`.
 
 ## Testing
 
@@ -342,7 +387,7 @@ write(42);  // optimistic; resolves on matching SlotChanged, reverts on conflict
 
 1. **Path-keyed, single-cache, single-source-of-truth.** Never derive structure from UI component state.
 2. **SSE is the only live channel.** Any future richer channel (WS, fleet-bus) must implement the same subscribe-before-fetch contract and the same idempotent event shape.
-3. **Event `seq` + ring buffer is the reconnect primitive.** No "reload the page" prompts on a transient network blip.
+3. **`seq` + ring buffer is the reconnect primitive.** No "reload the page" prompts on a transient network blip.
 4. **Frontend owns all per-session state** — expanded branches, open flow, selected node. The server is stateless per session.
 5. **Generation guards slot updates.** Monotonic per slot; out-of-order events are dropped, never applied.
 6. **First signal wins for optimistic writes.** Whichever of the `SlotChanged` event or the HTTP response arrives first applies to the cache; the second is a no-op (same generation) or a conflict (newer generation → revert). Neither channel is privileged.
@@ -351,16 +396,17 @@ write(42);  // optimistic; resolves on matching SlotChanged, reverts on conflict
 9. **NodeCreated fetches are batched** with a 25 ms debounce, issued as one `?filter=id=in=…` list. Scales through bulk-spawn bursts without a request storm.
 10. **One SSE connection per `AgentClient`.** Shared across all subscribers. Components never open their own.
 11. **Collapse doesn't evict.** Collapse is cosmetic; the cache lives until the store explicitly invalidates.
-12. **Every `GraphEvent` carries `seq` + `ts`.** `seq` is the reconnect anchor, `ts` is the "last changed 3 s ago" UI affordance + audit anchor. Not optional.
+12. **`seq` + `ts` are transport-layer fields.** They live on `SequencedEvent`, not on `GraphEvent`. The graph domain crate is independent of transport metadata.
+13. **Selector stability is the caller's responsibility.** `useStore` uses `Object.is` for snapshot diffing. Selectors that allocate (spread, map, filter) must not be written inline; extract the stable reference and derive in `useMemo`.
+14. **Stores are functions; state setters must account for that.** When storing a Zustand store in React state, use `setState(() => store)`, not `setState(store)`, to avoid React's functional-update branch.
 
 ## Open questions
 
 - **Ring capacity default.** 1024 events covers seconds to minutes of activity depending on edge traffic. Probably fine; revisit after we have one noisy real deployment.
-- **Should `has_children` be eagerly computed on every `NodeDto`, or only on list responses?** Proposed: always, to avoid two code paths for the same DTO. Cost is one `children_count() == 0` check per snapshot; cheap.
 - **Rename vs move.** Today rename is name-only; a true *move* (reparent) is a later landing. Events today cover rename; move will need its own event kind or an expanded `NodeRenamed { old, new }` carrying subtree count.
-- **Do we surface `lastSeq` on the `AgentClient` for outside consumers?** Yes — useful for debugging and for the undo/redo landing, which wants a "state at time T" anchor.
-- **Batch-fetch upper bound (200) vs URL length.** 200 UUIDs plus operator syntax is ~8 kB; safe for most HTTP stacks but borderline for some edges. Revisit if we see 414s.
 - **Optimistic write timeout (5 s).** Arbitrary. Worth tuning once we see real edge latency distributions; cloud-mediated remote edges may need more.
+- **Sidebar virtualisation.** Currently scrollifies wide lists. If a single branch has hundreds of nodes, windowing is the follow-up (see non-goals).
+- **Property-panel conflict UX.** The store reverts and records the conflict in `conflicts: Map<path+slot, unknown>`. Surfacing a "replaced by remote change" banner in the panel UI is not yet wired.
 
 ## One-line summary
 

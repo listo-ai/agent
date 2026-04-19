@@ -10,4 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+spi = { workspace = true }
+graph = { workspace = true }
+extensions-sdk = { workspace = true }
 

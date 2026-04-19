@@ -6,7 +6,7 @@
  * page components so all pages share the same SSE subscription.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { agentPromise } from "@/lib/agent";
 import { createGraphStore, GraphStoreContext } from "@/store/graph-hooks";
 import type { GraphStore } from "@/store/graph-hooks";
@@ -21,7 +21,10 @@ export function GraphStoreProvider({ children }: { children: ReactNode }) {
     agentPromise.then((client) => {
       if (!mounted) return;
       created = createGraphStore(client);
-      setStore(created);
+      // Zustand stores are functions (UseBoundStore), so passing one directly
+      // to setState triggers React's functional-update branch: state = fn(prev).
+      // Wrap in an arrow so React sees a factory that returns the store.
+      setStore(() => created);
     });
 
     return () => {

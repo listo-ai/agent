@@ -34,7 +34,7 @@ pub use auth::{
 pub use containment::{Cardinality, CascadePolicy, ContainmentSchema, ParentMatcher};
 pub use facets::{Facet, FacetSet};
 pub use fleet::{
-    FleetError, FleetHandler, FleetMessage, FleetTransport, HealthStatus, HealthStream,
+    FleetError, FleetHandler, FleetMessage, FleetScope, FleetTransport, HealthStatus, HealthStream,
     NullTransport, Payload, Server, ServerHandle, SubscriptionStream,
 };
 pub use ids::{KindId, NodeId, NodePath};

@@ -1,0 +1,47 @@
+id: acme.fleet.remote-agent
+display_name: Remote Agent
+# Not isContainer — the node has no local children.
+# "Expanding" a remote agent is a client-side scope switch that issues
+# fleet req/reply to the remote, not a graph containment query.
+# See docs/design/FLEET-TRANSPORT.md § "How Studio descends into a remote".
+facets:
+  - isSystem
+containment:
+  must_live_under:
+    - kind: acme.fleet.group
+    - kind: acme.core.station
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: tenant
+    role: config
+    value_schema:
+      type: string
+    writable: true
+  - name: agent_id
+    role: config
+    value_schema:
+      type: string
+    writable: true
+  - name: display_name
+    role: config
+    value_schema:
+      type: string
+    writable: true
+  - name: connection
+    role: status
+    value_schema:
+      type: string
+      enum: ["connected", "reconnecting", "disconnected", "unknown"]
+    writable: false
+  - name: last_seen
+    role: status
+    value_schema:
+      type: string
+    writable: false
+  - name: version
+    role: status
+    value_schema:
+      type: string
+    writable: false

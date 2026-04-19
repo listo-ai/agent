@@ -174,6 +174,117 @@ fleet.<tenant>.<agent-id>.<kind>.<...>
 
 The edge agent runs `fleet::mount` at startup — same handlers as the HTTP surface, bound to fleet subjects under its agent-id prefix. One internal handler per route, two transports serving it. Studio's fleet picker toggles which transport the client uses; no code above that layer changes.
 
+## Scope selection — picking which agent you're looking at
+
+Studio, the CLI, and flows all need one answer to "which agent is this operation targeting?" The scope is what resolves that answer — it's the (tenant, agent-id) pair used to build fleet subjects, or the sentinel *local* meaning "talk to this process over HTTP and skip fleet entirely." *Status: trait + types planned; no code shipped yet. Tracked alongside the next fleet handler.*
+
+Scope is a **dispatch-time routing concept, not persisted graph state**. It lives in `spi` (core Rust), travels through `AgentClient` (TypeScript), and is carried by flow-node inputs — not UI-only, but never written to the database either.
+
+### The remote-agent node
+
+Remote agents are represented as a node kind in the local graph. Selecting a remote-agent node in Studio is the same action as selecting that scope — there's no parallel "agent picker" dropdown backed by hidden state. Per the "no parallel state" rule, the set of known remote agents is a subtree the user browses, not a list in a config file.
+
+```yaml
+kind: acme.fleet.remote-agent
+# Deliberately not isContainer: the node has no children in the local graph.
+# The "expand to see the remote tree" behaviour is client-side redirection
+# (see "How Studio descends into a remote" below), not containment.
+facets: [isSystem]
+containment:
+  must_live_under:
+    - { kind: acme.fleet.group }
+    - { kind: acme.core.station }   # the station root — see EVERYTHING-AS-NODE.md § core kinds
+  may_contain: []
+  cardinality_per_parent: ManyPerParent
+
+slots:
+  tenant:        { role: config, type: string }
+  agent_id:      { role: config, type: string }
+  display_name:  { role: config, type: string, nullable: true }
+  connection:    { role: status, type: string, enum: [connected, reconnecting, disconnected, unknown] }
+  last_seen:     { role: status, type: string, format: date-time, nullable: true }
+  version:       { role: status, type: string, nullable: true }
+```
+
+```yaml
+kind: acme.fleet.group
+# Ordinary container — a folder for grouping remote-agents by site/region/tenant.
+facets: [isSystem, isContainer]
+containment:
+  must_live_under: [{ kind: acme.core.folder }, { kind: acme.core.station }]
+  may_contain:     [{ kind: acme.fleet.remote-agent }, { kind: acme.fleet.group }]
+  cardinality_per_parent: ManyPerParent
+slots:
+  display_name: { role: config, type: string, nullable: true }
+```
+
+Nested `acme.fleet.group` is allowed so operators can build region → site → rack hierarchies without inventing a tagging scheme.
+
+### Scope resolution
+
+Every fleet-capable operation resolves a scope before dispatching:
+
+| Scope | Transport | Subject base |
+|---|---|---|
+| `local` (default) | Direct HTTP on the same process | n/a — hits the axum router |
+| `remote(tenant, agent-id)` | Fleet req/reply via the active backend | `fleet.<tenant>.<agent-id>.<kind>.<...>` |
+
+The `Scope` type lives in [`spi::fleet`](../../crates/spi/src/fleet.rs) next to `Subject`:
+
+```rust
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Scope {
+    Local,
+    Remote { tenant: Tenant, agent_id: AgentId },
+}
+
+impl Scope {
+    pub fn subject(&self, kind: &str) -> Option<Subject> { /* ... */ }
+    pub fn is_local(&self) -> bool { matches!(self, Scope::Local) }
+}
+```
+
+The `#[serde(tag = "kind")]` form crosses the TS boundary as a tagged union so the TypeScript `AgentClient` mirrors it exactly:
+
+```ts
+export type Scope =
+  | { kind: "local" }
+  | { kind: "remote"; tenant: string; agent_id: string };
+```
+
+`AgentClient` (Studio) and the CLI both carry a current `Scope`. The client dispatcher picks the transport: `Local` → `fetch`, `Remote` → fleet request. The call site writes the same code either way — `client.nodes.list()` works whether scope is local or remote.
+
+**Broadcast (fan-out over `fleet.<tenant>.*.<kind>.<...>`) is not in v1.** Deferred to the evolution path — `AgentFilter` semantics, partial-reply handling, and timeout aggregation need their own design pass.
+
+### How Studio descends into a remote
+
+1. User selects an `acme.fleet.remote-agent` node in the tree.
+2. Studio pushes the scope onto a URL path segment: `/scope/:tenant/:agent_id/...`. The URL is the source of truth; a Zustand store subscribes to the route and exposes the current `Scope` to the `AgentClient`. Back/forward, tab duplication, and deep links all round-trip correctly.
+3. Tree-expansion calls now issue `fleet.<tenant>.<agent-id>.api.v1.nodes.list` via fleet req/reply instead of hitting the local HTTP route. The remote agent's own subtree renders inline under the remote-agent node — one unified tree to the user, scoped fleet calls underneath.
+4. Navigating to a local path (`/` or any non-`/scope/...` route) resets the scope to `Local`.
+
+Multiple tabs each hold their own scope via their own URL; there is no window-global singleton.
+
+#### Live updates while descended
+
+Studio opens a single fleet subscription on `fleet.<tenant>.<agent-id>.event.graph.>` when the first child of a remote-agent node renders. Messages are demultiplexed client-side by the path prefix carried in each event. The subscription is refcounted by visible subtree; when the user navigates away from the remote and no component still references the scope, the subscription is dropped. This mirrors how the local SSE stream is managed in `AgentClient` today — one connection per scope, not per row — so tree-heavy views don't fan out into N subscriptions.
+
+The cloud's presence tracking (`fleet.<tenant>.*.event.agent.health.*`) drives the remote-agent node's own status slots independently, so the `connection` badge keeps updating whether or not the user has the remote expanded.
+
+### Scope in flows
+
+Flow nodes that touch the graph (`Read Slot`, `Write Slot`, `Watch Lifecycle`) accept an optional `scope` input, defaulting to `Local`. A flow can watch a slot on a remote agent by wiring an `acme.fleet.remote-agent` node into the scope input — the flow engine reads `tenant` + `agent_id` from that node's config slots, constructs `Scope::Remote`, and translates the call into a fleet subscription on `fleet.<tenant>.<agent-id>.event.graph.<path>.slot.<slot>.changed`. From the flow author's perspective, "read a slot on edge-42" and "read a slot on this agent" are the same operation with a different scope.
+
+### Discovery
+
+Remote-agent nodes are seeded two ways:
+
+- **Manual (v1)** — operator creates the node and fills in `tenant` + `agent_id`. Fine for small fleets and for the standalone-studio-paired-with-one-edge case.
+- **Cloud-populated (future)** — when Studio is talking to a cloud scope, the cloud publishes `acme.fleet.remote-agent` children under an `acme.fleet.group` for each tenant it knows about. Status slots (`connection`, `last_seen`) are driven by cloud-side presence tracking on `fleet.<tenant>.*.event.agent.health.*`. See the evolution path.
+
+Either way, the node is the single source of truth for "what remotes exist" — there's no separate fleet inventory API.
+
 ## Representing the fleet connection as a node
 
 Per the "no parallel state" rule, the live connection is a node kind in the graph, not hidden state in a subsystem. *Manifest drafted; the kind + seeding are not yet registered — added alongside the next fleet handler.*
@@ -239,6 +350,8 @@ Credential rotation, revocation, and audit all live in the existing Zitadel + au
 | Multi-backend per agent | One backend active at a time. Simplification: config chooses; reconfiguring switches. |
 | Hot-swap backend at runtime | Rare need; restart is fine. |
 | Custom auth providers on the fleet fabric itself | Stick with each backend's native auth (NATS accounts, Zenoh ACLs, MQTT usernames). |
+| `Scope::Broadcast` (fan-out across all agents in a tenant) | Partial-reply handling, `AgentFilter` semantics, and timeout aggregation need their own design pass. Revisit once `Remote` is shipped and a real use case lands. |
+| Cloud-populated remote-agent discovery | Depends on cloud-side presence tracking and a mirrored `acme.fleet.group` tree — sequenced after the cloud control plane lands. Manual node creation covers v1. |
 
 ## What's shipped today
 
@@ -252,6 +365,8 @@ Credential rotation, revocation, and audit all live in the existing Zitadel + au
 
 Verified on [`dev/cloud.yaml`](../../dev/cloud.yaml) + [`dev/edge.yaml`](../../dev/edge.yaml): cloud listens on `tcp/127.0.0.1:17447`, edge connects, each mounts `fleet.acme.<agent-id>.api.v1.*`, and a third peer can query either side and get its node list back.
 
+**Not yet shipped (scope selection):** `spi::fleet::Scope`, the `acme.fleet.remote-agent` / `acme.fleet.group` kinds, `AgentClient` scope-aware dispatch (Rust + TS), and the `/scope/:tenant/:agent_id/...` route structure in Studio. Sequenced alongside the next batch of `api.v1.*` fleet handlers.
+
 ## Evolution path
 
 | Today | Stage N | Stage N+1 |
@@ -261,6 +376,7 @@ Verified on [`dev/cloud.yaml`](../../dev/cloud.yaml) + [`dev/edge.yaml`](../../d
 | `transport-fleet-nats` planned | + NATS backend alongside Zenoh, same trait | + NATS-WS client for Studio browser, JetStream durable outbox |
 | Single-process dev topology | + multi-region cloud, leaf chaining | + federated multi-tenant clouds |
 | Object-store URLs for bulk | + content-addressed cache at each edge | + peer caching ("ask my neighbour first") |
+| No scope selection — everything is local | + `spi::fleet::Scope` + `Remote` dispatch in `AgentClient` (Rust + TS), manual `acme.fleet.remote-agent` node creation, Studio `/scope/:tenant/:agent_id/...` routing | + cloud-populated discovery under `acme.fleet.group`, then `Scope::Broadcast` with `AgentFilter` |
 
 Each row is additive; the trait signature never changes.
 
@@ -274,6 +390,7 @@ Each row is additive; the trait signature never changes.
 6. **Bulk transfer doesn't go on the bus.** Control message + signed URL + out-of-band HTTPS fetch.
 7. **`fleet: null` is a first-class configuration**, not a degraded mode — standalone agents don't pretend they have cloud.
 8. **Plugins consume `fleet.<backend>.v1` capabilities, never provide them.**
+9. **Scope is dispatch-time routing, never persisted graph state.** `Scope::Local` vs `Scope::Remote { tenant, agent_id }` chooses the transport; the set of known remotes lives as `acme.fleet.remote-agent` nodes, not as a separate inventory.
 
 ## One-line summary
 

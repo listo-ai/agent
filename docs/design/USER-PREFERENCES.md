@@ -35,6 +35,8 @@ Out of scope (for now):
 
 ## Preferences model
 
+> **Display-only preferences** (fields with no canonical storage counterpart, such as `week_start`, `theme`, `time_format`, `date_format`, `number_format`) participate in the three-layer resolution model but are **never involved in data conversion**. They affect only how values are rendered to a human. The "store canonical, convert at the edge" principle applies only to physical quantities (time, units, money). Display-only prefs are listed here alongside quantity prefs for completeness — they do not feed into the `UnitRegistry` or the serialisation middleware.
+
 Three layers, resolved inside-out: **user-per-org** overrides **org** overrides **system default**. Users can belong to multiple orgs; preferences are scoped to the active org in the session so that switching orgs switches the entire preference context.
 
 ```
@@ -95,7 +97,7 @@ length           → m
 energy           → kWh
 power            → W
 speed            → m/s
-percentage       → 0.0–1.0 (not 0–100)
+ratio            → 0.0–1.0 (not 0–100; use quantity: Ratio in slot schema)
 ```
 
 - Telemetry writers convert to canonical at ingest (the SPI slot schema already knows the field's unit).
@@ -164,7 +166,7 @@ Principle: **ICU4X for presentation, `jiff` for time, `uom` for units, Fluent fo
 
 Units live on the **slot schema**, not on the user. The user preference only decides how a slot's value is *rendered*; the slot itself declares what physical quantity it represents and (if the sensor natively emits something non-canonical) what unit it's stored in.
 
-Two optional fields are added to `SlotSchema` (in [`crates/spi/src/slot_schema.rs`](../../crates/spi/src/slot_schema.rs)):
+Three optional fields are added to `SlotSchema` (in [`crates/spi/src/slot_schema.rs`](../../crates/spi/src/slot_schema.rs)):
 
 ```rust
 pub struct SlotSchema {
@@ -176,10 +178,19 @@ pub struct SlotSchema {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantity: Option<Quantity>,
 
-    /// Unit the stored value is expressed in. Must be compatible
-    /// with `quantity`. Defaults to the quantity's canonical unit.
-    /// Set only when a sensor natively emits a different unit and
-    /// the author prefers to convert at ingest, not at storage.
+    /// Unit the sensor natively emits. The ingest pipeline converts
+    /// from this unit to `quantity`'s canonical unit before storage.
+    /// If absent, the sensor is assumed to already emit the
+    /// canonical unit (no ingest-time conversion is applied).
+    /// Must be listed in `UnitRegistry::quantity(q).allowed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensor_unit: Option<Unit>,
+
+    /// Unit the **stored** value is expressed in. Defaults to the
+    /// quantity's canonical unit (i.e. absent = canonical).
+    /// Set only when ingest-time conversion is explicitly opted out
+    /// (see rules below). The read path uses this as the source
+    /// unit for display conversion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<Unit>,
 }
@@ -190,6 +201,7 @@ Rules:
 - Only meaningful for `value_kind: Number` (and occasionally `Bool` for thresholded values). Ignored on `Json`/`String`/`Binary`.
 - `quantity` is nullable because many slots are genuinely dimensionless (counts, IDs, enums, already-normalised ratios).
 - Authors **pick from the registry**; they cannot invent a quantity inline. New quantities land via platform PR so the conversion tables and UI labels stay consistent.
+- `SlotSchema::sensor_unit` tells the ingest pipeline what unit the raw sensor value is in. The pipeline converts to canonical before writing. If absent, no conversion is applied (the sensor is expected to already emit the canonical unit).
 - `SlotSchema::unit` **describes the stored value's unit**, not the sensor's native unit. Default behaviour: ingest converts sensor output to the quantity's canonical unit, and `SlotSchema::unit` is either absent or equals that canonical unit. The field exists so that specific slots can *opt out* of ingest-time conversion and store values in a non-canonical unit (the historian then records that unit, and read-path conversion uses it as the source). This is rare and discouraged — use it only when ingest-time conversion is too lossy or too expensive (e.g. a high-rate raw-counts sensor where the calibration factor isn't known at write time).
 
 ### `UnitRegistry`
@@ -281,6 +293,15 @@ Testability note: the registry is a trait object passed through context (typical
 
 Conversion is delegated to [`uom`](https://crates.io/crates/uom) internally — we never hand-write conversion factors. The registry is the thin serialisable veneer over `uom`'s typed system, because `uom`'s types don't serialise cleanly across the wire.
 
+### Enum versioning and canonical-unit migration
+
+The closed `Quantity`/`Unit` enums are part of the wire format and must be treated as a public API. Rules:
+
+- **Adding** a new `Quantity` or `Unit` variant is always backward-compatible (old clients ignore unknown values).
+- **Renaming or removing** a variant requires a major platform version bump. The old name must be kept as a deprecated alias for at least one major version.
+- **Changing a quantity's canonical unit** (e.g. deciding after the fact to store `Ratio` as 0–100 instead of 0–1) requires a migration plan: (a) bump the major platform version, (b) provide a one-off backfill script for existing telemetry rows, (c) update the registry and all ingest/read paths atomically. This is expected to be rare and high-cost — choose canonical units carefully up front.
+- `GET /v1/units` returns an `X-Platform-Version` header alongside the ETag so clients can detect a registry change on reconnect.
+
 ### Extension-defined quantities
 
 The closed enum is deliberate: the wire format must be stable and the UI needs to know every label. Extensions that need a quantity we don't ship cannot add an enum variant; they go through the platform PR process:
@@ -293,12 +314,12 @@ Friction is intentional. A quantity is part of the public data model; letting ex
 
 ### How a read works end-to-end
 
-1. Agent writes telemetry: `slot.set(72.4)`. Sensor is natively °F; slot schema declares `quantity: Temperature` and omits `unit` (the default: store in the canonical unit for the quantity). Ingest converts `72.4 °F` → `22.44 °C`, stores `22.44`.
+1. Agent writes telemetry: `slot.set(72.4)`. Sensor is natively °F; slot schema declares `quantity: Temperature, sensor_unit: Fahrenheit` and omits `unit` (the default: store in the canonical unit for the quantity). Ingest converts `72.4 °F` → `22.44 °C`, stores `22.44`.
 2. REST handler queries telemetry. It returns a column-oriented response so unit metadata is declared once per series, not per row (see Response shape below).
 3. Serialisation middleware resolves the caller's `temperature_unit` pref (say, `"F"`), calls `REGISTRY.convert(Temperature, 22.44, Celsius, Fahrenheit)` → `72.4`, and sets the series' `unit` to `"fahrenheit"`.
 4. Studio renders `72.4 °F`.
 
-MCP/LLM consumers send `Accept: application/json; units=canonical` and skip step 3 — they get `22.44` with `"unit": "celsius"` and a machine-stable quantity code.
+MCP/LLM consumers send `Accept-Units: canonical` and skip step 3 — they get `22.44` with `"unit": "celsius"` and a machine-stable quantity code.
 
 ## API surface
 
@@ -310,14 +331,16 @@ MCP/LLM consumers send `Accept: application/json; units=canonical` and skip step
 
 ### Content negotiation
 
-Unit conversion is selected via the standard `Accept` header with a media-type parameter — **not** a custom header — so HTTP caches, proxies, and clients handle it correctly:
+Unit conversion is selected via a custom `Accept-Units` request header:
 
 ```
-Accept: application/json; units=preferred    # default
-Accept: application/json; units=canonical    # MCP / programmatic
+Accept-Units: preferred    # default — user's display units applied
+Accept-Units: canonical    # MCP / programmatic — SI values, stable quantity codes
 ```
 
-Responses set `Vary: Accept` so caches key on the selected mode. `Content-Language` reports the language actually used so clients can detect fallback.
+Responses set `Vary: Accept-Units` so caches key on the selected mode. `Content-Language` reports the language actually used so clients can detect fallback.
+
+> **Why a custom header, not an `Accept` media-type parameter?** Most CDNs (CloudFront, Fastly, nginx default config) correctly vary on explicit header names but collapse or strip `Accept` media-type parameters, effectively treating `application/json; units=canonical` and `application/json; units=preferred` as the same cache key. A custom header is more reliably varied on in practice.
 
 ### Response shape
 
@@ -341,14 +364,32 @@ Single-value reads (a single slot, not a timeseries) use the inline form `{ "val
 **Preferences delivery: hybrid, claims for stable fields only.**
 Embed `timezone`, `locale`, `language` in the JWT (they change rarely and every response needs them). Everything else (`unit_system`, per-unit overrides, formats, theme) is fetched once per session via `GET /v1/me/preferences` and cached client-side with an ETag. Mutations invalidate the cache. This avoids the stale-JWT problem for the volatile fields while keeping the hot path (every telemetry read) free of an extra fetch.
 
+JWT TTL is **15 minutes** with silent refresh. When a user mutates any of the JWT-embedded prefs (`timezone`, `locale`, `language`), the server issues a fresh token immediately as part of the `PATCH` response (`Set-Cookie` / response body depending on the auth transport). The client must replace its current token before the next request. On conflict (stale JWT claim vs. fetched session pref), **the fetched session pref wins** — clients should always populate the preference context from `GET /v1/me/preferences`, treating the JWT claims only as a fast-path hint for the server side (e.g. email rendering, audit exports) where no session fetch is possible.
+
 **Per-device timezone: client-side only.**
 Studio reads the OS timezone and may override the profile TZ for display purposes, persisted in local storage. The server never sees this — the user's profile TZ stays authoritative for anything the server renders (emails, notifications, audit exports). Rationale: a traveller on a laptop shouldn't have their scheduled reports shift, but their live dashboards should reflect local time. Splitting at the client is the clean seam.
 
-**MCP / programmatic raw mode: `Accept-Units: canonical` header.**
-Default is `preferred` (unit conversion applied). MCP clients and CLI scripts send `canonical` to get SI values and stable quantity codes. Response always includes `unit` and `quantity` inline so the consumer knows what it got. No separate endpoints, no URL variants — just content negotiation, which is what it's for.
+**MCP / programmatic raw mode: `Accept-Units: canonical`.**
+Default is `units=preferred` (conversion applied). MCP clients and CLI scripts send `Accept-Units: canonical` to get SI values and stable quantity codes. Custom header rather than an `Accept` media-type parameter so CDNs and reverse proxies vary on it correctly (see Content negotiation above). No separate endpoints, no URL variants.
+
+## Rollout
+
+This lands incrementally, not as a big-bang greenfield change.
+
+- **Phase 0** — land the conventions. Timestamps already UTC epoch-ms (verify and document). Document `Quantity`/`Unit` enums in `spi`. No behavioural change.
+- **Phase 1** — schema + API. Add `org_preferences` / `user_preferences` tables, `GET`/`PATCH` endpoints, JWT claim extension for `timezone`/`locale`/`language`. Clients that don't know about preferences keep working (server returns current US defaults, which is the status quo).
+- **Phase 2** — slot-level units. Add `quantity`/`unit` to `SlotSchema`. Existing slots default to `None` → no conversion, no behaviour change. Extension authors can start annotating.
+- **Phase 3** — conversion middleware. REST serialisation applies unit prefs when both (a) the slot declares a quantity and (b) the caller's pref differs from canonical. Add `Accept: ...; units=canonical` support.
+- **Phase 4** — i18n. Wire Fluent into Studio; move backend error messages to message codes; add first non-English bundle on demand.
+
+Each phase is independently deployable and reversible. No client is forced to upgrade to keep working.
 
 ## Future
 
-- Translating user-authored content (flow names, node labels): out of scope now; probably solved by a translations sidecar table keyed by `(entity_id, lang)` with the authored language as canonical.
-- Per-org translation overrides (customer wants "Site" instead of "Location"): solvable via custom Fluent bundles loaded after the default.
-- Accessibility preferences (reduced motion, high contrast): belongs in `user_preferences` when we get there, same inheritance model.
+- **User-authored content translation** — translations sidecar table keyed by `(entity_id, lang)`, authored language as canonical. Surface a "translate this" affordance in Studio once multi-language customers exist.
+- **Per-org translation overrides** — customer wants "Site" instead of "Location" in their UI. Solvable via custom Fluent bundles loaded after the default, keyed on org.
+- **Extension-defined quantities** — documented path above (platform PR). If demand gets high, consider a versioned "quantity catalog" extension point, but not before we have concrete asks.
+- **RTL layout and per-locale UI polish** — Studio team handoff once the i18n framework lands.
+- **Per-device timezone sync protocol** — currently client-local. If users report confusion about which TZ is active, add a session-scoped `X-User-Timezone` request header so the server can render server-side emails/exports in the same TZ Studio is displaying.
+- **Accessibility preferences** (reduced motion, high contrast, font scale) — extend `user_preferences` with the same inheritance model.
+- **Currency FX conversion** — out of scope deliberately; revisit only if we ever aggregate money across currencies.

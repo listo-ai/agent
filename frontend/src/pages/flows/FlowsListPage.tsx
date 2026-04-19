@@ -34,14 +34,12 @@ export function FlowsListPage() {
     graphStore.getState().expand("/");
   }, [graphStore]);
 
-  const nodes = useStore(
-    graphStore ?? emptyStore,
-    (s) => [...s.nodes.values()],
-  );
-  const links = useStore(
-    graphStore ?? emptyStore,
-    (s) => [...s.links.values()],
-  );
+  const activeStore = graphStore ?? emptyStore;
+  const nodeMap = useStore(activeStore, (s) => s.nodes);
+  const linkMap = useStore(activeStore, (s) => s.links);
+
+  const nodes = useMemo(() => [...nodeMap.values()], [nodeMap]);
+  const links = useMemo(() => [...linkMap.values()], [linkMap]);
 
   const [filter, setFilter] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

@@ -6,6 +6,17 @@ Authoritative references: [VERSIONING.md](../design/VERSIONING.md), [EVERYTHING-
 
 ---
 
+## Status
+
+| Phase | Scope | State |
+|---|---|---|
+| **Phase 1** | Flow revisions — DB schema, REST API, Rust client, CLI | ✅ **Shipped** |
+| **Phase 2** | Node-settings revisions — wire `node_setting_revisions` table, `/nodes/{id}/settings/*` endpoints | 🔲 Pending |
+| **Phase 3** | History UI — revision timeline, diff view, revert button | 🔲 Pending |
+| **Phase 4** | Duplicate / copy / paste (built on Phase 1 revision machinery) | 🔲 Pending |
+
+---
+
 ## Goals
 
 - **Durable history.** Undo survives page reload, tab close, and switching between Studio desktop and browser.
@@ -40,13 +51,17 @@ Two tables, same shape. Both are append-only event logs keyed by the thing they 
 | `op` | TEXT | `create`, `edit`, `undo`, `redo`, `revert`, `import`, `duplicate`, `paste` — **load-bearing**; used by redo reconstruction |
 | `target_rev_id` | ULID? | for `undo`/`redo`/`revert`: the revision whose content was re-materialised. NULL for forward edits. |
 | `summary` | TEXT | short human label, e.g. "added 2 nodes, 1 link" |
-| `patch` | BLOB | JSON-Patch (RFC 6902) against `parent_id`'s materialised document |
-| `snapshot` | BLOB? | full document; written every N revisions (default 20) or on first revision |
+| `patch` | TEXT | JSON-Patch (RFC 6902) against `parent_id`'s materialised document. **Phase 1: always `[]` — full-snapshot mode; differential patches wired in Phase 2 (no schema change required).** |
+| `snapshot` | TEXT? | full document; written every N revisions (default 20) or on first revision. **Phase 1: every revision carries a full snapshot.** |
 | `created_at` | TIMESTAMP | |
 
 `seq` is **authoritative** for optimistic concurrency (simple integer compare on write). `parent_id` is the chain pointer used to walk history; it must be consistent with `seq` but writes do not re-check it — one invariant, checked in one place.
 
+> **Phase 1 note:** The `patch` column exists in the live schema and defaults to `'[]'`. Every revision in Phase 1 carries a complete document in `snapshot`. Switching to differential writes requires no migration — only a change to `SqliteFlowRevisionRepo::append_revision` and the materialisation walk.
+
 ### `node_setting_revisions`
+
+> **Phase 2** — table is present in the live schema (created in migration v4 alongside `flow_revisions`); backend wiring, domain service, and REST endpoints are pending.
 
 | column | type | notes |
 |---|---|---|
@@ -59,8 +74,8 @@ Two tables, same shape. Both are append-only event logs keyed by the thing they 
 | `op` | TEXT | same vocabulary |
 | `target_rev_id` | ULID? | same semantics as on flow revisions |
 | `schema_version` | TEXT | kind schema version the payload was authored against; lets materialisation run migrations (see below) |
-| `patch` | BLOB | JSON-Patch against previous settings |
-| `snapshot` | BLOB? | full settings blob; written every N or on first |
+| `patch` | TEXT | JSON-Patch against previous settings |
+| `snapshot` | TEXT? | full settings blob; written every N or on first |
 | `created_at` | TIMESTAMP | |
 
 ### Why patches + periodic snapshots
@@ -172,27 +187,96 @@ The pin set is small in practice (bounded by the depth of the user's current und
 
 ---
 
-## HTTP surface (additions)
+## HTTP surface
+
+### Phase 1 — shipped (`/api/v1/flows/*`)
 
 ```
-GET    /flows/{id}/revisions                  → list, paged, newest first
-GET    /flows/{id}/revisions/{revId}          → materialised document at that revision
-POST   /flows/{id}/undo                       → body: { expected_head }
-POST   /flows/{id}/redo                       → body: { expected_head, expected_target? }
-POST   /flows/{id}/revert                     → body: { expected_head, target_rev_id }
-
-GET    /nodes/{id}/settings/revisions
-GET    /nodes/{id}/settings/revisions/{revId}
-POST   /nodes/{id}/settings/undo              → body: { expected_head }
-POST   /nodes/{id}/settings/redo              → body: { expected_head, expected_target? }
-POST   /nodes/{id}/settings/revert            → body: { expected_head, target_rev_id }
+GET    /api/v1/flows                          → list flows, paged (limit/offset)
+POST   /api/v1/flows                          → create flow; body: { name, document, author }
+GET    /api/v1/flows/{id}                     → get single flow
+DELETE /api/v1/flows/{id}                     → delete (accepts ?expected_head= for OCC)
+POST   /api/v1/flows/{id}/edit               → body: { expected_head?, document, author, summary }
+GET    /api/v1/flows/{id}/revisions           → list revisions, paged (limit/offset)
+GET    /api/v1/flows/{id}/revisions/{revId}   → materialised document at that revision
+POST   /api/v1/flows/{id}/undo               → body: { expected_head?, author }
+POST   /api/v1/flows/{id}/redo               → body: { expected_head?, expected_target?, author }
+POST   /api/v1/flows/{id}/revert             → body: { expected_head?, target_rev_id, author }
 ```
 
 All mutating endpoints take `expected_head` for optimistic concurrency and return the new head id. Redo additionally accepts `expected_target` for the two-tab stale-cursor case (see `expected_head` semantics table above); omitting it falls back to whatever the server computes as the next redo target.
 
+**Status codes:**
+- `404` — flow or revision not found
+- `409 Conflict` — `expected_head` or `expected_target` mismatch
+- `422 Unprocessable Entity` — nothing to undo / undo-past-start / redo-past-end
+- `500` — internal error
+
+**Wire shapes (returned by all flow-mutating endpoints):**
+```json
+// FlowDto
+{ "id": "<ulid>", "name": "...", "document": {}, "head_revision_id": "<ulid>|null", "head_seq": 0 }
+
+// FlowRevisionDto
+{ "id": "<ulid>", "flow_id": "<ulid>", "parent_id": "<ulid>|null",
+  "seq": 1, "author": "alice", "op": "edit|undo|redo|revert|create",
+  "target_rev_id": "<ulid>|null", "summary": "...", "created_at": "..." }
+
+// FlowMutationResult (returned by edit/undo/redo/revert)
+{ "head_revision_id": "<ulid>" }
+```
+
+### Phase 2 — pending (`/api/v1/nodes/{id}/settings/*`)
+
+```
+GET    /api/v1/nodes/{id}/settings/revisions
+GET    /api/v1/nodes/{id}/settings/revisions/{revId}
+POST   /api/v1/nodes/{id}/settings/undo      → body: { expected_head?, author }
+POST   /api/v1/nodes/{id}/settings/redo      → body: { expected_head?, expected_target?, author }
+POST   /api/v1/nodes/{id}/settings/revert    → body: { expected_head?, target_rev_id, author }
+```
+
+---
+
+## Client surface (Phase 1 shipped)
+
+### Rust client (`clients/rs/`)
+
+```rust
+client.flows().list(limit, offset).await           // → Vec<FlowDto>
+client.flows().get(id).await                       // → FlowDto
+client.flows().create(name, document, author).await // → FlowDto
+client.flows().delete(id, expected_head).await
+client.flows().edit(id, expected_head, document, author, summary).await // → FlowMutationResult
+client.flows().undo(id, expected_head, author).await  // → FlowMutationResult
+client.flows().redo(id, expected_head, expected_target, author).await
+client.flows().revert(id, expected_head, target_rev_id, author).await
+client.flows().list_revisions(id, limit, offset).await // → Vec<FlowRevisionDto>
+client.flows().document_at(id, rev_id).await      // → serde_json::Value
+```
+
+### CLI (`agent flows <subcommand>`)
+
+```
+agent flows list [--limit N] [--offset N]
+agent flows get <id>
+agent flows create <name> [--document '{...}'] [--author alice]
+agent flows delete <id> [--expected-head <rev-id>]
+agent flows edit <id> <document> [--summary '...'] [--expected-head <rev-id>] [--author alice]
+agent flows undo <id> [--expected-head <rev-id>] [--author alice]
+agent flows redo <id> [--expected-head <rev-id>] [--expected-target <rev-id>] [--author alice]
+agent flows revert <id> --to <rev-id> [--expected-head <rev-id>] [--author alice]
+agent flows revisions <id> [--limit N] [--offset N]
+agent flows document-at <id> --rev-id <rev-id>
+```
+
+All subcommands are registered in `agent schema` / `--help-json` (`CommandMeta` statics in `commands/meta.rs`).
+
 ---
 
 ## Duplicate and copy / paste
+
+> **Phase 4** — design complete below; implementation pending.
 
 Adjacent feature, same revision machinery. A duplicate or paste is **one flow edit** — it writes a single revision whose patch adds N nodes and M links. Undo reverts the whole paste atomically. This is the right default: users think of "I pasted that subflow" as one action.
 
@@ -274,11 +358,11 @@ The clipboard records `children_included` at copy time. The paste body sends `in
 
 The rejection case is explicit so users re-copy with children, rather than getting a mysterious "shell without children" paste they didn't ask for.
 
-### HTTP surface (additions)
+### HTTP surface (Phase 4 additions)
 
 ```
-POST   /flows/{id}/duplicate                  → body: { node_ids, include_children, include_links }
-POST   /flows/{id}/paste                      → body: { clipboard, target_position, rewire, include_children }
+POST   /api/v1/flows/{id}/duplicate           → body: { node_ids, include_children, include_links }
+POST   /api/v1/flows/{id}/paste               → body: { clipboard, target_position, rewire, include_children }
 ```
 
 Both return `{ head_revision_id, summary, warnings }` (see "Dropped-link feedback is mandatory" above). No new endpoint for "copy" — that's pure client-side serialisation of already-fetched data.
@@ -350,14 +434,35 @@ The registry hook is a single method on the kind provider: `migrate_settings(fro
 
 ---
 
-## Implementation sketch
+## Implementation log
 
-Three phases, each independently shippable.
+**Phase 1 — flow revisions ✅ Shipped**
 
-**Phase 1 — flow revisions (backend + API).** Table, endpoints, optimistic concurrency, snapshot cadence, pruning. No UI work; wire a thin "undo" button in the existing canvas that calls the endpoint.
+- `flows` and `flow_revisions` tables in SQLite migration v4 (`crates/data-sqlite/src/migrations.rs`)
+- `FlowRevisionRepo` trait in `crates/data-repos/`; `SqliteFlowRevisionRepo` in `crates/data-sqlite/`
+- `FlowService` domain service in `crates/domain-flows/` — `create_flow`, `edit`, `undo`, `redo`, `revert`, `delete_flow`, `list_revisions`, `document_at`
+- All 9 REST handlers in `crates/transport-rest/src/flows.rs`; wired into `AppState` and router
+- Agent bootstrap wires `SqliteFlowRevisionRepo` when a DB path is configured
+- `FlowDto`, `FlowRevisionDto`, `FlowMutationResult` types in `clients/rs/src/types.rs`
+- `Flows<'c>` client module in `clients/rs/src/flows.rs` with all 10 methods
+- `agent flows <subcommand>` CLI tree in `crates/transport-cli/src/commands/flows.rs`
+- `CommandMeta` statics for all 10 flows subcommands in `commands/meta.rs`
+- Contract fixtures in `clients/contracts/fixtures/cli-output/flows-*/`
+- 6 fixture gate tests in `crates/transport-cli/tests/fixture_gate.rs`
+- **Current mode:** full-snapshot per revision (`patch = '[]'`); differential patches are a Phase 2 optimisation, no schema change required
 
-**Phase 2 — node settings revisions.** Same pattern for the `node_setting_revisions` table. Property panel gains its own undo/redo scope.
+**Phase 2 — node settings revisions 🔲 Pending**
 
-**Phase 3 — history UI.** Revision timeline, diff view, revert button. Nice-to-have; not required for the core undo/redo UX to work.
+`node_setting_revisions` table already created (migration v4). Work remaining: domain service, REST handlers, client + CLI bindings. Same pattern as Phase 1.
+
+**Phase 3 — history UI 🔲 Pending**
+
+Revision timeline, diff view, revert button in the Studio frontend. No backend work required beyond Phase 1.
+
+**Phase 4 — duplicate / copy / paste 🔲 Pending**
+
+See design above. Builds on Phase 1 revision machinery — duplicate/paste each write a single revision.
+
+---
 
 Client-side command stack (the fast, in-memory one) is **complementary, not a substitute**: we still want it layered on top for sub-second UX so every keystroke doesn't round-trip. It flushes into a single DB revision on debounce / blur / explicit save. That's a UX detail, not part of this design.

@@ -15,7 +15,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::auth::AuthError;
+use crate::auth::{AuthError, TenantId};
 use crate::subject::Subject;
 
 /// Raw message bytes on the wire. Alias today; may grow into
@@ -135,6 +135,46 @@ pub trait FleetHandler: Send + Sync {
         &'a self,
         msg: FleetMessage,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Payload>, FleetError>> + Send + 'a>>;
+}
+
+/// Which agent an operation is targeting.
+///
+/// Carried by `AgentClient` (TypeScript), the CLI, and flow node inputs.
+/// Dispatch-time routing only — never written to the graph or database.
+///
+/// Serialises as a tagged union (`{ "kind": "local" }` /
+/// `{ "kind": "remote", "tenant": "…", "agent_id": "…" }`) so the
+/// TypeScript client can mirror it as a discriminated union with zero
+/// hand-rolling.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FleetScope {
+    /// Talk to the local agent process over HTTP — no fleet required.
+    Local,
+    /// Issue a fleet request/reply to a specific remote agent.
+    Remote {
+        tenant: TenantId,
+        /// Raw agent identifier, e.g. `"edge-42"`. Escaped by
+        /// `SubjectToken::encode` when stamped onto a `Subject`.
+        agent_id: String,
+    },
+}
+
+impl FleetScope {
+    /// Build the subject prefix for a given kind segment chain, or `None`
+    /// when the scope is `Local` (hits the axum router directly).
+    pub fn subject(&self, kind: &str) -> Option<Subject> {
+        match self {
+            FleetScope::Local => None,
+            FleetScope::Remote { tenant, agent_id } => {
+                Some(Subject::for_agent(tenant, agent_id).kind(kind).build())
+            }
+        }
+    }
+
+    pub fn is_local(&self) -> bool {
+        matches!(self, FleetScope::Local)
+    }
 }
 
 /// The fleet transport itself.
