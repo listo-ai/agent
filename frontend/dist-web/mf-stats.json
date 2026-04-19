@@ -63,20 +63,21 @@
             "static/js/async/493.ac2bff86.js",
             "static/js/async/849.b6dbaed6.js",
             "static/js/async/__federation_expose_registry.2c12591e.js",
+            "static/js/async/926.61c70836.js",
+            "static/js/async/136.065a84a5.js",
             "static/js/async/874.e4391c08.js"
           ],
           "sync": [
             "static/js/studio_host.88d8bf3b.js",
             "static/js/lib-react.0f1e253f.js",
-            "static/js/416.a26b1847.js",
-            "static/js/index.3b193f17.js"
+            "static/js/index.417cffdc.js"
           ]
         },
         "css": {
-          "async": [],
-          "sync": [
-            "static/css/index.4e237a15.css"
-          ]
+          "async": [
+            "static/css/async/136.fdf08510.css"
+          ],
+          "sync": []
         }
       },
       "usedIn": []
@@ -120,20 +121,21 @@
             "static/js/async/493.ac2bff86.js",
             "static/js/async/849.b6dbaed6.js",
             "static/js/async/__federation_expose_registry.2c12591e.js",
+            "static/js/async/926.61c70836.js",
+            "static/js/async/136.065a84a5.js",
             "static/js/async/874.e4391c08.js"
           ],
           "sync": [
             "static/js/studio_host.88d8bf3b.js",
             "static/js/lib-react.0f1e253f.js",
-            "static/js/416.a26b1847.js",
-            "static/js/index.3b193f17.js"
+            "static/js/index.417cffdc.js"
           ]
         },
         "css": {
-          "async": [],
-          "sync": [
-            "static/css/index.4e237a15.css"
-          ]
+          "async": [
+            "static/css/async/136.fdf08510.css"
+          ],
+          "sync": []
         }
       },
       "usedIn": []

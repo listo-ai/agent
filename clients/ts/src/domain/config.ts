@@ -1,27 +1,28 @@
 import type { HttpClient } from "../transport/http.js";
 import { z } from "zod";
 
-// Node configuration is an open object — the shape is kind-specific.
-// We validate it's a record; deeper validation is the caller's concern.
-const ConfigSchema = z.record(z.string(), z.unknown());
-export type NodeConfig = z.infer<typeof ConfigSchema>;
+/**
+ * `POST /api/v1/config` `{path, config}` — replaces the node's config
+ * blob and re-runs `on_init`. Idempotent for well-behaved behaviours.
+ *
+ * No GET endpoint is shipped: the config isn't mirrored into the node
+ * snapshot today. When `crates/transport-rest` adds one, extend this
+ * module — don't stub it.
+ */
+
+const NodeConfigSchema = z.record(z.string(), z.unknown());
+export type NodeConfig = z.infer<typeof NodeConfigSchema>;
 
 export interface ConfigApi {
-  getConfig(nodePath: string): Promise<NodeConfig>;
-  setConfig(nodePath: string, config: NodeConfig): Promise<void>;
+  /** Replace a node's config and re-fire `on_init`. */
+  setConfig(path: string, config: NodeConfig): Promise<void>;
 }
 
 export function createConfigApi(http: HttpClient, apiVersion: number): ConfigApi {
-  const base = `/api/v${apiVersion}/nodes`;
-
+  const base = `/api/v${apiVersion}`;
   return {
-    async getConfig(nodePath: string): Promise<NodeConfig> {
-      const raw = await http.get<unknown>(`${base}/${encodeURIComponent(nodePath)}/config`);
-      return ConfigSchema.parse(raw);
-    },
-
-    async setConfig(nodePath: string, config: NodeConfig): Promise<void> {
-      await http.put<void>(`${base}/${encodeURIComponent(nodePath)}/config`, config);
+    async setConfig(path: string, config: NodeConfig): Promise<void> {
+      await http.postNoContent(`${base}/config`, { path, config });
     },
   };
 }

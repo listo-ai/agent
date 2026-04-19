@@ -18,7 +18,7 @@ export function createEventsApi(
     subscribe(opts = {}) {
       return subscribeToEvents({
         url: `${baseUrl}/api/v${apiVersion}/events`,
-        token,
+        ...(token !== undefined && { token }),
         ...opts,
       });
     },

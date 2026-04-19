@@ -15,3 +15,6 @@ node_modules/
 dist/
 .pnpm-store/
 agent.db
+
+# Examples
+examples/plugin-hello/node_modules

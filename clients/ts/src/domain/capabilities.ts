@@ -30,7 +30,11 @@ export function createCapabilitiesApi(http: HttpClient): CapabilitiesApi {
         const version = found ? coerce(found.version) : null;
         const satisfied = version ? satisfies(version, req.range) : false;
         if (!satisfied) {
-          missing.push({ id: req.id, required: req.range, found: found?.version });
+          missing.push({
+            id: req.id,
+            required: req.range,
+            ...(found?.version !== undefined && { found: found.version }),
+          });
         }
       }
 

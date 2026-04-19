@@ -4,14 +4,20 @@ import { createSlotsApi } from "./domain/slots.js";
 import { createConfigApi } from "./domain/config.js";
 import { createEventsApi } from "./domain/events.js";
 import { createCapabilitiesApi } from "./domain/capabilities.js";
+import { createLinksApi } from "./domain/links.js";
+import { createLifecycleApi } from "./domain/lifecycle.js";
+import { createSeedApi } from "./domain/seed.js";
 import type { NodesApi } from "./domain/nodes.js";
 import type { SlotsApi } from "./domain/slots.js";
 import type { ConfigApi } from "./domain/config.js";
 import type { EventsApi } from "./domain/events.js";
+import type { LinksApi } from "./domain/links.js";
+import type { LifecycleApi } from "./domain/lifecycle.js";
+import type { SeedApi } from "./domain/seed.js";
 import { REST_API_VERSION } from "./version.js";
 
 export interface AgentClientOptions {
-  /** Base URL of the agent, e.g. "http://localhost:4000". */
+  /** Base URL of the agent, e.g. "http://localhost:8080". */
   baseUrl: string;
   /** Optional bearer token for authenticated agents. */
   token?: string;
@@ -27,8 +33,9 @@ export interface AgentClientOptions {
 /**
  * AgentClient — the public facade.
  *
- * Construct with `await AgentClient.connect(opts)`.  The constructor is
- * private; `connect` performs the capability handshake before returning.
+ * Construct with `await AgentClient.connect(opts)`. The constructor is
+ * private; `connect` performs the capability handshake before
+ * returning.
  *
  * Dependency direction: client → domain → transport → schemas.
  * domain/* never imports fetch directly; transport/* never imports domain.
@@ -38,33 +45,36 @@ export class AgentClient {
   readonly slots: SlotsApi;
   readonly config: ConfigApi;
   readonly events: EventsApi;
+  readonly links: LinksApi;
+  readonly lifecycle: LifecycleApi;
+  readonly seed: SeedApi;
 
-  private constructor(
-    private readonly http: HttpClient,
-    private readonly opts: AgentClientOptions,
-  ) {
-    this.nodes  = createNodesApi(http, REST_API_VERSION);
-    this.slots  = createSlotsApi(http, REST_API_VERSION);
+  private constructor(http: HttpClient, opts: AgentClientOptions) {
+    this.nodes = createNodesApi(http, REST_API_VERSION);
+    this.slots = createSlotsApi(http, REST_API_VERSION);
     this.config = createConfigApi(http, REST_API_VERSION);
     this.events = createEventsApi(opts.baseUrl, REST_API_VERSION, opts.token);
+    this.links = createLinksApi(http, REST_API_VERSION);
+    this.lifecycle = createLifecycleApi(http, REST_API_VERSION);
+    this.seed = createSeedApi(http, REST_API_VERSION);
   }
 
   /**
    * Create a connected AgentClient.
-   * Fetches GET /api/v1/capabilities and asserts all required caps are met
-   * before returning — throws CapabilityMismatchError on failure.
+   * Fetches GET /api/v1/capabilities and asserts all required caps are
+   * met before returning — throws CapabilityMismatchError on failure.
    */
   static async connect(opts: AgentClientOptions): Promise<AgentClient> {
     const httpOpts = {
       baseUrl: opts.baseUrl,
-      ...(opts.token      !== undefined && { token:     opts.token }),
-      ...(opts.timeoutMs  !== undefined && { timeoutMs: opts.timeoutMs }),
+      ...(opts.token !== undefined && { token: opts.token }),
+      ...(opts.timeoutMs !== undefined && { timeoutMs: opts.timeoutMs }),
     };
     const http = new HttpClient(httpOpts);
     const client = new AgentClient(http, opts);
 
     if (!opts.skipCapabilityCheck) {
-      const capsApi  = createCapabilitiesApi(http);
+      const capsApi = createCapabilitiesApi(http);
       const manifest = await capsApi.getManifest();
       capsApi.assertRequirements(manifest);
     }

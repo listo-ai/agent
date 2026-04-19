@@ -1,7 +1,17 @@
 {
-  "version": 1,
+  "platform": {
+    "version": "0.0.1",
+    "flow_schema": 1,
+    "node_schema": 1
+  },
+  "api": {
+    "rest": "1"
+  },
   "capabilities": [
-    { "id": "spi.msg",         "version": "1.0.0" },
-    { "id": "spi.node.schema", "version": "1.0.0" }
+    { "id": "spi.extension.proto", "version": "1.0.0" },
+    { "id": "spi.msg",             "version": "1.0.0" },
+    { "id": "spi.node.schema",     "version": "1.0.0" },
+    { "id": "spi.flow.schema",     "version": "1.0.0" },
+    { "id": "data.sqlite",         "version": "3.45.0" }
   ]
 }

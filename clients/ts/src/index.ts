@@ -10,8 +10,30 @@ export { asClientError } from "./errors.js";
 export { CLIENT_VERSION, REST_API_VERSION, REQUIRED_CAPABILITIES } from "./version.js";
 export type { CapabilityRequirement } from "./version.js";
 
-// Schema types for callers that need to work with raw shapes.
+// Schema types for callers that need raw wire shapes.
 export type { Msg } from "./schemas/msg.js";
-export type { GraphEvent, SlotChangedEvent, NodeAddedEvent, NodeRemovedEvent } from "./schemas/events.js";
+export type {
+  GraphEvent,
+  NodeCreatedEvent,
+  NodeRemovedEvent,
+  NodeRenamedEvent,
+  SlotChangedEvent,
+  LifecycleTransitionEvent,
+  LinkAddedEvent,
+  LinkRemovedEvent,
+  LinkBrokenEvent,
+  Lifecycle,
+} from "./schemas/events.js";
 export type { NodeSnapshot, Slot } from "./schemas/node.js";
-export type { CapabilityManifest, Capability } from "./schemas/capability.js";
+export type { Link, LinkEndpoint } from "./schemas/link.js";
+export type {
+  CapabilityManifest,
+  Capability,
+  PlatformInfo,
+  ApiInfo,
+} from "./schemas/capability.js";
+
+// Domain request shapes.
+export type { LinkEndpointRef } from "./domain/links.js";
+export type { SeedPreset, SeedResult } from "./domain/seed.js";
+export type { NodeConfig } from "./domain/config.js";

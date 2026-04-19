@@ -42,7 +42,7 @@ export default defineConfig(({ envMode }) => {
     plugins: [pluginReact()],
 
     source: {
-      entry: { index: "./src/index.tsx" },
+      entry: { index: "./src/index.ts" },
     },
 
     resolve: {
