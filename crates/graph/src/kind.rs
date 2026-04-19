@@ -1,64 +1,11 @@
-//! Kind registry. Kinds are reverse-DNS-identified types; the registry
-//! maps `KindId` to `KindManifest`. Domain crates and extensions
-//! register their kinds here — this is the substrate extension
-//! contribution lands in.
+//! Kind registry — runtime lookup of `KindManifest` values registered by
+//! domain crates and extensions. The manifest type itself lives in
+//! [`spi::KindManifest`] so the SDK never has to depend on this crate.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use serde::{Deserialize, Serialize};
-
-use crate::containment::ContainmentSchema;
-use crate::facets::FacetSet;
-use crate::ids::KindId;
-use crate::slot::SlotSchema;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KindManifest {
-    pub id: KindId,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub facets: FacetSet,
-    pub containment: ContainmentSchema,
-    #[serde(default)]
-    pub slots: Vec<SlotSchema>,
-    /// Manifest schema version — bumps per VERSIONING.md.
-    #[serde(default = "default_schema_version")]
-    pub schema_version: u32,
-}
-
-fn default_schema_version() -> u32 {
-    1
-}
-
-impl KindManifest {
-    pub fn new(id: impl Into<KindId>, containment: ContainmentSchema) -> Self {
-        Self {
-            id: id.into(),
-            display_name: None,
-            facets: FacetSet::default(),
-            containment,
-            slots: Vec::new(),
-            schema_version: 1,
-        }
-    }
-
-    pub fn with_facets(mut self, facets: FacetSet) -> Self {
-        self.facets = facets;
-        self
-    }
-
-    pub fn with_slots(mut self, slots: Vec<SlotSchema>) -> Self {
-        self.slots = slots;
-        self
-    }
-
-    pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
-        self.display_name = Some(name.into());
-        self
-    }
-}
+use spi::{KindId, KindManifest};
 
 /// Thread-safe kind registry.
 ///

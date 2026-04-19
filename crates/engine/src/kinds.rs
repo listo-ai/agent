@@ -2,84 +2,62 @@
 //!
 //! The engine owns three kinds that together express "a running flow":
 //!
-//! * `acme.core.flow` \u{2014} a flow document container. Lives under any
+//! * `acme.core.flow` — a flow document container. Lives under any
 //!   other container; holds the flow's internal nodes. Facet `IsFlow`
 //!   wires it into palette grouping and RBAC.
-//! * `acme.engine.read_slot` \u{2014} a flow-internal node that subscribes
-//!   to an external slot and emits its value onto a wire.
-//! * `acme.engine.write_slot` \u{2014} a flow-internal node that writes a
-//!   wire value back to an external slot.
+//! * `acme.engine.read_slot` — a flow-internal node that subscribes to
+//!   an external slot and emits its value onto a wire.
+//! * `acme.engine.write_slot` — a flow-internal node that writes a wire
+//!   value back to an external slot.
 //!
 //! In Stage 2 only the kinds themselves are registered; execution of
 //! flow documents arrives in Stage 2b once crossflow is vendored per
-//! `docs/design/RUNTIME.md` § "What crossflow is". The **live-wire
-//! executor** already works without any of these kinds \u{2014} it reads and
-//! writes slots directly on the graph.
+//! `docs/design/RUNTIME.md` § "What crossflow is". The live-wire
+//! executor works without any of these kinds — it reads and writes
+//! slots directly on the graph.
+//!
+//! Manifests are YAMLs under `manifests/` in this crate, wired via
+//! `#[derive(NodeKind)]` so the SDK contract surface is the single
+//! source of truth (Stage 3a-1).
 
-use graph::{
-    Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindId, KindManifest,
-    KindRegistry, ParentMatcher, SlotRole, SlotSchema,
-};
-use serde_json::json;
+use extensions_sdk::NodeKind;
+use graph::KindRegistry;
 
 /// Register every engine-contributed kind.
 pub fn register(kinds: &KindRegistry) {
-    kinds.register(flow());
-    kinds.register(read_slot());
-    kinds.register(write_slot());
+    kinds.register(<Flow as NodeKind>::manifest());
+    kinds.register(<ReadSlot as NodeKind>::manifest());
+    kinds.register(<WriteSlot as NodeKind>::manifest());
 }
 
-pub fn flow() -> KindManifest {
-    KindManifest::new(
-        KindId::new("acme.core.flow"),
-        ContainmentSchema::default()
-            .with_may_contain([
-                ParentMatcher::Facet(Facet::IsCompute),
-                ParentMatcher::Kind(KindId::new("acme.engine.read_slot")),
-                ParentMatcher::Kind(KindId::new("acme.engine.write_slot")),
-                ParentMatcher::Kind(KindId::new("acme.core.flow")),
-            ])
-            .with_cardinality(Cardinality::ManyPerParent)
-            .with_cascade(CascadePolicy::Strict),
-    )
-    .with_display_name("Flow")
-    .with_facets(FacetSet::of([Facet::IsFlow, Facet::IsContainer]))
-}
+#[derive(extensions_sdk::NodeKind)]
+#[node(
+    kind = "acme.core.flow",
+    manifest = "manifests/flow.yaml",
+    behavior = "none"
+)]
+pub struct Flow;
 
-pub fn read_slot() -> KindManifest {
-    KindManifest::new(
-        KindId::new("acme.engine.read_slot"),
-        ContainmentSchema::bound_under([ParentMatcher::Facet(Facet::IsFlow)]),
-    )
-    .with_display_name("Read Slot")
-    .with_facets(FacetSet::of([Facet::IsCompute]))
-    .with_slots(vec![
-        // User-authored target: which slot to subscribe to.
-        SlotSchema::new("target_path", SlotRole::Config).with_schema(json!({"type": "string"})),
-        SlotSchema::new("target_slot", SlotRole::Config).with_schema(json!({"type": "string"})),
-        // Emitted value \u{2014} wired to downstream compute nodes.
-        SlotSchema::new("value", SlotRole::Output),
-    ])
-}
+#[derive(extensions_sdk::NodeKind)]
+#[node(
+    kind = "acme.engine.read_slot",
+    manifest = "manifests/read_slot.yaml",
+    behavior = "none"
+)]
+pub struct ReadSlot;
 
-pub fn write_slot() -> KindManifest {
-    KindManifest::new(
-        KindId::new("acme.engine.write_slot"),
-        ContainmentSchema::bound_under([ParentMatcher::Facet(Facet::IsFlow)]),
-    )
-    .with_display_name("Write Slot")
-    .with_facets(FacetSet::of([Facet::IsCompute]))
-    .with_slots(vec![
-        SlotSchema::new("target_path", SlotRole::Config).with_schema(json!({"type": "string"})),
-        SlotSchema::new("target_slot", SlotRole::Config).with_schema(json!({"type": "string"})),
-        // Incoming value \u{2014} wired from upstream.
-        SlotSchema::new("value", SlotRole::Input).writable(),
-    ])
-}
+#[derive(extensions_sdk::NodeKind)]
+#[node(
+    kind = "acme.engine.write_slot",
+    manifest = "manifests/write_slot.yaml",
+    behavior = "none"
+)]
+pub struct WriteSlot;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use spi::{Facet, KindId};
 
     #[test]
     fn all_three_register() {
@@ -96,6 +74,7 @@ mod tests {
 
     #[test]
     fn flow_carries_is_flow_facet() {
-        assert!(flow().facets.contains(Facet::IsFlow));
+        let m = <Flow as NodeKind>::manifest();
+        assert!(m.facets.contains(Facet::IsFlow));
     }
 }

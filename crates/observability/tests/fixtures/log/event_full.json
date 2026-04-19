@@ -1,0 +1,22 @@
+{
+  "ts": "2026-04-19T14:03:22.417Z",
+  "level": "warn",
+  "msg": "retry queued",
+  "target": "engine::queue",
+  "log.schema_version": 1,
+  "tenant_id": "tenant-42",
+  "user_id": "user-7",
+  "agent_id": "agent-ab12",
+  "node_path": "root/devices/sensor-1",
+  "kind_id": "com.example.pg.query",
+  "msg_id": "m-0001",
+  "parent_msg_id": "m-0000",
+  "flow_id": "flow-9",
+  "request_id": "req-xyz",
+  "span_id": "0123456789abcdef",
+  "trace_id": "0123456789abcdef0123456789abcdef",
+  "plugin_id": "com.example.pg.query",
+  "plugin_version": "1.2.3",
+  "ctx.retry_count": 3,
+  "ctx.reason": "5xx"
+}

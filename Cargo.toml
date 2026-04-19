@@ -25,6 +25,7 @@ members = [
     "crates/graph",
     "crates/engine",
     "crates/extensions-sdk",
+    "crates/extensions-sdk-macros",
     "crates/extensions-host",
     "crates/apps/agent",
 ]
@@ -63,6 +64,7 @@ transport-mcp = { path = "crates/transport-mcp" }
 graph = { path = "crates/graph" }
 engine = { path = "crates/engine" }
 extensions-sdk = { path = "crates/extensions-sdk" }
+extensions-sdk-macros = { path = "crates/extensions-sdk-macros" }
 extensions-host = { path = "crates/extensions-host" }
 
 # Third-party.
@@ -78,6 +80,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 semver = { version = "1", features = ["serde"] }
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

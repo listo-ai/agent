@@ -9,8 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use engine::{kinds as engine_kinds, queue, Engine, EngineState};
-use graph::{seed, GraphStore, KindId, KindRegistry, NodePath, SlotRef};
+use graph::{seed, GraphStore, KindRegistry, SlotRef};
 use serde_json::json;
+use spi::{KindId, NodePath};
 use tokio::time::sleep;
 
 fn fresh() -> (Arc<GraphStore>, Arc<Engine>) {

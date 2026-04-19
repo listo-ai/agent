@@ -1,4 +1,8 @@
-//! Identifier types. Small, cheap to clone, serialisable.
+//! Identifier types — small, cheap to clone, serialisable.
+//!
+//! These are part of the contract surface: plugin authors reference them
+//! via the SDK's prelude. Keep them here (not in `graph`) so an extension
+//! crate never transitively depends on the graph runtime.
 
 use std::fmt;
 use std::str::FromStr;
@@ -32,8 +36,8 @@ impl fmt::Display for NodeId {
 
 /// Reverse-DNS kind identifier (e.g. `acme.driver.bacnet.point`).
 ///
-/// The kind is a *type*; the node path is a *location*. Two different
-/// things — one kind can have thousands of instances.
+/// The kind is a *type*; the node path is a *location*. One kind can
+/// have thousands of instances.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct KindId(String);
@@ -166,7 +170,6 @@ mod tests {
         assert!(NodePath::root().is_prefix_of(&a));
         assert!(a.is_prefix_of(&ab));
         assert!(!a.is_prefix_of(&c));
-        // `/a` must not be a prefix of `/ab` even though the string starts with it.
         let ab_sibling = NodePath::root().child("ab");
         assert!(!a.is_prefix_of(&ab_sibling));
     }

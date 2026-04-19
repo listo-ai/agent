@@ -1,0 +1,17 @@
+id: acme.driver.demo.point
+display_name: Demo Point
+facets:
+  - isPoint
+  - isWritable
+containment:
+  must_live_under:
+    - kind: acme.driver.demo.device
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: value
+    role: output
+    value_schema:
+      type: number
+    writable: true

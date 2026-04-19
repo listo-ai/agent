@@ -17,6 +17,7 @@ semver = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+serde_yml = { workspace = true }
 
 [package.metadata.spi]
 # Non-Rust artifacts ship alongside the crate:

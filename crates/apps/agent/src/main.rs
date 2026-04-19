@@ -18,7 +18,8 @@ use config::{
 };
 use data_sqlite::SqliteGraphRepo;
 use engine::{kinds as engine_kinds, queue, Engine};
-use graph::{seed, GraphStore, KindId, KindRegistry};
+use graph::{seed, GraphStore, KindRegistry};
+use spi::KindId;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::info;
 

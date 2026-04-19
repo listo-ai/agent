@@ -14,16 +14,52 @@ The thesis is a **node/slot/flow** model plus a first-class **extension system**
 
 Common applications include BAS, industrial IoT, home automation, service orchestration, ETL, internal-tools glue. None of them is the reason the platform exists; the platform exists to be a good generic substrate for all of them.
 
+---
+
+## READ THIS. Two coupled rules that govern everything.
+
+These are not guidelines. They are the platform's spine. Get either one wrong and the whole system becomes a parallel-universe mess of special cases.
+
+### Rule A — Everything. Is. A. Node.
+
+**No exceptions. No private entities. No parallel state.**
+
+Everything users touch: devices, points, users, roles, flows, alarms, schedules, dashboards, widgets, extensions, settings, history — **nodes**.
+
+Everything the platform itself runs on: the agent, the engine, health metrics, extension supervisor, safe-state policies, every long-running subsystem's state — **nodes**.
+
+If you're about to write a subsystem that owns `Mutex<SomeState>` in a private struct nobody outside the subsystem can observe, **stop**. You are building a parallel system. Promote the state to a kind with status-role slots and make the subsystem an execution-only concern over graph state.
+
+See [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md), especially § "The agent itself is a node too — no parallel state".
+
+### Rule B — The graph is the world. The engine + flows consume it. There is no back channel.
+
+The graph is the single source of truth for what exists in the system and what it's doing right now. **The engine does not hold a parallel model.** Flows do not hold a parallel model. The Studio does not hold a parallel model.
+
+Everything that wants to observe or act on any part of the system — engine, flows, Studio, MCP, CLI, audit, RBAC, dashboard widget, Slack notifier, scheduled backup, another plugin — reads and writes the graph through exactly one API: slot read, slot write, slot subscribe, lifecycle transition, link add/remove. **Same API for the engine as for a third-party flow.**
+
+Practical consequences:
+
+- A flow can subscribe to `graph.<tenant>.agent.engine.slot.state.changed` to react to engine lifecycle, because engine state *is* a slot.
+- The Studio renders engine status with the same generic property panel it uses for a Modbus device, because both are nodes with slots.
+- RBAC on engine state works the same as RBAC on a user's email address, because both are slots with roles.
+- When Stage 7 ships NATS, every subsystem becomes remotely observable automatically, because the graph already emits events for every change.
+
+**When you add a new subsystem, your first question is: "What nodes does it contribute? What slots does it read? What slots does it write?"** — not "what new API do I need?" If you're reaching for a new API, you're probably violating Rule A or Rule B.
+
+---
+
 ## Non-negotiables
 
 These are enforced in review. A PR that violates them gets sent back. No exceptions.
 
-1. **Everything is a node.** Users, devices, extensions, alarms, flows, health metrics — all nodes in one unified graph with typed slots, lifecycle, event stream, facets, containment rules. If you're tempted to add an entity outside this model, stop and ask why. See [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md).
+1. **Rule A + Rule B above.** Everything is a node (including the agent); the graph is the world; engine and flows consume it through the same API, with no back channel. If you haven't just read the "READ THIS" section above, go back and read it — violating these two rules is the #1 way a PR gets sent back.
 2. **Layer separation: `transport → domain → data`.** Never the other direction. No SQL in handlers. No HTTP in domain. No business logic in transport. See [CODE-LAYOUT.md](CODE-LAYOUT.md).
 3. **Small files, small functions.** 400 lines per file max, 50 lines per function max, ~10 public items per module. If you're about to write a 1200-line "complete solution," stop and split it first.
 4. **Traits first, implementations second.** Write the interface before the impl. Domain depends on traits, not on concrete impls.
 5. **Node-RED-compatible `Msg` envelope** is the message shape on wires. Immutable on the wire; mutable at the QuickJS Function-node JS boundary. See [EVERYTHING-AS-NODE.md § "Wires, ports, and messages"](EVERYTHING-AS-NODE.md) and [NODE-AUTHORING.md](NODE-AUTHORING.md).
 6. **Every contract surface is versioned independently** via capability manifests — extensions declare required capabilities, host advertises provided ones, install is a set-match. See [VERSIONING.md](VERSIONING.md).
+7. **Logging goes through the shared primitive, never through `println!` / `eprintln!` / `console.log`.** One format, one field contract, one redactor, one outbox-backed ship path — across core, Wasm, and process plugins alike. See [LOGGING.md](LOGGING.md).
 
 ## Doc index
 
@@ -41,6 +77,8 @@ These are enforced in review. A PR that violates them gets sent back. No excepti
 | [DOCKER.md](DOCKER.md) | Multi-arch distroless images, docker-compose overlays per profile, edge vs cloud NATS topology, signing. |
 | [CODE-LAYOUT.md](CODE-LAYOUT.md) | Crate structure (`/crates/*`), naming rules, layer discipline, anti-patterns, AI-specific guidance. |
 | [VERSIONING.md](VERSIONING.md) | Per-surface semver rules, capability manifest, extension install-time match, kind migrations, deprecation windows. |
+| [LOGGING.md](LOGGING.md) | One log format everywhere. Canonical fields, levels, correlation ids, per-deployment sinks, plugin integration across all three flavors, redaction, outbox-backed shipping, log-vs-audit boundary. |
+| [TESTS.md](TESTS.md) | Test-driven development here — test categories, trait-suite pattern, contract fixtures, multi-backend parity, property + snapshot tests, determinism rules, what NOT to test, CI gates. |
 | [../sessions/STEPS.md](../sessions/STEPS.md) | **Current coding stages** with `[DONE]` / `[DEFERRED]` markers. Temporary — will be removed when implementation catches up. Always check it to see what's already wired up before duplicating work. |
 
 ## Task router — read these docs before starting
@@ -63,6 +101,8 @@ Find your task. Read the listed docs **in the order given** before touching code
 | **Docker / deployment / Helm** | NEW-SESSION → DOCKER → OVERVIEW → README (cloud vs edge topology) |
 | **CLI commands (`/crates/transport-cli`)** | NEW-SESSION → README (CLI section) → CODE-LAYOUT → QUERY-LANG (RSQL flags) |
 | **Versioning / capabilities / extension compat** | NEW-SESSION → VERSIONING → CODE-LAYOUT (`/crates/spi`) |
+| **Logging / tracing / observability** | NEW-SESSION → LOGGING → CODE-LAYOUT (`/crates/observability`) → VERSIONING (log schema is a contract surface) |
+| **Writing or reviewing tests** | NEW-SESSION → TESTS → CODE-LAYOUT (where tests live) — read TESTS before writing any test, especially trait-suite / contract / snapshot patterns |
 | **Cross-cutting refactor / unsure where to start** | NEW-SESSION → CODE-LAYOUT → EVERYTHING-AS-NODE → STEPS — then **ask the user a clarifying question** before touching code |
 
 If your task isn't in the table: read NEW-SESSION + CODE-LAYOUT + EVERYTHING-AS-NODE, then ask the user which other docs apply.
@@ -84,7 +124,7 @@ If your task isn't in the table: read NEW-SESSION + CODE-LAYOUT + EVERYTHING-AS-
 - **No `unwrap()` / `panic!()` in library code** except for explicitly-documented invariant violations.
 - **Write no comments that restate the code.** Only leave a comment for non-obvious *why* — a hidden constraint, a workaround, a subtle invariant. Never reference "the current task" or PR context; that belongs in the commit message.
 - **No `TODO`/`FIXME` without an issue number.**
-- **Tests go with the code.** Unit tests in `#[cfg(test)] mod tests`; integration tests in `tests/`. A change to domain logic must have a test.
+- **Tests arrive with the code, never after.** Same PR. Unit tests in `#[cfg(test)] mod tests`; integration tests in `tests/`. A change to domain logic must have a test; a test must fail if the implementation is reverted. See [TESTS.md](TESTS.md) for the full pattern library (trait-suite, contract fixtures, snapshot, property, determinism rules).
 - **Message authoring:** use `spi::Msg` + `Msg::new` / `Msg::child`. Messages are immutable on the wire — you produce a new one, you don't mutate.
 - **Slot role discipline:** `config` (user-authored, persisted, audited), `input` (live data in), `output` (live data out), `status` (engine-computed). Role determines RBAC, audit, and telemetry routing — getting it wrong breaks all three quietly.
 

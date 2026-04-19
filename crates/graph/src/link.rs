@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::ids::NodeId;
+use spi::NodeId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

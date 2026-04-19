@@ -9,7 +9,18 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["file"]
+# File sink support. Disable for cloud-only container builds that log to stdout.
+file = []
+
 [dependencies]
+spi = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }

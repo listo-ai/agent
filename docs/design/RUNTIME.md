@@ -41,6 +41,8 @@ When a flow stops, something has to happen to its outputs. Three policies, decla
 
 This is a first-class concept in the node configuration UI. Every writable output declares its safe-state policy. The engine enforces it on stop, on crash, on disconnect. Protocol extensions like BACnet map cleanly onto the "release to downstream default" policy via their native mechanisms; extensions that talk to generic APIs or databases pick whichever policy fits the semantics of the write.
 
+**Where the policy lives — on the node, in the graph.** The safe-state policy is a **config-role slot on the writable output's own node**, not a registry entry the engine owns. The engine is a *reader* of policies, not an *owner*. On shutdown (or crash, or disconnect) the engine walks the graph for nodes with `kind.facets == IsWritable` and a non-null `config.safe_state.policy` slot, and applies each. This keeps the engine out of the "parallel state" antipattern (see [EVERYTHING-AS-NODE.md § "The agent itself is a node too — no parallel state"](EVERYTHING-AS-NODE.md)) — and it means the Studio, audit log, RBAC, and subscription fabric all treat safe-state exactly like any other config slot, with no special case.
+
 ## How this changes the runtime design
 
 A few concrete additions to what I've described so far:

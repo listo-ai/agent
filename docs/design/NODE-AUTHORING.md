@@ -4,6 +4,20 @@ How to build a node kind — its settings, its slots, how it interacts with the 
 
 For the platform-wide node model (containment, facets, cascading delete, the unified graph) see [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md). This doc is the practical companion: "I'm writing a node. What do I declare, and how does it behave when messages flow through it?"
 
+## File formats — you always author YAML
+
+To stop this question from coming up again:
+
+| Role | File extension | Why |
+|---|---|---|
+| **Manifests you author** — kind manifests, extension manifests, flow documents written by hand, multi-variant settings | **YAML** (`manifest.yaml`, `count.yaml`, `flow.yaml`) | Humans read YAML better; comments allowed; no quote noise; IDE folds nicely |
+| **The JSON Schema meta-schemas that validate what you author** | **JSON** (`spi/schemas/node.schema.json`, `spi/schemas/flow.schema.json`) | JSON Schema is an external standard. Every validator in every language (`schemars`, `ajv`, `jsonschema`, etc.) expects these as JSON. Shipping as YAML would force every consumer to convert first. These files are part of the SPI contract — nobody edits them as part of day-to-day authoring. |
+| **Wire + storage** — `Msg` on a wire, DB payloads, NATS subject payloads, API request/response bodies | **JSON** | Node-RED compatibility for `Msg` ([EVERYTHING-AS-NODE.md § "Wires, ports, and messages"](EVERYTHING-AS-NODE.md)); SQL `JSONB` for storage. Machines talk JSON; authors never see this layer. |
+
+**The rule: if you're writing it, it's YAML.** The JSON files are either contract meta-schemas (one per surface) or wire formats (machine-to-machine). Kind manifests under `crates/*/manifests/` are always `.yaml`. Extension bundles ship `manifest.yaml`. Settings schemas embedded in manifests are expressed as YAML inline, not as separate JSON files.
+
+When a YAML manifest is normalised into the system's internal store (the graph kind registry, the DB, the capability manifest on the wire), it's converted to JSON by the loader — one canonical form inside the system, authored form at the edges.
+
 ## Anatomy of a node kind
 
 A kind is declared by a manifest plus some code. The manifest carries the contract; the code carries the behaviour.

@@ -6,13 +6,12 @@
 
 use data_repos::{GraphRepo, GraphSnapshot, PersistedLink, PersistedNode, PersistedSlot};
 use serde_json::Value as JsonValue;
+use spi::{NodeId, NodePath, SlotRole};
 
 use crate::error::GraphError;
-use crate::ids::{NodeId, NodePath};
 use crate::lifecycle::Lifecycle;
 use crate::link::{Link, LinkId, SlotRef};
 use crate::node::NodeRecord;
-use crate::slot::SlotRole;
 
 pub(crate) fn node_to_persisted(rec: &NodeRecord) -> PersistedNode {
     PersistedNode {

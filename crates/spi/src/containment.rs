@@ -2,23 +2,75 @@
 //!
 //! Every kind declares what may live under it and where it may itself
 //! live. The graph service enforces this on every mutation — one code
-//! path covering CRUD, move, and extension-driven sync.
+//! path covering CRUD, move, and extension-driven sync. The types live
+//! here so extension authors can declare containment without pulling in
+//! the graph runtime.
 
-use serde::{Deserialize, Serialize};
+use serde::de::Error as DeError;
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::facets::{Facet, FacetSet};
 use crate::ids::KindId;
 
 /// How to match a potential parent kind: by exact kind id, or by facet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "by", rename_all = "snake_case")]
+///
+/// Serialises as a one-key map so containment lists read naturally in
+/// YAML:
+///
+/// ```yaml
+/// must_live_under:
+///   - kind: acme.core.station
+///   - facet: isContainer
+/// ```
+///
+/// Implemented by hand (not derived) because external tagging on a
+/// tuple variant with a transparent-string inner type doesn't round-trip
+/// through `serde_yml`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParentMatcher {
     Kind(KindId),
     Facet(Facet),
 }
 
+impl Serialize for ParentMatcher {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut map = s.serialize_map(Some(1))?;
+        match self {
+            ParentMatcher::Kind(k) => map.serialize_entry("kind", k)?,
+            ParentMatcher::Facet(f) => map.serialize_entry("facet", f)?,
+        }
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ParentMatcher {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Helper {
+            #[serde(default)]
+            kind: Option<KindId>,
+            #[serde(default)]
+            facet: Option<Facet>,
+        }
+        let h = Helper::deserialize(de)?;
+        match (h.kind, h.facet) {
+            (Some(k), None) => Ok(ParentMatcher::Kind(k)),
+            (None, Some(f)) => Ok(ParentMatcher::Facet(f)),
+            (Some(_), Some(_)) => Err(D::Error::custom(
+                "ParentMatcher must set exactly one of `kind` or `facet`, not both",
+            )),
+            (None, None) => Err(D::Error::custom(
+                "ParentMatcher must set either `kind` or `facet`",
+            )),
+        }
+    }
+}
+
 impl ParentMatcher {
-    pub(crate) fn matches(&self, parent_kind: &KindId, parent_facets: &FacetSet) -> bool {
+    /// True if this matcher applies to a parent with the given kind/facets.
+    /// Used by the graph's placement validator and the kind-derive macro.
+    pub fn matches(&self, parent_kind: &KindId, parent_facets: &FacetSet) -> bool {
         match self {
             ParentMatcher::Kind(k) => k == parent_kind,
             ParentMatcher::Facet(f) => parent_facets.contains(*f),
@@ -118,5 +170,34 @@ impl ContainmentSchema {
 
     pub fn is_free(&self) -> bool {
         self.must_live_under.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parent_matcher_round_trips_through_yaml() {
+        for m in [
+            ParentMatcher::Kind(KindId::new("acme.core.station")),
+            ParentMatcher::Facet(Facet::IsContainer),
+        ] {
+            let y = serde_yml::to_string(&m).unwrap();
+            let back: ParentMatcher = serde_yml::from_str(&y).unwrap();
+            assert_eq!(back, m, "round-trip failed for {m:?}: {y}");
+        }
+    }
+
+    #[test]
+    fn parent_matcher_rejects_both_keys() {
+        let bad = "kind: foo\nfacet: isContainer\n";
+        assert!(serde_yml::from_str::<ParentMatcher>(bad).is_err());
+    }
+
+    #[test]
+    fn parent_matcher_rejects_neither_key() {
+        let bad = "other: x\n";
+        assert!(serde_yml::from_str::<ParentMatcher>(bad).is_err());
     }
 }

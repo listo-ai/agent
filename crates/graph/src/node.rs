@@ -4,7 +4,8 @@
 //! persistent backing via `data-repos` lands in Stage 5 behind the same
 //! public surface.
 
-use crate::ids::{KindId, NodeId, NodePath};
+use spi::{KindId, NodeId, NodePath};
+
 use crate::lifecycle::Lifecycle;
 use crate::slot::{SlotMap, SlotValue};
 

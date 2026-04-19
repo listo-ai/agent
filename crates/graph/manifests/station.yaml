@@ -1,0 +1,15 @@
+id: acme.core.station
+display_name: Station
+facets:
+  - isSystem
+  - isContainer
+containment:
+  must_live_under: []
+  may_contain:
+    - facet: isContainer
+    - facet: isDriver
+    - facet: isCompute
+    - facet: isFlow
+  cardinality_per_parent: many_per_parent
+  cascade: deny
+slots: []

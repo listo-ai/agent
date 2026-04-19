@@ -10,8 +10,9 @@ use data_repos::{
     GraphRepo, GraphSnapshot, PersistedLink, PersistedNode, PersistedSlot, RepoError,
 };
 use data_sqlite::SqliteGraphRepo;
-use graph::{seed, GraphStore, KindId, KindRegistry, NodePath, NullSink, SlotRef};
+use graph::{seed, GraphStore, KindRegistry, NullSink, SlotRef};
 use serde_json::json;
+use spi::{KindId, NodePath};
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 

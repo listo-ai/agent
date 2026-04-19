@@ -1,0 +1,15 @@
+{
+  "ts": "2026-04-19T14:03:22.417Z",
+  "level": "info",
+  "msg": "http request",
+  "target": "transport::rest",
+  "log.schema_version": 1,
+  "authorization": "<redacted>",
+  "x-api-key": "<redacted>",
+  "password": "<redacted>",
+  "token": "<redacted>",
+  "db_secret": "<redacted>",
+  "api_token": "<redacted>",
+  "signing_key": "<redacted>",
+  "request_id": "req-xyz"
+}

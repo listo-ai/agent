@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::ids::{KindId, NodePath};
+use spi::{KindId, NodePath};
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum GraphError {

@@ -10,7 +10,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::ids::{KindId, NodeId, NodePath};
+use spi::{KindId, NodeId, NodePath};
+
 use crate::lifecycle::Lifecycle;
 use crate::link::{Link, LinkId, SlotRef};
 

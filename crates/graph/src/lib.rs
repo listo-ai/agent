@@ -11,12 +11,14 @@
 //!
 //! The crate is synchronous on purpose. Pushing events over the wire is
 //! the caller's problem — graph mutations don't own an async runtime.
+//!
+//! Declarative types (`KindManifest`, `KindId`, `NodeId`, `NodePath`,
+//! `ContainmentSchema`, `Facet`/`FacetSet`, `SlotSchema`, `SlotRole`)
+//! live in the [`spi`] crate — extension authors reach them through the
+//! SDK prelude without pulling in the graph runtime.
 
-mod containment;
 mod error;
 mod event;
-mod facets;
-mod ids;
 mod kind;
 mod lifecycle;
 mod link;
@@ -26,14 +28,11 @@ pub mod seed;
 mod slot;
 mod store;
 
-pub use containment::{Cardinality, CascadePolicy, ContainmentSchema, ParentMatcher};
 pub use error::GraphError;
 pub use event::{EventSink, GraphEvent, NullSink, VecSink};
-pub use facets::{Facet, FacetSet};
-pub use ids::{KindId, NodeId, NodePath};
-pub use kind::{KindManifest, KindRegistry};
+pub use kind::KindRegistry;
 pub use lifecycle::Lifecycle;
 pub use link::{Link, LinkId, SlotRef};
 pub use node::NodeSnapshot;
-pub use slot::{SlotRole, SlotSchema, SlotValue};
+pub use slot::{SlotMap, SlotValue};
 pub use store::GraphStore;

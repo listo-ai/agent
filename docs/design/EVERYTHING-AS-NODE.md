@@ -600,6 +600,34 @@ Be honest about the edge cases:
 
 **Extension-owned nodes.** An extension's nodes must behave correctly if the extension crashes. Solution: when an extension goes into Fault state, its nodes transition to a `Stale` lifecycle — readable but marked untrusted — and flows subscribed to those nodes see the transition immediately.
 
+## The agent itself is a node too — no parallel state
+
+The rule applies to the platform's own subsystems, not just user-visible entities. If the engine, the extension supervisor, the health monitor, or any other agent subsystem owns runtime state *outside* the graph, it has become a parallel system — and every flow that wants to react to it has to learn a second API. That's the failure mode the whole model exists to prevent.
+
+Concretely, the agent contributes these kinds on boot:
+
+| Kind | Purpose | Slots (non-exhaustive) |
+|---|---|---|
+| `acme.agent.self` | One per running agent — root of agent-owned subtree. `isSystem`, `isContainer`, `cardinality_per_parent: ExactlyOne` under its station. | `agent_id`, `version`, `role`, `boot_ts` (all `status`) |
+| `acme.agent.engine` | The flow engine's state. Under `acme.agent.self`. | `state` (`status`, string: `Starting`/`Running`/`Paused`/`Stopping`/`Stopped`), `last_transition_ts`, `flows_running`, `flows_paused` |
+| `acme.agent.health` | Process + host metrics. | `memory_mb`, `cpu_pct`, `fd_count`, `disk_free_mb` — all `status`, throttled per the high-frequency-telemetry rule above |
+| `acme.agent.supervisor` | Extension-process supervisor state, one child per supervised extension. | `extension_id`, `state`, `pid`, `restart_count` |
+
+**The engine does not own its state in a private struct.** The engine owns **execution** (the async worker, the scheduler, the extension supervisor, the safe-state walker). State representation lives in the graph:
+
+- `Engine::transition(new)` writes to the `acme.agent.engine.state` slot via `GraphStore::write_slot`. The `SlotChanged` event *is* the notification.
+- Private `EngineState` fields, where they exist in the code, are derived reads from the graph, not a parallel cache.
+- Safe-state policies are **config-role slots on the writable point's own node**, not entries in an engine-local registry. The engine walks the graph at shutdown (`kind.facets == IsWritable && config.safe_state.policy != null`) to find what to apply.
+
+Why it matters:
+
+- Flows can subscribe to `graph.<tenant>.agent.engine.slot.state.changed` with the same machinery they use for device points. The "shut down non-critical flows on memory pressure" example in this doc works because agent health is a node.
+- The Studio renders engine status using the same generic property panel it uses for everything else.
+- RBAC on engine state is the same mechanism as RBAC on devices. No special case.
+- The audit log captures engine lifecycle transitions through the same stream as any other slot write.
+
+**Litmus test when adding a subsystem.** If you introduce a new long-running component (health monitor, rate limiter, plugin loader, metrics collector), ask: *where does its state live?* If the answer is a struct with a `Mutex<...>` that nobody outside the subsystem can observe, you're building a parallel system. Promote the state to a kind with status-role slots and make the subsystem an execution-only concern over graph state.
+
 ## What this means for the coding stages
 
 Stage 1 — the "engine skeleton" — needs to be **the graph service**, not just crossflow integration. Everything after depends on it.
@@ -622,7 +650,7 @@ Updated stage order:
 
 ## Engineering rule
 
-> **Everything is a node. This is the core design commitment. Any new entity type in the system — whether a user, a device, a schedule, an alarm, a plugin, a health check, a metric, or something we haven't thought of yet — is a node in the graph. It has an ID, a path, typed slots, a lifecycle, an event stream, a facet set, and a containment schema. Do not add entities outside this model. If you find yourself tempted to create a top-level concept that isn't a node, stop and ask why.**
+> **Everything is a node. This is the core design commitment. Any new entity type in the system — whether a user, a device, a schedule, an alarm, a plugin, a health check, a metric, the agent's own engine state, or something we haven't thought of yet — is a node in the graph. It has an ID, a path, typed slots, a lifecycle, an event stream, a facet set, and a containment schema. Do not add entities outside this model. The rule applies to the platform's own internals too: if a subsystem owns state in a private struct that nobody outside can observe, you've built a parallel system. If you find yourself tempted to create a top-level concept that isn't a node, stop and ask why.**
 
 This rule is reflected in [CODE-LAYOUT.md](CODE-LAYOUT.md): the `graph` crate is the core, and every domain crate is in effect a node-kind registration with associated business rules.
 

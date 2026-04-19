@@ -1,0 +1,25 @@
+id: acme.compute.math.add
+display_name: Add
+facets:
+  - isCompute
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: a
+    role: input
+    value_schema:
+      type: number
+    writable: false
+  - name: b
+    role: input
+    value_schema:
+      type: number
+    writable: false
+  - name: sum
+    role: output
+    value_schema:
+      type: number
+    writable: false

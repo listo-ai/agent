@@ -61,7 +61,7 @@ pub fn channel() -> (Arc<dyn EventSink>, mpsc::UnboundedReceiver<GraphEvent>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use graph::{KindId, NodeId, NodePath};
+    use spi::{KindId, NodeId, NodePath};
 
     #[tokio::test]
     async fn sink_forwards_to_receiver() {

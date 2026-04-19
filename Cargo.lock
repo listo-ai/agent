@@ -278,6 +278,7 @@ name = "engine"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "extensions-sdk",
  "graph",
  "serde",
  "serde_json",
@@ -314,7 +315,24 @@ dependencies = [
 name = "extensions-sdk"
 version = "0.0.1"
 dependencies = [
+ "extensions-sdk-macros",
+ "serde",
+ "serde_json",
+ "serde_yml",
  "spi",
+ "thiserror",
+]
+
+[[package]]
+name = "extensions-sdk-macros"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "serde_yml",
+ "spi",
+ "syn",
 ]
 
 [[package]]
@@ -366,6 +384,7 @@ version = "0.0.1"
 dependencies = [
  "data-repos",
  "data-sqlite",
+ "extensions-sdk",
  "serde",
  "serde_json",
  "spi",
@@ -553,6 +572,10 @@ dependencies = [
 name = "observability"
 version = "0.0.1"
 dependencies = [
+ "serde",
+ "serde_json",
+ "spi",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
 ]
@@ -781,6 +804,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "serde_yml",
  "uuid",
 ]
 

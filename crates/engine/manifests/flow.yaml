@@ -1,0 +1,15 @@
+id: acme.core.flow
+display_name: Flow
+facets:
+  - isFlow
+  - isContainer
+containment:
+  must_live_under: []
+  may_contain:
+    - facet: isCompute
+    - kind: acme.engine.read_slot
+    - kind: acme.engine.write_slot
+    - kind: acme.core.flow
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots: []

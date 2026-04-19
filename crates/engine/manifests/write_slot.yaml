@@ -1,0 +1,25 @@
+id: acme.engine.write_slot
+display_name: Write Slot
+facets:
+  - isCompute
+containment:
+  must_live_under:
+    - facet: isFlow
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: target_path
+    role: config
+    value_schema:
+      type: string
+    writable: false
+  - name: target_slot
+    role: config
+    value_schema:
+      type: string
+    writable: false
+  - name: value
+    role: input
+    value_schema: {}
+    writable: true

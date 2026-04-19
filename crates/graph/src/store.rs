@@ -17,17 +17,15 @@ use std::sync::{Arc, RwLock};
 
 use data_repos::GraphRepo;
 use serde_json::Value as JsonValue;
+use spi::{Cardinality, CascadePolicy, KindId, KindManifest, NodeId, NodePath, SlotSchema};
 
-use crate::containment::{Cardinality, CascadePolicy};
 use crate::error::GraphError;
 use crate::event::{EventSink, GraphEvent};
-use crate::ids::{KindId, NodeId, NodePath};
-use crate::kind::{KindManifest, KindRegistry};
+use crate::kind::KindRegistry;
 use crate::lifecycle::Lifecycle;
 use crate::link::{Link, LinkId, SlotRef};
 use crate::node::{NodeRecord, NodeSnapshot};
 use crate::persist;
-use crate::slot::SlotSchema;
 
 pub struct GraphStore {
     kinds: KindRegistry,
@@ -236,8 +234,8 @@ impl GraphStore {
                 .may_contain
                 .iter()
                 .any(|m| match m {
-                    crate::containment::ParentMatcher::Kind(k) => k == &kind,
-                    crate::containment::ParentMatcher::Facet(f) => manifest.facets.contains(*f),
+                    spi::ParentMatcher::Kind(k) => k == &kind,
+                    spi::ParentMatcher::Facet(f) => manifest.facets.contains(*f),
                 });
             if !ok {
                 return Err(GraphError::PlacementRejected {

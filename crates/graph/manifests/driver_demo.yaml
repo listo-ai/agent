@@ -1,0 +1,15 @@
+id: acme.driver.demo
+display_name: Demo Driver
+facets:
+  - isProtocol
+  - isDriver
+  - isContainer
+containment:
+  must_live_under:
+    - kind: acme.core.station
+    - kind: acme.core.folder
+  may_contain:
+    - kind: acme.driver.demo.device
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots: []

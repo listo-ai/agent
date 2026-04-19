@@ -1,56 +1,14 @@
-//! Typed slots on a node.
+//! Live slot state owned by the graph store.
 //!
-//! Every slot has a **role** telling the platform how to treat it:
-//! `config` (user-authored, persisted, audit-worthy), `input`/`output`
-//! (live data flow), or `status` (platform-computed state). See
-//! EVERYTHING-AS-NODE.md § "Slot roles".
+//! The *declarative* slot schema (name, role, JSON schema) lives in
+//! [`spi::SlotSchema`] — it's what plugin authors declare on a kind.
+//! This module owns the runtime half: the monotonically-generationed
+//! [`SlotValue`] and the per-node [`SlotMap`] that backs the store.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SlotRole {
-    Config,
-    Input,
-    Output,
-    Status,
-}
-
-/// Declarative schema for a slot (what value-schemas, direction, role).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SlotSchema {
-    pub name: String,
-    pub role: SlotRole,
-    /// JSON Schema for values written to this slot.
-    #[serde(default)]
-    pub value_schema: JsonValue,
-    #[serde(default)]
-    pub writable: bool,
-}
-
-impl SlotSchema {
-    pub fn new(name: impl Into<String>, role: SlotRole) -> Self {
-        Self {
-            name: name.into(),
-            role,
-            value_schema: JsonValue::Object(Default::default()),
-            writable: false,
-        }
-    }
-
-    pub fn writable(mut self) -> Self {
-        self.writable = true;
-        self
-    }
-
-    pub fn with_schema(mut self, schema: JsonValue) -> Self {
-        self.value_schema = schema;
-        self
-    }
-}
 
 /// A slot's live value plus a monotonic generation counter so
 /// subscribers can tell stale events from fresh.
@@ -105,7 +63,7 @@ impl SlotMap {
     }
 
     /// Seed a slot with a specific value and generation. Used by
-    /// [`crate::persist`] during startup restoration \u{2014} no event fires
+    /// [`crate::persist`] during startup restoration — no event fires
     /// because no user-facing mutation is happening.
     pub(crate) fn restore(&mut self, name: impl Into<String>, value: JsonValue, generation: u64) {
         self.inner

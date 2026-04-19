@@ -9,6 +9,18 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Exactly one must be active per consumer. Enforced by a compile-time
+# guard in `lib.rs` — conflicting features become a hard error.
+default = ["native"]
+native = []
+wasm = []
+process = []
+
 [dependencies]
 spi = { workspace = true }
-
+extensions-sdk-macros = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yml = { workspace = true }
+thiserror = { workspace = true }

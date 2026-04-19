@@ -17,9 +17,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use graph::NodePath;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use spi::NodePath;
 
 /// What the engine does to a writable output when the owning flow
 /// stops, pauses, or disconnects.

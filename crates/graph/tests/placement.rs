@@ -6,10 +6,9 @@
 
 use std::sync::Arc;
 
-use graph::{
-    seed, GraphError, GraphEvent, GraphStore, KindId, KindRegistry, NodePath, SlotRef, VecSink,
-};
+use graph::{seed, GraphError, GraphEvent, GraphStore, KindRegistry, SlotRef, VecSink};
 use serde_json::json;
+use spi::{KindId, NodePath};
 
 fn fresh() -> (Arc<VecSink>, GraphStore) {
     let sink = Arc::new(VecSink::new());

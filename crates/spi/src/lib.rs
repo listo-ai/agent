@@ -8,14 +8,28 @@
 //! - `schemas/flow.schema.json` — flow document format (`schema_version: 1`)
 //! - `schemas/node.schema.json` — node manifest format
 //! - [`Msg`] — Node-RED-compatible message envelope carried on wires
-//!   between slots. See `docs/design/EVERYTHING-AS-NODE.md`.
+//! - Identifier, facet, containment, slot-schema, and manifest types —
+//!   the author-facing names referenced through the SDK prelude. Kept
+//!   here (not in `graph`) so the SDK dep arrow is `extensions-sdk →
+//!   spi`, never into the runtime. See NODE-SCOPE rule #1.
 //!
 //! Rust-side re-exports of generated types land here in later stages.
 
 pub mod capabilities;
+mod containment;
+mod facets;
+mod ids;
+pub mod log;
+mod manifest;
 mod msg;
+mod slot_schema;
 
+pub use containment::{Cardinality, CascadePolicy, ContainmentSchema, ParentMatcher};
+pub use facets::{Facet, FacetSet};
+pub use ids::{KindId, NodeId, NodePath};
+pub use manifest::KindManifest;
 pub use msg::{MessageId, Msg};
+pub use slot_schema::{SlotRole, SlotSchema};
 
 /// Schema version for flow documents. Breaking changes bump this.
 pub const FLOW_SCHEMA_VERSION: u32 = 1;
