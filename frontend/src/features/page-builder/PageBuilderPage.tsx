@@ -15,6 +15,8 @@ import { agentPromise } from "@/lib/agent";
 import { useBuilderStore } from "./store/builder-store";
 import { LivePreview } from "./preview/LivePreview";
 import { EditorPane } from "./panels/EditorPane";
+import { ValidationList } from "./panels/ValidationList";
+import { useValidator } from "./persistence/use-validator";
 import type { DraftPage } from "./model/types";
 import type { NodeSnapshot } from "@sys/agent-client";
 
@@ -51,6 +53,7 @@ export function PageBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const hydrate = useBuilderStore((s) => s.hydrate);
   const reset = useBuilderStore((s) => s.reset);
+  useValidator();
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["page-builder", id],
@@ -101,6 +104,7 @@ export function PageBuilderPage() {
         <EditorPane />
         <LivePreview />
       </div>
+      <ValidationList />
     </div>
   );
 }

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@module-federation/enhanced": "^0.6.0",
+    "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-dialog": "^1.1.0",
     "@radix-ui/react-dropdown-menu": "^2.1.0",
     "@radix-ui/react-separator": "^1.1.0",
@@ -29,6 +30,7 @@
     "clsx": "^2.1.0",
     "dagre": "^0.8.5",
     "lucide-react": "^0.400.0",
+    "monaco-editor": "^0.55.1",
     "oidc-client-ts": "^3.0.0",
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",

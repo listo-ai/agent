@@ -77,6 +77,19 @@ function defaultForKind(kind: PolicyKind): SlotPolicy {
   return defaultOnDemand();
 }
 
+// ─── Error helpers ────────────────────────────────────────────────────────────
+
+function errorMessage(err: unknown): string {
+  if (!err) return "";
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const e = err as Record<string, unknown>;
+    if (typeof e["message"] === "string") return e["message"] as string;
+    if (typeof e["status"] === "number") return `HTTP ${e["status"] as number}`;
+  }
+  return String(err);
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseNumber(s: string, fallback: number): number {
@@ -391,9 +404,9 @@ export function SlotHistoryConfigPanel({
       )}
 
       {/* Error */}
-      {saveMutation.error && (
-        <p className="text-xs text-destructive">
-          {String(saveMutation.error)}
+      {(saveMutation.error ?? removeMutation.error) && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {errorMessage(saveMutation.error ?? removeMutation.error)}
         </p>
       )}
 
