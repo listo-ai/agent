@@ -304,6 +304,13 @@ async fn bootstrap(
             domain_logic::behavior(),
         )
         .context("registering trigger behaviour")?;
+    engine
+        .behaviors()
+        .register(
+            <domain_logic::Heartbeat as extensions_sdk::NodeKind>::kind_id(),
+            domain_logic::heartbeat_behavior(),
+        )
+        .context("registering heartbeat behaviour")?;
 
     Ok((engine, graph, bcast, plugins))
 }

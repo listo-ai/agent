@@ -1,11 +1,17 @@
 //! `acme.logic.heartbeat` — self-driven boolean toggle with a counter.
 //!
-//! Source node: no inputs. On `on_init` it emits `start_state` and arms
-//! a timer. Each timer fire flips `state` and increments `count`. A
-//! stale-fire guard (same pattern as [`crate::trigger`]) ignores fires
-//! whose handle no longer matches the active one — defends against the
-//! cancel-vs-fire race when the user edits `interval_ms` while a timer
-//! is pending.
+//! Source node: no inputs. On `on_init` it emits `start_state` on the
+//! `state` output and arms a timer. Each timer fire flips the state,
+//! increments the counter, and emits both on the output ports. Status
+//! mirrors (`current_state`, `current_count`) hold the readable state
+//! because [`NodeCtx::read_status`] only reads status-role slots — the
+//! output ports are write-only from the behaviour's POV (same idiom as
+//! [`crate::trigger`]).
+//!
+//! A stale-fire guard (pattern borrowed from `trigger`) ignores timer
+//! fires whose handle no longer matches the active one — defends
+//! against the cancel-vs-fire race when the user edits settings while a
+//! timer is pending.
 
 use extensions_sdk::prelude::*;
 use serde::Deserialize;
@@ -36,40 +42,79 @@ fn default_enabled() -> bool {
     true
 }
 
-const STATE_SLOT: &str = "state";
-const COUNT_SLOT: &str = "count";
-const PENDING_TIMER_STATUS: &str = "pending_timer";
+const STATE_OUT: &str = "state";
+const COUNT_OUT: &str = "count";
+const CURRENT_STATE: &str = "current_state";
+const CURRENT_COUNT: &str = "current_count";
+const PENDING_TIMER: &str = "pending_timer";
 
 impl NodeBehavior for Heartbeat {
     type Config = HeartbeatConfig;
 
+    // No input slots on this kind, so `on_message` is never called by
+    // the dispatcher. Required by the trait; unreachable in practice.
+    fn on_message(
+        &self,
+        _ctx: &NodeCtx,
+        _port: InputPort,
+        _msg: Msg,
+    ) -> Result<(), NodeError> {
+        Ok(())
+    }
+
     fn on_init(&self, ctx: &NodeCtx, cfg: &HeartbeatConfig) -> Result<(), NodeError> {
         cancel_pending(ctx);
-        ctx.emit(STATE_SLOT, Msg::new(json!(cfg.start_state)))?;
-        ctx.emit(COUNT_SLOT, Msg::new(json!(0)))?;
+        // Preserve the counter across config edits and restarts — only
+        // seed it when the slot is still null (first-ever init).
+        let count = ctx
+            .read_status(CURRENT_COUNT)
+            .ok()
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let state = ctx
+            .read_status(CURRENT_STATE)
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(cfg.start_state);
+        ctx.update_status(CURRENT_STATE, json!(state))?;
+        ctx.update_status(CURRENT_COUNT, json!(count))?;
+        ctx.emit(STATE_OUT, Msg::new(json!(state)))?;
+        ctx.emit(COUNT_OUT, Msg::new(json!(count)))?;
         arm_if_enabled(ctx, cfg)
     }
 
     fn on_timer(&self, ctx: &NodeCtx, handle: TimerHandle) -> Result<(), NodeError> {
-        // Stale-fire guard — an old timer may still race after an
-        // interval change or a disable.
-        let pending = ctx.read_status(PENDING_TIMER_STATUS).ok().and_then(|v| v.as_u64());
+        let pending = ctx
+            .read_status(PENDING_TIMER)
+            .ok()
+            .and_then(|v| v.as_u64());
         if pending != Some(handle.0) {
             return Ok(());
         }
 
         let cfg = ctx.resolve_settings::<HeartbeatConfig>(&Msg::new(JsonValue::Null))?;
         if !cfg.enabled {
-            ctx.update_status(PENDING_TIMER_STATUS, JsonValue::Null)?;
+            ctx.update_status(PENDING_TIMER, JsonValue::Null)?;
             return Ok(());
         }
 
-        let current = ctx.read_status(STATE_SLOT).ok().and_then(|v| v.as_bool()).unwrap_or(cfg.start_state);
-        let next = !current;
-        ctx.emit(STATE_SLOT, Msg::new(json!(next)))?;
+        let prev = ctx
+            .read_status(CURRENT_STATE)
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(cfg.start_state);
+        let next = !prev;
+        let prev_count = ctx
+            .read_status(CURRENT_COUNT)
+            .ok()
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let next_count = prev_count + 1;
 
-        let prior_count = ctx.read_status(COUNT_SLOT).ok().and_then(|v| v.as_u64()).unwrap_or(0);
-        ctx.emit(COUNT_SLOT, Msg::new(json!(prior_count + 1)))?;
+        ctx.update_status(CURRENT_STATE, json!(next))?;
+        ctx.update_status(CURRENT_COUNT, json!(next_count))?;
+        ctx.emit(STATE_OUT, Msg::new(json!(next)))?;
+        ctx.emit(COUNT_OUT, Msg::new(json!(next_count)))?;
 
         arm_if_enabled(ctx, &cfg)
     }
@@ -77,15 +122,14 @@ impl NodeBehavior for Heartbeat {
 
 fn arm_if_enabled(ctx: &NodeCtx, cfg: &HeartbeatConfig) -> Result<(), NodeError> {
     if !cfg.enabled {
-        ctx.update_status(PENDING_TIMER_STATUS, JsonValue::Null)?;
-        return Ok(());
+        return ctx.update_status(PENDING_TIMER, JsonValue::Null);
     }
     let handle = ctx.schedule(cfg.interval_ms)?;
-    ctx.update_status(PENDING_TIMER_STATUS, json!(handle.0))
+    ctx.update_status(PENDING_TIMER, json!(handle.0))
 }
 
 fn cancel_pending(ctx: &NodeCtx) {
-    if let Some(id) = ctx.read_status(PENDING_TIMER_STATUS).ok().and_then(|v| v.as_u64()) {
+    if let Some(id) = ctx.read_status(PENDING_TIMER).ok().and_then(|v| v.as_u64()) {
         ctx.cancel(TimerHandle(id));
     }
 }

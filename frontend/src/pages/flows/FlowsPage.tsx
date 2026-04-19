@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Kind, NodeConfig, NodeSnapshot, Slot } from "@acme/agent-client";
+import type { Kind, NodeSnapshot, Slot } from "@acme/agent-client";
 import type { Connection, Edge, Node, OnSelectionChangeParams, ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useMutation } from "@tanstack/react-query";
@@ -52,7 +52,6 @@ export function FlowsPage() {
 
   const flowRef = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
   const moveTimers = useRef(new Map<string, number>());
-  const configTimers = useRef(new Map<string, number>());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const nodes = nodesQuery.data ?? [];
@@ -171,23 +170,9 @@ export function FlowsPage() {
     [agent.data],
   );
 
-  const saveConfig = useCallback(
-    (path: string, config: NodeConfig) => {
-      const previous = configTimers.current.get(path);
-      if (previous) {
-        window.clearTimeout(previous);
-      }
-      const timer = window.setTimeout(async () => {
-        try {
-          await agent.data!.config.setConfig(path, config);
-          setErrorMessage(null);
-        } catch (error) {
-          setErrorMessage(formatError(error));
-        } finally {
-          configTimers.current.delete(path);
-        }
-      }, 500);
-      configTimers.current.set(path, timer);
+  const saveSettings = useCallback(
+    async (path: string, settings: Record<string, unknown>): Promise<void> => {
+      await agent.data!.slots.writeSlot(path, "settings", settings);
     },
     [agent.data],
   );
@@ -310,9 +295,6 @@ export function FlowsPage() {
       for (const timer of moveTimers.current.values()) {
         window.clearTimeout(timer);
       }
-      for (const timer of configTimers.current.values()) {
-        window.clearTimeout(timer);
-      }
     },
     [],
   );
@@ -406,7 +388,7 @@ export function FlowsPage() {
             node={selectedNode}
             kind={selectedKind}
             live={selectedLive}
-            onSaveConfig={saveConfig}
+            onSaveSettings={saveSettings}
           />
         </div>
       </section>

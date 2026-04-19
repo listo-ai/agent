@@ -1,30 +1,100 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
-import type { FieldTemplateProps, ObjectFieldTemplateProps, TitleFieldProps, WidgetProps } from "@rjsf/utils";
 import type { Kind, NodeSnapshot, Slot } from "@acme/agent-client";
 import { cn } from "@/lib/utils";
-import { formatLiveValue, mergedSlots } from "../flow-model";
+import { mergedSlots } from "../flow-model";
+
+// Minimal prop shapes extracted from @rjsf/core internals — avoids needing @rjsf/utils as a direct dep.
+interface RjsfFieldProps { id: string; label: string; required: boolean; children: ReactNode; errors?: ReactNode; hidden?: boolean; }
+interface RjsfObjectProps { properties: { content: ReactNode; name: string }[]; title?: string; }
+interface RjsfTitleProps { title?: string; }
+interface RjsfWidgetProps { id: string; value: unknown; onChange: (v: unknown) => void; options: Record<string, unknown>; schema: { type?: string; default?: unknown }; disabled?: boolean; readonly?: boolean; label?: string; }
+
+/** Slot names managed by the canvas — hide them from the live slots list. */
+const INTERNAL_SLOTS = new Set(["position", "notes", "settings"]);
+
+function prettyValue(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+/** Is the value complex enough to want a <pre> block? */
+function isComplex(value: unknown): boolean {
+  return typeof value === "object" && value !== null;
+}
 
 interface FlowPropertyPanelProps {
   node: NodeSnapshot | undefined;
   kind: Kind | undefined;
   /** Already a Slot map (name → {name, value, generation}) from the live feed. */
   live: Record<string, Slot>;
-  onSaveConfig: (path: string, config: Record<string, unknown>) => void;
+  onSaveSettings: (path: string, settings: Record<string, unknown>) => Promise<void>;
 }
 
 export function FlowPropertyPanel({
   node,
   kind,
   live,
-  onSaveConfig,
+  onSaveSettings,
 }: FlowPropertyPanelProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "ok" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveTimer = useRef<number | undefined>(undefined);
 
+  // When node changes, seed form from the live `settings` slot if present.
   useEffect(() => {
-    setFormData({});
-  }, [node?.path]);
+    const settingsValue = live["settings"]?.value;
+    if (settingsValue !== null && settingsValue !== undefined && typeof settingsValue === "object" && !Array.isArray(settingsValue)) {
+      setFormData(settingsValue as Record<string, unknown>);
+    } else {
+      setFormData({});
+    }
+    setSaveState("idle");
+    setSaveError(null);
+  }, [node?.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Also update form when the settings slot arrives from live data (first load).
+  const settingsGeneration = live["settings"]?.generation;
+  useEffect(() => {
+    const settingsValue = live["settings"]?.value;
+    if (settingsValue !== null && settingsValue !== undefined && typeof settingsValue === "object" && !Array.isArray(settingsValue)) {
+      setFormData((prev) => {
+        // Only overwrite if form is still empty (not yet touched by user).
+        if (Object.keys(prev).length === 0) {
+          return settingsValue as Record<string, unknown>;
+        }
+        return prev;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsGeneration]);
+
+  const handleSave = (data: Record<string, unknown>) => {
+    if (!node) return;
+    window.clearTimeout(saveTimer.current);
+    setSaveState("saving");
+    saveTimer.current = window.setTimeout(() => {
+      onSaveSettings(node.path, data)
+        .then(() => {
+          setSaveState("ok");
+          setSaveError(null);
+          saveTimer.current = window.setTimeout(() => setSaveState("idle"), 2000);
+        })
+        .catch((err: unknown) => {
+          setSaveState("error");
+          setSaveError(err instanceof Error ? err.message : String(err));
+        });
+    }, 400);
+  };
 
   const schema = useMemo(() => {
     if (!kind || typeof kind.settings_schema !== "object" || kind.settings_schema === null) {
@@ -35,8 +105,8 @@ export function FlowPropertyPanel({
 
   const statusSlots = useMemo(() => {
     if (!node) return [];
-    // `live` is already Record<string, Slot> — pass directly as LiveNodeState.slots
-    return mergedSlots(node, { lifecycle: undefined, slots: live, touchedAt: undefined });
+    return mergedSlots(node, { lifecycle: undefined, slots: live, touchedAt: undefined })
+      .filter((slot) => !INTERNAL_SLOTS.has(slot.name));
   }, [live, node]);
 
   if (!node) {
@@ -70,9 +140,6 @@ export function FlowPropertyPanel({
           </h3>
           {schema ? (
             <div className="mt-3 rounded-xl border border-border bg-background p-4">
-              <p className="mb-4 text-xs text-muted-foreground">
-                Starts from schema defaults (read-back not yet implemented).
-              </p>
               <Form
                 schema={schema}
                 formData={formData}
@@ -80,7 +147,7 @@ export function FlowPropertyPanel({
                 onChange={(event) => {
                   const next = (event.formData ?? {}) as Record<string, unknown>;
                   setFormData(next);
-                  onSaveConfig(node.path, next);
+                  handleSave(next);
                 }}
                 showErrorList={false}
                 templates={{
@@ -100,6 +167,11 @@ export function FlowPropertyPanel({
               >
                 <div />
               </Form>
+              <div className="mt-3 flex items-center gap-2 text-xs">
+                {saveState === "saving" && <span className="text-muted-foreground">Saving…</span>}
+                {saveState === "ok" && <span className="text-green-600">Saved ✓</span>}
+                {saveState === "error" && <span className="text-destructive">Error: {saveError}</span>}
+              </div>
             </div>
           ) : (
             <p className="mt-3 rounded-xl border border-dashed border-border bg-background px-3 py-4 text-sm text-muted-foreground">
@@ -123,8 +195,8 @@ export function FlowPropertyPanel({
                   key={slot.name}
                   className="rounded-xl border border-border bg-background px-3 py-2"
                 >
-                  <div className="text-xs font-medium">{slot.name}</div>
-                  <div className="mt-1 text-sm text-muted-foreground">{formatLiveValue(slot.value)}</div>
+                  <div className="text-xs font-medium text-foreground">{slot.name}</div>
+                  <SlotValue value={slot.value} />
                 </div>
               ))
             )}
@@ -135,30 +207,92 @@ export function FlowPropertyPanel({
   );
 }
 
-// ─── RJSF Tailwind templates ────────────────────────────────────────────────
+// ─── Syntax-coloured JSON renderer ─────────────────────────────────────────
+
+function JsonValue({ value, indent = 0 }: { value: unknown; indent?: number }) {
+  const pad = "  ".repeat(indent);
+  const padClose = "  ".repeat(Math.max(0, indent - 1));
+
+  if (value === null) return <span className="text-slate-400">null</span>;
+  if (value === undefined) return <span className="text-slate-400">undefined</span>;
+  if (typeof value === "boolean") return <span className="text-violet-500">{String(value)}</span>;
+  if (typeof value === "number") return <span className="text-amber-500">{String(value)}</span>;
+  if (typeof value === "string") return <span className="text-green-600">&quot;{value}&quot;</span>;
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground">[]</span>;
+    return (
+      <span>
+        <span className="text-muted-foreground">[</span>
+        {value.map((item, i) => (
+          <span key={i} className="block">
+            <span className="select-none text-muted-foreground/40">{pad}</span>
+            <JsonValue value={item} indent={indent + 1} />
+            {i < value.length - 1 && <span className="text-muted-foreground">,</span>}
+          </span>
+        ))}
+        <span className="text-muted-foreground">{padClose}]</span>
+      </span>
+    );
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return <span className="text-muted-foreground">{"{}"}</span>;
+    return (
+      <span>
+        <span className="text-muted-foreground">{'{'}</span>
+        {entries.map(([k, v], i) => (
+          <span key={k} className="block">
+            <span className="select-none text-muted-foreground/40">{pad}</span>
+            <span className="text-sky-600">&quot;{k}&quot;</span>
+            <span className="text-muted-foreground">: </span>
+            <JsonValue value={v} indent={indent + 1} />
+            {i < entries.length - 1 && <span className="text-muted-foreground">,</span>}
+          </span>
+        ))}
+        <span className="text-muted-foreground">{padClose}{'}'}</span>
+      </span>
+    );
+  }
+
+  return <span className="text-muted-foreground">{String(value)}</span>;
+}
+
+function SlotValue({ value }: { value: unknown }) {
+  const isComplex = typeof value === "object" && value !== null;
+  return (
+    <pre className={cn(
+      "mt-1 overflow-x-auto font-mono leading-relaxed",
+      isComplex ? "text-xs" : "text-sm",
+    )}>
+      <JsonValue value={value} indent={1} />
+    </pre>
+  );
+}
 
 const inputCls =
   "w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1";
 
-function TwTitleField({ title }: TitleFieldProps) {
+function TwTitleField({ title }: RjsfTitleProps) {
   if (!title) return null;
   return <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>;
 }
 
-function TwObjectFieldTemplate({ properties, title }: ObjectFieldTemplateProps) {
+function TwObjectFieldTemplate({ properties, title }: RjsfObjectProps) {
   return (
     <div>
       {title && (
         <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
       )}
       <div className="space-y-3">
-        {properties.map((prop) => prop.content)}
+        {properties.map((prop) => <div key={prop.name}>{prop.content}</div>)}
       </div>
     </div>
   );
 }
 
-function TwFieldTemplate({ id, label, required, children, errors, hidden }: FieldTemplateProps) {
+function TwFieldTemplate({ id, label, required, children, errors, hidden }: RjsfFieldProps) {
   if (hidden) return <>{children}</>;
   return (
     <div className="flex flex-col gap-1">
@@ -176,14 +310,14 @@ function TwFieldTemplate({ id, label, required, children, errors, hidden }: Fiel
   );
 }
 
-function TwTextWidget({ id, value, onChange, options, schema, disabled, readonly }: WidgetProps) {
+function TwTextWidget({ id, value, onChange, options, schema, disabled, readonly }: RjsfWidgetProps) {
   const type = schema.type === "number" || schema.type === "integer" ? "number" : "text";
   return (
     <input
       id={id}
       type={type}
       className={inputCls}
-      value={value ?? ""}
+      value={(value as string | number) ?? ""}
       disabled={disabled || readonly}
       placeholder={String(options.placeholder ?? schema.default ?? "")}
       onChange={(e) => {
@@ -199,7 +333,7 @@ function TwTextWidget({ id, value, onChange, options, schema, disabled, readonly
   );
 }
 
-function TwSelectWidget({ id, value, onChange, options, disabled, readonly }: WidgetProps) {
+function TwSelectWidget({ id, value, onChange, options, disabled, readonly }: RjsfWidgetProps) {
   const enumOptions = (options.enumOptions ?? []) as { value: unknown; label: string }[];
   return (
     <select
@@ -221,7 +355,7 @@ function TwSelectWidget({ id, value, onChange, options, disabled, readonly }: Wi
   );
 }
 
-function TwCheckboxWidget({ id, value, onChange, label, disabled, readonly }: WidgetProps) {
+function TwCheckboxWidget({ id, value, onChange, label, disabled, readonly }: RjsfWidgetProps) {
   return (
     <label htmlFor={id} className="flex items-center gap-2 text-sm">
       <input

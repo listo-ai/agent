@@ -19,6 +19,24 @@ slots:
       type: integer
       minimum: 0
     writable: false
+  - name: current_state
+    role: status
+    value_schema:
+      type: boolean
+    writable: true
+  - name: current_count
+    role: status
+    value_schema:
+      type: integer
+      minimum: 0
+    writable: true
+  - name: pending_timer
+    role: status
+    value_schema:
+      type:
+        - integer
+        - "null"
+    writable: true
 trigger_policy: on_any
 settings_schema:
   type: object

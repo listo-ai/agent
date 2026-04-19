@@ -195,6 +195,19 @@ impl BehaviorRegistry {
         let Some(schema) = entry.manifest.slots.iter().find(|s| s.name == slot) else {
             return Ok(());
         };
+
+        // The synthesised `settings` config slot is the canonical
+        // mechanism for reconfiguring a behaviour at runtime. Any
+        // writer (REST `POST /api/v1/config`, CLI `slots write`, the
+        // Studio property panel writing the slot directly) gets the
+        // same semantics: changing settings triggers `on_init`.
+        // Settings-as-slot is the source of truth per
+        // `docs/design/EVERYTHING-AS-NODE.md` — the dispatcher honours
+        // the slot, not the caller.
+        if schema.role == SlotRole::Config && slot == SETTINGS_SLOT {
+            return self.dispatch_init(node);
+        }
+
         if schema.role != SlotRole::Input || !schema.trigger {
             return Ok(());
         }
