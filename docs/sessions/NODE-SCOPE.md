@@ -144,17 +144,20 @@ msg_overrides:
 
 #### Rust
 
+**Behaviours are stateless — state lives in slots.** A node kind's struct carries no per-instance state fields. The "current count" is the `count` status slot on the node in the graph, not a `self.value` on the struct. Behaviours read from and write to the graph via `NodeCtx`; they never mirror slot state in their own fields. This keeps per-instance state single-sourced and obeys Rule A / Rule B at instance granularity — see [EVERYTHING-AS-NODE.md § "The agent itself is a node too — no parallel state"](../design/EVERYTHING-AS-NODE.md) and [NEW-SESSION.md](../design/NEW-SESSION.md).
+
+The trait takes `&self`, not `&mut self`, so the rule is compiler-enforceable.
+
 ```rust
 use extensions_sdk::prelude::*;
 
 #[derive(NodeKind)]
 #[node(
     kind = "acme.compute.count",
-    manifest = "manifests/count.yaml"   // single source of truth; compile-time validated
+    manifest = "manifests/count.yaml",   // single source of truth; compile-time validated
+    behavior = "custom",
 )]
-pub struct Count {
-    value: i64,
-}
+pub struct Count;                        // unit struct — no per-instance state
 
 #[derive(Deserialize, SettingsSchema)]
 pub struct CountConfig {
@@ -168,33 +171,30 @@ pub struct CountConfig {
 impl NodeBehavior for Count {
     type Config = CountConfig;
 
-    fn on_init(&mut self, ctx: &NodeCtx, cfg: &CountConfig) -> Result<(), NodeError> {
-        self.value = cfg.initial;
-        ctx.update_status("count", self.value.into())?;
+    fn on_init(ctx: &NodeCtx, cfg: &CountConfig) -> Result<(), NodeError> {
+        ctx.update_status("count", cfg.initial.into())?;
         Ok(())
     }
 
-    fn on_message(
-        &mut self,
-        ctx: &NodeCtx,
-        port: InputPort,
-        msg: Msg,
-    ) -> Result<(), NodeError> {
+    fn on_message(ctx: &NodeCtx, port: InputPort, msg: Msg) -> Result<(), NodeError> {
         let cfg: ResolvedSettings<CountConfig> = ctx.resolve_settings(&msg)?;
 
         let reset = port == "reset"
             || msg.metadata.get("reset") == Some(&serde_json::json!(true));
 
         if reset {
-            self.value = cfg.initial;
-            ctx.update_status("count", self.value.into())?;
+            ctx.update_status("count", cfg.initial.into())?;
             return Ok(());
         }
 
-        let next = apply_step(self.value, cfg.step, cfg.min, cfg.max, cfg.wrap);
-        self.value = next;
-        ctx.update_status("count", self.value.into())?;
-        ctx.emit("out", msg.child(serde_json::json!(self.value)))?;
+        let current = ctx
+            .read_status("count")?
+            .as_i64()
+            .ok_or_else(|| NodeError::runtime("count slot is not an integer"))?;
+
+        let next = apply_step(current, cfg.step, cfg.min, cfg.max, cfg.wrap);
+        ctx.update_status("count", next.into())?;
+        ctx.emit("out", msg.child(serde_json::json!(next)))?;
         Ok(())
     }
 }

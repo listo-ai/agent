@@ -18,6 +18,14 @@ To stop this question from coming up again:
 
 When a YAML manifest is normalised into the system's internal store (the graph kind registry, the DB, the capability manifest on the wire), it's converted to JSON by the loader — one canonical form inside the system, authored form at the edges.
 
+## Behaviours are stateless — state lives in slots
+
+Before anything else: **a `NodeBehavior` impl holds no per-instance state.** If your kind tracks something mutable at runtime (a count, an armed flag, a pending-timer flag, the last-seen timestamp), that thing is a **status-role slot** on the node, not a field on your struct. Read it with `ctx.read_status(...)`; write it with `ctx.update_status(...)`. The trait takes `&self`, not `&mut self`, so the compiler enforces the rule.
+
+This is Rule A / Rule B ([NEW-SESSION.md](NEW-SESSION.md)) applied at per-instance granularity. Mirroring slot state on a struct field is the same parallel-state antipattern as a subsystem holding a private `Mutex<SomeState>`: anyone who writes the slot directly (REST API, a flow wire, the CLI, another plugin, a test) leaves the struct's copy stale, and debugging starts with "which version is correct?" The answer is always **the slot**. Make the slot the only answer.
+
+Legitimate kind-level resources (a shared HTTP client, a compiled regex, a connection pool) live as kind-level singletons — one per kind, shared across all instances. Per-instance resources are rare; justify them in code review or don't ship them.
+
 ## Anatomy of a node kind
 
 A kind is declared by a manifest plus some code. The manifest carries the contract; the code carries the behaviour.
