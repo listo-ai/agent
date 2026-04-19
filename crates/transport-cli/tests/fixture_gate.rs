@@ -35,6 +35,13 @@ use transport_rest::AppState;
 // ---- test server ----------------------------------------------------------
 
 async fn start_test_server() -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    start_with_graph(|_| {}).await
+}
+
+async fn start_with_graph<F>(seed_fn: F) -> (SocketAddr, tokio::task::JoinHandle<()>)
+where
+    F: FnOnce(&GraphStore),
+{
     let (sink, events_rx, bcast) = transport_rest::agent_sink();
 
     let kinds = KindRegistry::new();
@@ -42,9 +49,11 @@ async fn start_test_server() -> (SocketAddr, tokio::task::JoinHandle<()>) {
     engine::kinds::register(&kinds);
     domain_compute::register_kinds(&kinds);
     domain_logic::register_kinds(&kinds);
+    dashboard_nodes::register_kinds(&kinds);
 
     let graph = Arc::new(GraphStore::new(kinds, sink));
     graph.create_root(KindId::new("acme.core.station")).unwrap();
+    seed_fn(&graph);
 
     let engine = Engine::new(graph.clone(), events_rx);
     engine
@@ -64,12 +73,16 @@ async fn start_test_server() -> (SocketAddr, tokio::task::JoinHandle<()>) {
     engine.start().await.unwrap();
 
     let app_state = AppState::new(
-        graph,
+        graph.clone(),
         engine.behaviors().clone(),
         bcast,
         PluginRegistry::new(),
     );
-    let router = transport_rest::router(app_state);
+    let dashboard_reader: Arc<dyn dashboard_runtime::NodeReader + Send + Sync> =
+        Arc::new(dashboard_transport::GraphReader::new(graph));
+    let router = transport_rest::router(app_state).merge(dashboard_transport::router(
+        dashboard_transport::DashboardState::new(dashboard_reader),
+    ));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -364,6 +377,123 @@ async fn auth_whoami_dev_null() {
     let actual = parse_json_output(&serde_json::to_string_pretty(&who).unwrap());
     let fixture = load_fixture("auth-whoami/dev-null.json");
     assert_shape_match(&actual, &fixture, "$");
+}
+
+// ---- ui (dashboard) -------------------------------------------------------
+
+use std::str::FromStr;
+
+async fn server_with_ui_fixtures() -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    spi::NodeId, // nav root
+    spi::NodeId, // page
+) {
+    let nav_id_cell: Arc<std::sync::Mutex<Option<spi::NodeId>>> = Arc::new(Default::default());
+    let page_id_cell: Arc<std::sync::Mutex<Option<spi::NodeId>>> = Arc::new(Default::default());
+    let nav_set = nav_id_cell.clone();
+    let page_set = page_id_cell.clone();
+    let (addr, handle) = start_with_graph(move |g| {
+        let root = spi::NodePath::root();
+        let nav = g
+            .create_child(&root, KindId::new("ui.nav"), "home")
+            .unwrap();
+        let nav_path = spi::NodePath::from_str("/home").unwrap();
+        g.write_slot(&nav_path, "title", Value::String("Root".into()))
+            .unwrap();
+        *nav_set.lock().unwrap() = Some(nav);
+
+        let page = g
+            .create_child(&root, KindId::new("ui.page"), "dashboard")
+            .unwrap();
+        let page_path = spi::NodePath::from_str("/dashboard").unwrap();
+        g.write_slot(&page_path, "title", Value::String("Dashboard".into()))
+            .unwrap();
+        *page_set.lock().unwrap() = Some(page);
+    })
+    .await;
+    let nav = nav_id_cell.lock().unwrap().unwrap();
+    let page = page_id_cell.lock().unwrap().unwrap();
+    (addr, handle, nav, page)
+}
+
+#[tokio::test]
+async fn ui_nav_ok() {
+    let (addr, _srv, nav, _) = server_with_ui_fixtures().await;
+    let c = client(addr);
+    let tree = c.ui().nav(&nav.0.to_string()).await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&tree).unwrap());
+    let fixture = load_fixture("ui-nav/ok.json");
+    assert_shape_match(&actual, &fixture, "$");
+}
+
+#[tokio::test]
+async fn ui_nav_not_found() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let missing = uuid::Uuid::new_v4().to_string();
+    let err = c.ui().nav(&missing).await.unwrap_err();
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("ui-nav/not-found.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "not_found");
+}
+
+#[tokio::test]
+async fn ui_resolve_ok() {
+    let (addr, _srv, _, page) = server_with_ui_fixtures().await;
+    let c = client(addr);
+    let req = agent_client::types::UiResolveRequest {
+        page_ref: page.0.to_string(),
+        stack: Vec::new(),
+        page_state: serde_json::json!({}),
+        dry_run: false,
+        auth_subject: None,
+        user_claims: Default::default(),
+    };
+    let resp = c.ui().resolve(&req).await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
+    let fixture = load_fixture("ui-resolve/ok.json");
+    assert_shape_match(&actual, &fixture, "$");
+}
+
+#[tokio::test]
+async fn ui_resolve_dry_run() {
+    let (addr, _srv, _, page) = server_with_ui_fixtures().await;
+    let c = client(addr);
+    let req = agent_client::types::UiResolveRequest {
+        page_ref: page.0.to_string(),
+        stack: Vec::new(),
+        page_state: serde_json::json!({}),
+        dry_run: true,
+        auth_subject: None,
+        user_claims: Default::default(),
+    };
+    let resp = c.ui().resolve(&req).await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
+    let fixture = load_fixture("ui-resolve/dry-run.json");
+    assert_shape_match(&actual, &fixture, "$");
+}
+
+#[tokio::test]
+async fn ui_resolve_page_not_found() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let req = agent_client::types::UiResolveRequest {
+        page_ref: uuid::Uuid::new_v4().to_string(),
+        stack: Vec::new(),
+        page_state: serde_json::json!({}),
+        dry_run: false,
+        auth_subject: None,
+        user_claims: Default::default(),
+    };
+    let err = c.ui().resolve(&req).await.unwrap_err();
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("ui-resolve/page-not-found.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "not_found");
 }
 
 #[tokio::test]

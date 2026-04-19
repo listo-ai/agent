@@ -36,6 +36,16 @@ export type {
   ApiInfo,
 } from "./schemas/capability.js";
 
+export type {
+  UiNavNode,
+  UiRenderedWidget,
+  UiRenderTree,
+  UiResolveMeta,
+  UiResolveIssue,
+  UiResolveRequest,
+  UiResolveResponse,
+} from "./schemas/ui.js";
+
 // Domain request shapes.
 export type { LinkEndpointRef } from "./domain/links.js";
 export type { SeedPreset, SeedResult } from "./domain/seed.js";

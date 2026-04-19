@@ -1,0 +1,14 @@
+{
+  "render": {
+    "page_id": "VARIES",
+    "title": "Dashboard",
+    "widgets": []
+  },
+  "meta": {
+    "cache_key": null,
+    "widget_count": 0,
+    "forbidden_count": 0,
+    "dangling_count": 0,
+    "stack_shadowed": []
+  }
+}

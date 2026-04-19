@@ -12,6 +12,8 @@ use dashboard_runtime::{BindingError, StackError};
 
 #[derive(Debug, Error)]
 pub enum TransportError {
+    #[error("node `{0}` not found")]
+    NotFound(NodeId),
     #[error("page `{0}` not found")]
     PageNotFound(NodeId),
     #[error("node `{node}` is `{found}`, expected `{expected}`")]
@@ -46,7 +48,7 @@ pub enum TransportError {
 impl TransportError {
     fn status(&self) -> StatusCode {
         match self {
-            Self::PageNotFound(_) => StatusCode::NOT_FOUND,
+            Self::NotFound(_) | Self::PageNotFound(_) => StatusCode::NOT_FOUND,
             Self::KindMismatch { .. } => StatusCode::BAD_REQUEST,
             Self::LimitExceeded { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             Self::Stack(_)

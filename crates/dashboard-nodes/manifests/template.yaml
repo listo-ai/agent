@@ -1,6 +1,7 @@
 id: ui.template
 display_name: Page template
-facets: []
+facets:
+  - isContainer
 containment:
   must_live_under: []
   may_contain:

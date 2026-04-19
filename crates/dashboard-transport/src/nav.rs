@@ -52,9 +52,7 @@ fn build<R: NodeReader + ?Sized>(
             max: limits::MAX_NAV_DEPTH,
         });
     }
-    let snap = reader
-        .get(&id)
-        .ok_or_else(|| TransportError::MalformedPage(id, "nav node not found".into()))?;
+    let snap = reader.get(&id).ok_or(TransportError::NotFound(id))?;
     if snap.kind.as_str() != NAV_KIND {
         return Err(TransportError::KindMismatch {
             node: id,

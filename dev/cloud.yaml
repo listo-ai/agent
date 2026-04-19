@@ -10,3 +10,9 @@ log:
   filter: info,agent=debug,extensions_host=debug
 plugins:
   dir: dev/cloud-plugins
+fleet:
+  backend: zenoh
+  listen: ["tcp/127.0.0.1:17447"]
+  connect: []
+  tenant: acme
+  agent_id: cloud

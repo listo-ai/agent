@@ -1,6 +1,7 @@
 id: ui.nav
 display_name: Navigation entry
-facets: []
+facets:
+  - isContainer
 containment:
   must_live_under: []
   may_contain:

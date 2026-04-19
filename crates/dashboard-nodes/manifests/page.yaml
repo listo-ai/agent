@@ -1,6 +1,7 @@
 id: ui.page
 display_name: Page
-facets: []
+facets:
+  - isContainer
 containment:
   must_live_under: []
   may_contain:

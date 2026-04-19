@@ -177,8 +177,8 @@ The slot's *live value* is never affected — only history records in-flight bet
 - **Config-node fan-out at scale.** With one config per node (not per slot), a 500k-point tree of ~25k devices produces ~25k config nodes, not 500k. Still non-trivial but within the graph's designed envelope. `isSystem` facet hides them from default children listings; `list_children(path, include_system=false)` is the default.
 - **Legacy ARM (`armv7`, 256 MB).** `Json` and `Binary` historization feature-gated off; scalar-only (`Bool`/`Number`) always available.
 - **Extension crash mid-record.** Same `Stale` lifecycle rule as [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) — subscribers see the transition. In-flight records in the historizer queue survive the extension's death (the extension doesn't own the queue).
-- **Clock skew on edge.** COV `min_interval_ms` and interval spacing use the agent's monotonic clock; wall-clock only for `align_to: wall` (align to the nearest multiple of `period_ms` from Unix epoch). Records carry both monotonic offset and wall-clock timestamp.
-- **`SlotValue` migration.** Existing `slots.value` is `TEXT NOT NULL` (JSON-encoded). Strategy: add nullable `kind` column; lazy-populate on next write; one-shot backfill at upgrade time behind a progress indicator, chunked to avoid long SQLite write locks (batch size 1000, commit per batch). Documented as part of the Stage 1 migration plan.
+- **Clock skew on edge.** COV `min_interval_ms` and interval spacing use the agent's monotonic clock; wall-clock only for `align_to: wall` (align to the nearest multiple of `period_ms` from Unix epoch). Records carry both monotonic offset and wall-clock timestamp. **Each record also carries the edge's NTP sync state at record time**: `ntp_synced: bool` and `last_sync_age_ms`. Downstream consumers can weight or flag records written while the clock was drifting. Post-hoc wall-clock correction is still impossible (we never learn the true offset at record time), but consumers have the signal they need to detect suspect records.
+- **`SlotValue` migration.** Existing `slots.value` is `TEXT NOT NULL` (JSON-encoded). Strategy: add nullable `kind` column; lazy-populate on next write; one-shot backfill at upgrade time behind a progress indicator, chunked to avoid long SQLite write locks (batch size 1000, commit per batch). **Routing is driven by the kind registry, not by `slots.kind`.** The column is a denormalisation for query filters (e.g. `?filter=kind==number`); its population status has no effect on historizer behaviour, because the historizer reads the declared slot type from the kind registry built at boot.
 
 ## Surfaces affected
 
@@ -189,23 +189,23 @@ The slot's *live value* is never affected — only history records in-flight bet
 | REST | `POST /nodes/{path}/slots/{slot}/history/record`; `GET /nodes/{path}/slots/{slot}/history` (RSQL); scalar telemetry endpoint already exists |
 | CLI | `yourapp node history record <path> <slot>`; `yourapp node history list <path> <slot> --from --to` |
 | Studio | Property-panel "History" section on nodes with a `HistoryConfig` child; time-series chart widget |
-| Flow engine | Built-in nodes: `history.record`, `history.read-range`, `history.on-recorded` trigger (fires when a record is written; distinct from `slot.changed`) |
+| Flow engine | Built-in nodes: `history.record`, `history.read-range`, `history.on-recorded` trigger — **fires once per flush batch**, payload is `{ config_id, records: [...] }`; per-record iteration is the flow's job. Distinct from `slot.changed`. |
 | Fleet bus (Zenoh) | Opt-in `graph.<tenant>.<path>.slot.<slot>.historized` events (off by default); see [FLEET-TRANSPORT.md](FLEET-TRANSPORT.md) |
-| Outbox | Carries history records from edge to cloud using existing backpressure rules |
+| Outbox | **Separate lane** for history bulk-sync. History records do not share quota with operational traffic (commands, lifecycle, safety events). Own quota, own back-pressure signal, own drop policy (oldest-first telemetry). Prevents post-reconnect history catch-up from starving operational messages. |
 
 ## Stages
 
 | Stage | Deliverable | Prerequisites |
 |---|---|---|
-| **0** | **Prerequisites audit + gap-fill.** Confirm outbox, `data-tsdb` crate (`TelemetryRepo` seam + SQLite/Timescale impls), and RSQL framework are production-grade or produce stage plans for the gaps. Owners assigned per component. Verify TimescaleDB licensing covers the features we plan to use (Apache-2 core only, or TSL features explicitly accepted). | — |
+| **0** | **Prerequisites audit + gap-fill.** Confirm outbox (with separate history lane), `data-tsdb` crate (`TelemetryRepo` seam + SQLite/Timescale impls), and RSQL framework are production-grade or produce stage plans for the gaps. Owners assigned per component. Verify TimescaleDB licensing covers the features we plan to use (Apache-2 core only, or TSL features explicitly accepted). **If TSL features are blocked, define a vanilla-Postgres fallback** (partitioned tables + manual bucket management) so Stages 3–4 are not blocked on a licensing decision. | — |
 | 1 | `SlotValue` union + `slots.kind` column + chunked migration | Stage 0 |
-| 2 | `acme.core.history.config` kind with all three variants; validation; placement rules; one-per-node cardinality enforced | 1 |
+| 2 | `acme.core.history.config` kind with all three variants; validation; placement rules; **one-per-node default, multiple opt-in via platform setting** | 1 |
 | 3 | Historizer service — subscribes to slot events, applies policy, **in-memory ring buffer with bulk flush (time/size/shutdown triggers, critical-tier bypass)**, bounded queue, back-pressure health events | 2 |
 | 4 | SQLite and Timescale table impls behind the `TelemetryRepo` trait; edge quota enforcement; Binary blob handling | 3, `data-tsdb` crate (Stage 0) |
 | 5 | REST + RSQL history query path; telemetry path integration | 4, RSQL framework (Stage 0) |
 | 6 | CLI + Studio property-panel UI + chart widget | 5 |
 | 7 | Flow nodes (`history.record`, `history.read-range`, `history.on-recorded`) | 5 |
-| 8 | Edge → cloud sync over outbox; retention profile enforcement | 4, outbox (Stage 0) |
+| 8 | Edge → cloud sync over **dedicated history outbox lane**; retention profile + sample-cap enforcement | 4, outbox with lane support (Stage 0) |
 | 9 | Soak test — 24 h on edge profile: memory flat, disk bounded, sync resumes after network drop, **record-write p99 < 500 ms** under realistic load, **buffered flush keeps up without unbounded queue growth**, **SIGKILL data-loss window matches documented `flush_interval`** | 1–8 |
 
 ## Open questions
@@ -218,4 +218,4 @@ The slot's *live value* is never affected — only history records in-flight bet
 
 ## One-line summary
 
-**Slots carry a unified `SlotValue`; historization is an `acme.core.history.config` child node — one per parent node, per-slot policy in its settings — with `cov | interval | on_demand` triggers; one database per deployment (SQLite on edge, Postgres+Timescale on cloud), schema-split at the table level: `Bool`/`Number` in time-series tables, `String`/`Json`/`Binary` in a regular `slot_history` table; edge and cloud share the historizer trait and differ only in SQL dialect.**
+**Slots carry a unified `SlotValue`; historization is an `acme.core.history.config` child node — one per parent node, per-slot policy in its settings — with `cov | interval | on_demand` triggers, buffered bulk writes (5 s default flush, critical tier bypasses), platform-default sample caps overridable per slot, and a dedicated history lane on the outbox; one database per deployment (SQLite on edge, Postgres+Timescale on cloud), schema-split at the table level: `Bool`/`Number` in time-series tables, `String`/`Json`/`Binary` in a regular `slot_history` table.**

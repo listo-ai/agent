@@ -3728,6 +3728,9 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "dashboard-nodes",
+ "dashboard-runtime",
+ "dashboard-transport",
  "domain-compute",
  "domain-logic",
  "engine",
@@ -3740,6 +3743,7 @@ dependencies = [
  "spi",
  "tokio",
  "transport-rest",
+ "uuid",
 ]
 
 [[package]]
