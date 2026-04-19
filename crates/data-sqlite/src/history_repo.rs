@@ -123,38 +123,35 @@ impl HistoryRepo for SqliteHistoryRepo {
             );
             let nid = q.node_id.to_string();
             let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(
-                params![nid, q.slot_name, q.from_ms, q.to_ms],
-                |row| {
-                    let node_id_str: String = row.get(1)?;
-                    let node_id = Uuid::parse_str(&node_id_str).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            1,
-                            rusqlite::types::Type::Text,
-                            Box::new(e),
-                        )
-                    })?;
-                    let kind_str: String = row.get(3)?;
-                    let slot_kind = match kind_str.as_str() {
-                        "string" => HistorySlotKind::String,
-                        "binary" => HistorySlotKind::Binary,
-                        _ => HistorySlotKind::Json,
-                    };
-                    let ntp: i64 = row.get(8)?;
-                    Ok(HistoryRecord {
-                        id: row.get(0)?,
-                        node_id,
-                        slot_name: row.get(2)?,
-                        slot_kind,
-                        ts_ms: row.get(4)?,
-                        value_json: row.get(5)?,
-                        blob_bytes: row.get(6)?,
-                        byte_size: row.get(7)?,
-                        ntp_synced: ntp != 0,
-                        last_sync_age_ms: row.get(9)?,
-                    })
-                },
-            )?;
+            let rows = stmt.query_map(params![nid, q.slot_name, q.from_ms, q.to_ms], |row| {
+                let node_id_str: String = row.get(1)?;
+                let node_id = Uuid::parse_str(&node_id_str).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        1,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
+                let kind_str: String = row.get(3)?;
+                let slot_kind = match kind_str.as_str() {
+                    "string" => HistorySlotKind::String,
+                    "binary" => HistorySlotKind::Binary,
+                    _ => HistorySlotKind::Json,
+                };
+                let ntp: i64 = row.get(8)?;
+                Ok(HistoryRecord {
+                    id: row.get(0)?,
+                    node_id,
+                    slot_name: row.get(2)?,
+                    slot_kind,
+                    ts_ms: row.get(4)?,
+                    value_json: row.get(5)?,
+                    blob_bytes: row.get(6)?,
+                    byte_size: row.get(7)?,
+                    ntp_synced: ntp != 0,
+                    last_sync_age_ms: row.get(9)?,
+                })
+            })?;
             Ok(rows.collect::<Result<Vec<_>, rusqlite::Error>>()?)
         })
     }
@@ -205,4 +202,3 @@ impl HistoryRepo for SqliteHistoryRepo {
         })
     }
 }
-

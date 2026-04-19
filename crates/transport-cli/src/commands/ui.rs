@@ -123,22 +123,17 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                 ) => {
                     let mut rows: Vec<ComponentRow> = Vec::new();
                     flatten_component(&render.root, 0, &mut rows);
-                    output::ok_table(
-                        fmt,
-                        &["DEPTH", "TYPE", "ID"],
-                        &rows,
-                        |r| {
-                            vec![
-                                r.depth.to_string(),
-                                r.component_type.clone(),
-                                r.id.clone(),
-                            ]
-                        },
-                    )?;
-                    eprintln!( // NO_PRINTLN_LINT:allow
+                    output::ok_table(fmt, &["DEPTH", "TYPE", "ID"], &rows, |r| {
+                        vec![r.depth.to_string(), r.component_type.clone(), r.id.clone()]
+                    })?;
+                    eprintln!(
+                        // NO_PRINTLN_LINT:allow
                         "ir_version={}  cache_key={}  widgets={}  forbidden={}  dangling={}",
                         render.ir_version,
-                        meta.cache_key, meta.widget_count, meta.forbidden_count, meta.dangling_count,
+                        meta.cache_key,
+                        meta.widget_count,
+                        meta.forbidden_count,
+                        meta.dangling_count,
                     );
                 }
             }
@@ -177,11 +172,7 @@ struct ComponentRow {
     id: String,
 }
 
-fn flatten_component(
-    c: &UiComponent,
-    depth: usize,
-    out: &mut Vec<ComponentRow>,
-) {
+fn flatten_component(c: &UiComponent, depth: usize, out: &mut Vec<ComponentRow>) {
     let (ctype, id, children) = component_info(c);
     out.push(ComponentRow {
         depth,

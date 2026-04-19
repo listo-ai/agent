@@ -10,10 +10,10 @@ use dashboard_transport::acl::{AclCheck, DenyNodes};
 use dashboard_transport::audit::{OwnedAuditEvent, RecordingAudit};
 use dashboard_transport::nav::{NavNode, NavQuery};
 use dashboard_transport::resolve::{ResolveRequest, ResolveResponse};
-use ui_ir::Component;
 use dashboard_transport::{DashboardState, TransportError};
 use serde_json::{json, Value as JsonValue};
 use spi::NodeId;
+use ui_ir::Component;
 
 const CARD: &str = "sys.card";
 
@@ -97,7 +97,11 @@ async fn resolve_renders_widget_with_bindings() {
 
     let resp = resolve_ok(state(reader), req(page_id, vec![nav_id])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
+        ResolveResponse::Ok {
+            render,
+            meta,
+            subscriptions: _,
+        } => (render, meta),
         other => panic!("expected Ok variant, got {other:?}"),
     };
     let children = match &render.root {
@@ -128,11 +132,7 @@ async fn resolve_emits_subscription_plan_for_each_widget() {
 
     let reader = InMemoryReader::new()
         .with(page(page_id, "P"))
-        .with(widget(
-            w_id,
-            CARD,
-            json!({ "label": "$stack.target.name" }),
-        ))
+        .with(widget(w_id, CARD, json!({ "label": "$stack.target.name" })))
         .with(NodeSnapshot::new(site_id, "sys.site").with_slot("name", json!("HQ")))
         .with(nav(nav_id, "Site", Some("target"), Some(site_id)))
         .with_child(page_id, w_id);
@@ -262,7 +262,11 @@ async fn unknown_widget_type_becomes_forbidden_placeholder_and_audits() {
     // Deliberately don't register the widget type.
     let resp = resolve_ok(s, req(page_id, vec![])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
+        ResolveResponse::Ok {
+            render,
+            meta,
+            subscriptions: _,
+        } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.forbidden_count, 1);
@@ -303,7 +307,11 @@ async fn acl_denied_bound_node_redacts_widget_and_audits() {
     r.auth_subject = Some("user:ada".to_string());
     let resp = resolve_ok(state, r).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
+        ResolveResponse::Ok {
+            render,
+            meta,
+            subscriptions: _,
+        } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.forbidden_count, 1);
@@ -344,9 +352,7 @@ async fn acl_page_with_mixed_allowed_denied_widgets() {
             CARD,
             json!({ "label": format!("$user.denied_lookup") }),
         ))
-        .with(
-            NodeSnapshot::new(allowed_site, "sys.site").with_slot("name", json!("A")),
-        )
+        .with(NodeSnapshot::new(allowed_site, "sys.site").with_slot("name", json!("A")))
         .with(NodeSnapshot::new(denied_site, "sys.site").with_slot("name", json!("B")))
         .with_child(page_id, w_ok_id)
         .with_child(page_id, w_bad_id);
@@ -357,10 +363,7 @@ async fn acl_page_with_mixed_allowed_denied_widgets() {
     let reader = reader.with(
         NodeSnapshot::new(w_bad_id, "ui.widget")
             .with_slot("widget_type", json!(CARD))
-            .with_slot(
-                "bindings",
-                json!({ "label": format!("$stack.s.name") }),
-            ),
+            .with_slot("bindings", json!({ "label": format!("$stack.s.name") })),
     );
     let nav_id = NodeId::new();
     let reader = reader.with(nav(nav_id, "Site", Some("s"), Some(denied_site)));
@@ -370,7 +373,11 @@ async fn acl_page_with_mixed_allowed_denied_widgets() {
 
     let resp = resolve_ok(state, req(page_id, vec![nav_id])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
+        ResolveResponse::Ok {
+            render,
+            meta,
+            subscriptions: _,
+        } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     let children = match &render.root {
@@ -407,7 +414,11 @@ async fn missing_bound_node_becomes_dangling_placeholder() {
 
     let resp = resolve_ok(s, req(page_id, vec![nav_id])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
+        ResolveResponse::Ok {
+            render,
+            meta,
+            subscriptions: _,
+        } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.dangling_count, 1);
@@ -451,12 +462,10 @@ async fn nav_returns_nested_subtree() {
         .with_child(root, child)
         .with_child(child, grand);
 
-    let Json(tree): Json<NavNode> = dashboard_transport::nav::handler(
-        State(state(reader)),
-        Query(NavQuery { root }),
-    )
-    .await
-    .unwrap();
+    let Json(tree): Json<NavNode> =
+        dashboard_transport::nav::handler(State(state(reader)), Query(NavQuery { root }))
+            .await
+            .unwrap();
     assert_eq!(tree.title.as_deref(), Some("Root"));
     assert_eq!(tree.children.len(), 1);
     assert_eq!(tree.children[0].children.len(), 1);
@@ -467,9 +476,8 @@ async fn nav_returns_nested_subtree() {
 async fn nav_rejects_wrong_kind() {
     let id = NodeId::new();
     let reader = InMemoryReader::new().with(NodeSnapshot::new(id, "ui.page"));
-    let err =
-        dashboard_transport::nav::handler(State(state(reader)), Query(NavQuery { root: id }))
-            .await
-            .unwrap_err();
+    let err = dashboard_transport::nav::handler(State(state(reader)), Query(NavQuery { root: id }))
+        .await
+        .unwrap_err();
     assert!(matches!(err, TransportError::KindMismatch { .. }));
 }

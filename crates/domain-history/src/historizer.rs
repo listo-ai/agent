@@ -283,12 +283,15 @@ impl Historizer {
         };
         let max_samples = {
             let map = self.configs.lock().expect("historizer lock poisoned");
-            let cs = map.get(&node_id).ok_or_else(|| {
-                HistorizerError::Repo(RepoError::NotFound)
-            })?;
-            let policy = cs.config.settings.slots.get(slot_name).ok_or_else(|| {
-                HistorizerError::Repo(RepoError::NotFound)
-            })?;
+            let cs = map
+                .get(&node_id)
+                .ok_or_else(|| HistorizerError::Repo(RepoError::NotFound))?;
+            let policy = cs
+                .config
+                .settings
+                .slots
+                .get(slot_name)
+                .ok_or_else(|| HistorizerError::Repo(RepoError::NotFound))?;
             effective_max_samples(slot_name, policy, &cs.config.settings, &self.cfg)
         };
         self.write_record_direct(&record, max_samples)
@@ -497,20 +500,30 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
             table[bytes[i + 2] as usize],
             table[bytes[i + 3] as usize],
         ];
-        if a == 255 || b == 255 { return None; }
+        if a == 255 || b == 255 {
+            return None;
+        }
         out.push((a << 2) | (b >> 4));
-        if c != 255 { out.push((b << 4) | (c >> 2)); }
-        if d != 255 { out.push((c << 6) | d); }
+        if c != 255 {
+            out.push((b << 4) | (c >> 2));
+        }
+        if d != 255 {
+            out.push((c << 6) | d);
+        }
         i += 4;
     }
     // Remaining 2 or 3 chars.
     if i + 1 < bytes.len() {
         let (a, b) = (table[bytes[i] as usize], table[bytes[i + 1] as usize]);
-        if a == 255 || b == 255 { return None; }
+        if a == 255 || b == 255 {
+            return None;
+        }
         out.push((a << 2) | (b >> 4));
         if i + 2 < bytes.len() {
             let c = table[bytes[i + 2] as usize];
-            if c != 255 { out.push((b << 4) | (c >> 2)); }
+            if c != 255 {
+                out.push((b << 4) | (c >> 2));
+            }
         }
     }
     Some(out)
@@ -555,7 +568,10 @@ mod tests {
             self.rows.lock().unwrap().extend(records.iter().cloned());
             Ok(())
         }
-        fn query_range(&self, _: &data_repos::HistoryQuery) -> Result<Vec<HistoryRecord>, RepoError> {
+        fn query_range(
+            &self,
+            _: &data_repos::HistoryQuery,
+        ) -> Result<Vec<HistoryRecord>, RepoError> {
             Ok(vec![])
         }
         fn count(&self, _: Uuid, _: &str) -> Result<u64, RepoError> {
@@ -662,14 +678,8 @@ mod tests {
         );
         register(&h, node, slots);
 
-        h.on_slot_changed(
-            node,
-            "config",
-            json!({"a": 1}),
-            SlotValueKind::Json,
-            1000,
-        )
-        .unwrap();
+        h.on_slot_changed(node, "config", json!({"a": 1}), SlotValueKind::Json, 1000)
+            .unwrap();
         h.flush().unwrap();
 
         assert_eq!(hist.rows.lock().unwrap().len(), 1);

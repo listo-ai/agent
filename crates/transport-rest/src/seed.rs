@@ -162,15 +162,15 @@ fn apply_ui_demo(state: &AppState) -> Result<SeedResult, ApiError> {
         .write_slot(&page_path, "title", json!("Overview"))
         .map_err(|e| ApiError::bad_request(format!("page title: {e}")))?;
     graph
-        .write_slot(
-            &page_path,
-            "layout",
-            json!({ "type": "grid", "cols": 3 }),
-        )
+        .write_slot(&page_path, "layout", json!({ "type": "grid", "cols": 3 }))
         .map_err(|e| ApiError::bad_request(format!("page layout: {e}")))?;
     // Back-fill the nav's frame_ref now that we know the page id.
     graph
-        .write_slot(&nav_path, "frame_ref", json!({ "id": page_id.0.to_string() }))
+        .write_slot(
+            &nav_path,
+            "frame_ref",
+            json!({ "id": page_id.0.to_string() }),
+        )
         .map_err(|e| ApiError::bad_request(format!("nav frame_ref: {e}")))?;
     nodes.push(SeededNode {
         path: page_path.to_string(),

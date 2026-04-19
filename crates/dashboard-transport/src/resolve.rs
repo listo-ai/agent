@@ -139,7 +139,14 @@ pub async fn handler(
     let contract_errors = run_contract_validation(reader, &page)?;
 
     if req.dry_run {
-        return Ok(Json(dry_run(&req, &state, &page, &widgets, &stack, contract_errors)));
+        return Ok(Json(dry_run(
+            &req,
+            &state,
+            &page,
+            &widgets,
+            &stack,
+            contract_errors,
+        )));
     }
 
     if let Some(first) = contract_errors.into_iter().next() {
@@ -175,7 +182,11 @@ pub async fn handler(
         dangling_count,
         stack_shadowed: stack.shadowed().to_vec(),
     };
-    let title = page.slots.get("title").and_then(|v| v.as_str()).map(String::from);
+    let title = page
+        .slots
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let render = ComponentTree::new(Component::Page {
         id: page.id.0.to_string(),
         title,
@@ -456,7 +467,9 @@ fn enforce_page_state_size(v: &JsonValue) -> Result<(), TransportError> {
 }
 
 fn enforce_render_tree_size(tree: &ComponentTree) -> Result<(), TransportError> {
-    let len = serde_json::to_vec(tree).map(|b| b.len()).unwrap_or(usize::MAX);
+    let len = serde_json::to_vec(tree)
+        .map(|b| b.len())
+        .unwrap_or(usize::MAX);
     if len > limits::MAX_RENDER_TREE_BYTES {
         return Err(TransportError::LimitExceeded {
             what: "render_tree_bytes",
@@ -516,11 +529,15 @@ fn run_contract_validation<R: NodeReader + ?Sized>(
         .parse()
         .map(NodeId)
         .map_err(|e| TransportError::MalformedPage(page.id, format!("template_ref.id: {e}")))?;
-    let template = reader
-        .get(&tid)
-        .ok_or_else(|| TransportError::MalformedPage(page.id, "template_ref points at missing node".into()))?;
+    let template = reader.get(&tid).ok_or_else(|| {
+        TransportError::MalformedPage(page.id, "template_ref points at missing node".into())
+    })?;
     require_kind(&template, TEMPLATE_KIND)?;
-    let requires = template.slots.get("requires").cloned().unwrap_or(JsonValue::Null);
+    let requires = template
+        .slots
+        .get("requires")
+        .cloned()
+        .unwrap_or(JsonValue::Null);
     let bound_args = page
         .slots
         .get("bound_args")
@@ -534,14 +551,14 @@ fn widget_bindings(w: &NodeSnapshot) -> Result<Vec<(String, String)>, TransportE
         Some(v) => v,
         None => return Ok(Vec::new()),
     };
-    let obj = raw
-        .as_object()
-        .ok_or_else(|| TransportError::MalformedWidget(w.id, "bindings must be an object".into()))?;
+    let obj = raw.as_object().ok_or_else(|| {
+        TransportError::MalformedWidget(w.id, "bindings must be an object".into())
+    })?;
     let mut out = Vec::with_capacity(obj.len());
     for (k, v) in obj {
-        let s = v
-            .as_str()
-            .ok_or_else(|| TransportError::MalformedWidget(w.id, format!("binding `{k}` not a string")))?;
+        let s = v.as_str().ok_or_else(|| {
+            TransportError::MalformedWidget(w.id, format!("binding `{k}` not a string"))
+        })?;
         out.push((k.clone(), s.to_string()));
     }
     Ok(out)

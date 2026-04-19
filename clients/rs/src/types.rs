@@ -419,6 +419,45 @@ pub struct PluginActionResponse {
     pub lifecycle: PluginLifecycle,
 }
 
+/// Runtime state of a process plugin — mirrors
+/// `extensions_host::PluginRuntimeState`. Internally tagged on
+/// `status` (server-side `#[serde(tag = "status", rename_all =
+/// "snake_case")]`).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum PluginRuntimeState {
+    /// Supervisor hasn't spawned the child yet (disabled or just
+    /// attached).
+    Idle,
+    /// Spawning child / awaiting UDS / performing `Describe`.
+    Starting,
+    /// `Describe` succeeded; last `Health` reported `READY`.
+    Ready,
+    /// Last `Health` returned `DEGRADED` with a detail string.
+    Degraded { detail: String },
+    /// Crashed or health failed — sleeping before the next spawn.
+    Restarting {
+        attempt: u32,
+        backoff_ms: u64,
+        reason: String,
+    },
+    /// Circuit-broken after repeated failures in the window. Needs
+    /// operator re-enable.
+    Failed { reason: String },
+    /// Shut down cleanly.
+    Stopped,
+}
+
+/// One entry of `GET /api/v1/plugins/runtime`. The `state` is
+/// flattened into the object so the wire shape is
+/// `{"id":"…","status":"ready"}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginRuntimeEntry {
+    pub id: String,
+    #[serde(flatten)]
+    pub state: PluginRuntimeState,
+}
+
 // ---- auth -----------------------------------------------------------------
 
 // ---- ui (dashboard) -------------------------------------------------------
@@ -606,8 +645,13 @@ pub enum UiComponent {
         submit: Option<UiAction>,
     },
     // placeholder stubs
-    Forbidden { id: String, reason: String },
-    Dangling { id: String },
+    Forbidden {
+        id: String,
+        reason: String,
+    },
+    Dangling {
+        id: String,
+    },
 }
 
 /// Action reference — mirrors `ui_ir::Action`.
@@ -671,9 +715,80 @@ pub struct UiResolveIssue {
     pub message: String,
 }
 
-// ---- auth -----------------------------------------------------------------
+// ---- ui action -------------------------------------------------------------
 
-/// Mirror of `GET /api/v1/auth/whoami`. Field order must match the
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiActionContext {
+    /// Component id that fired the action (button, form row, …).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    /// Ordered nav-node ids forming the breadcrumb stack.
+    #[serde(default)]
+    pub stack: Vec<String>,
+    /// Page-local state at the moment the action fired.
+    #[serde(default)]
+    pub page_state: JsonValue,
+    /// Opaque auth subject identifier threaded through for audit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_subject: Option<String>,
+}
+
+impl Default for UiActionContext {
+    fn default() -> Self {
+        Self {
+            target: None,
+            stack: vec![],
+            page_state: JsonValue::Object(Default::default()),
+            auth_subject: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiActionRequest {
+    pub handler: String,
+    #[serde(default)]
+    pub args: JsonValue,
+    #[serde(default)]
+    pub context: UiActionContext,
+}
+
+/// Tagged-union response from `POST /api/v1/ui/action`.
+///
+/// The `type` field discriminates the variant:
+/// `patch | navigate | full_render | toast | form_errors | download | stream | none`
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UiActionResponse {
+    /// Replace a single subtree in the current render tree.
+    Patch {
+        target_component_id: String,
+        tree: UiComponentTree,
+    },
+    /// Client-side navigation.
+    Navigate { to: UiNavigateTo },
+    /// Replace the full page render tree.
+    FullRender { tree: UiComponentTree },
+    /// Show a transient notification.
+    Toast { intent: String, message: String },
+    /// Attach field-level validation errors to the originating form.
+    FormErrors {
+        errors: std::collections::HashMap<String, String>,
+    },
+    /// Trigger a file download from the given URL.
+    Download { url: String },
+    /// Long-running response — client subscribes to the given channel.
+    Stream { channel: String },
+    /// No-op — action succeeded but the UI does not need to change.
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiNavigateTo {
+    pub target_ref: String,
+}
+
+// ---- auth ----------------------------------------------------------------- Field order must match the
 /// server-side DTO in `crates/transport-rest/src/auth_routes.rs`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WhoAmIDto {

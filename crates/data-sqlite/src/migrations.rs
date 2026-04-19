@@ -48,13 +48,11 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_links_source ON links(source_node, source_slot);
     CREATE INDEX idx_links_target ON links(target_node, target_slot);
     "#,
-
     // v2 — SLOT-STORAGE Stage 1: add nullable `kind` column to `slots`.
     r#"
     ALTER TABLE slots ADD COLUMN kind TEXT;
     CREATE INDEX idx_slots_kind ON slots(kind);
     "#,
-
     // v3 — SLOT-STORAGE Stage 4: history persistence tables.
     r#"
     CREATE TABLE slot_timeseries (
@@ -86,7 +84,6 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_sh_node_slot_ts ON slot_history(node_id, slot_name, ts_ms);
     CREATE INDEX idx_sh_node_slot_id ON slot_history(node_id, slot_name, id);
     "#,
-
     // v4 — UNDO-REDO Phase 1: flow documents + append-only revision history.
     // Implements docs/sessions/UNDO-REDO.md.
     //
@@ -145,7 +142,6 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_nsr_node_seq ON node_setting_revisions(node_id, seq DESC);
     CREATE INDEX idx_nsr_flow     ON node_setting_revisions(flow_id);
     "#,
-
     // v5 — User / org preferences. Implements docs/design/USER-PREFERENCES.md.
     //
     // Design notes:

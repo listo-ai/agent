@@ -11,9 +11,14 @@
 //! Wasm / native / process plugins get `plugin.yaml` fields today and
 //! their loaders in later stages — the manifest never has to change.
 
+pub mod host;
 mod manifest;
 mod registry;
 pub mod supervisor;
+pub mod wasm;
+
+pub use host::{HostError, HostPolicy, PluginHost, PluginRuntimeState};
+pub use wasm::{WasmError, WasmLimits, WasmSupervisor};
 
 pub use manifest::{
     Contributes, NativeLibContribution, PluginId, PluginManifest, ProcessBinContribution,

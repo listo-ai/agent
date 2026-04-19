@@ -12,6 +12,7 @@ use dashboard_runtime::NodeReader;
 
 use crate::acl::{AclCheck, AllowAll};
 use crate::audit::{AuditSink, TracingAudit};
+use crate::handler_registry::HandlerRegistry;
 use crate::invalidate::{InvalidateSink, TracingInvalidate};
 use crate::widget_registry::WidgetRegistry;
 
@@ -19,6 +20,7 @@ use crate::widget_registry::WidgetRegistry;
 pub struct DashboardState {
     pub reader: Arc<dyn NodeReader + Send + Sync + 'static>,
     pub widgets: Arc<WidgetRegistry>,
+    pub handlers: Arc<HandlerRegistry>,
     pub acl: Arc<dyn AclCheck>,
     pub audit: Arc<dyn AuditSink>,
     pub invalidate: Arc<dyn InvalidateSink>,
@@ -29,6 +31,7 @@ impl DashboardState {
         Self {
             reader,
             widgets: Arc::new(WidgetRegistry::new()),
+            handlers: Arc::new(HandlerRegistry::new()),
             acl: Arc::new(AllowAll),
             audit: Arc::new(TracingAudit),
             invalidate: Arc::new(TracingInvalidate),
@@ -37,6 +40,11 @@ impl DashboardState {
 
     pub fn with_widgets(mut self, widgets: Arc<WidgetRegistry>) -> Self {
         self.widgets = widgets;
+        self
+    }
+
+    pub fn with_handlers(mut self, handlers: Arc<HandlerRegistry>) -> Self {
+        self.handlers = handlers;
         self
     }
 

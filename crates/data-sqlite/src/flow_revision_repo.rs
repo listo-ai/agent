@@ -100,17 +100,18 @@ impl FlowRevisionRepo for SqliteFlowRevisionRepo {
     }
 
     fn prune_revisions(&self, flow_id: FlowId, keep: u32) -> Result<(), RepoError> {
-        let cap = if keep == 0 { DEFAULT_REVISION_CAP } else { keep };
+        let cap = if keep == 0 {
+            DEFAULT_REVISION_CAP
+        } else {
+            keep
+        };
         self.with_conn(|c| prune_revisions_tx(c, flow_id, cap))
     }
 }
 
 // ── Query helpers ────────────────────────────────────────────────────────────
 
-fn get_flow_row(
-    conn: &mut Connection,
-    id: FlowId,
-) -> Result<Option<FlowDocument>, SqliteError> {
+fn get_flow_row(conn: &mut Connection, id: FlowId) -> Result<Option<FlowDocument>, SqliteError> {
     let mut stmt = conn.prepare(
         "SELECT id, name, document, head_revision_id, head_seq \
          FROM flows WHERE id = ?1",
@@ -120,8 +121,7 @@ fn get_flow_row(
 }
 
 fn upsert_flow_row(conn: &mut Connection, flow: &FlowDocument) -> Result<(), SqliteError> {
-    let doc_text = serde_json::to_string(&flow.document)
-        .map_err(|e| SqliteError::Json(e))?;
+    let doc_text = serde_json::to_string(&flow.document).map_err(|e| SqliteError::Json(e))?;
     let head_rev = flow.head_revision_id.map(|r| r.0.to_string());
     conn.execute(
         "INSERT INTO flows (id, name, document, head_revision_id, head_seq, updated_at)
@@ -132,7 +132,13 @@ fn upsert_flow_row(conn: &mut Connection, flow: &FlowDocument) -> Result<(), Sql
              head_revision_id = excluded.head_revision_id,
              head_seq         = excluded.head_seq,
              updated_at       = excluded.updated_at",
-        params![flow.id.0.to_string(), flow.name, doc_text, head_rev, flow.head_seq],
+        params![
+            flow.id.0.to_string(),
+            flow.name,
+            doc_text,
+            head_rev,
+            flow.head_seq
+        ],
     )?;
     Ok(())
 }
@@ -147,12 +153,11 @@ fn list_flow_rows(
          FROM flows ORDER BY head_seq DESC LIMIT ?1 OFFSET ?2",
     )?;
     let rows = stmt.query_map(params![limit, offset], map_flow_row)?;
-    rows.collect::<Result<_, rusqlite::Error>>().map_err(Into::into)
+    rows.collect::<Result<_, rusqlite::Error>>()
+        .map_err(Into::into)
 }
 
-fn map_flow_row(
-    row: &rusqlite::Row<'_>,
-) -> Result<FlowDocument, rusqlite::Error> {
+fn map_flow_row(row: &rusqlite::Row<'_>) -> Result<FlowDocument, rusqlite::Error> {
     let id_str: String = row.get(0)?;
     let doc_text: String = row.get(2)?;
     let head_rev_str: Option<String> = row.get(3)?;
@@ -179,16 +184,14 @@ fn append_revision_tx(
     rev: &FlowRevision,
     new_document: &serde_json::Value,
 ) -> Result<(), SqliteError> {
-    let patch_text = serde_json::to_string(&rev.patch)
-        .map_err(|e| SqliteError::Json(e))?;
+    let patch_text = serde_json::to_string(&rev.patch).map_err(|e| SqliteError::Json(e))?;
     let snapshot_text = rev
         .snapshot
         .as_ref()
         .map(|s| serde_json::to_string(s))
         .transpose()
         .map_err(|e| SqliteError::Json(e))?;
-    let doc_text = serde_json::to_string(new_document)
-        .map_err(|e| SqliteError::Json(e))?;
+    let doc_text = serde_json::to_string(new_document).map_err(|e| SqliteError::Json(e))?;
 
     let tx = conn.transaction()?;
 
@@ -257,7 +260,8 @@ fn list_revision_rows(
         params![flow_id.0.to_string(), limit, offset],
         map_revision_row,
     )?;
-    rows.collect::<Result<_, rusqlite::Error>>().map_err(Into::into)
+    rows.collect::<Result<_, rusqlite::Error>>()
+        .map_err(Into::into)
 }
 
 fn head_revision_row(
@@ -289,13 +293,13 @@ fn map_revision_row(row: &rusqlite::Row<'_>) -> Result<FlowRevision, rusqlite::E
         Ok(RevisionId(parse_uuid_rusqlite(&s)?))
     };
 
-    let op = op_str
-        .parse::<RevisionOp>()
-        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+    let op = op_str.parse::<RevisionOp>().map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
             5,
             rusqlite::types::Type::Text,
             Box::new(StringError(e)),
-        ))?;
+        )
+    })?;
 
     let patch: serde_json::Value = serde_json::from_str(&patch_text).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(8, rusqlite::types::Type::Text, Box::new(e))
@@ -438,10 +442,8 @@ fn prune_revisions_tx(
              WHERE flow_id = ?1 AND seq <= ?2 AND id NOT IN ({placeholders})"
         );
         let mut stmt = tx.prepare(&sql)?;
-        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![
-            Box::new(flow_id.0.to_string()),
-            Box::new(cutoff_seq),
-        ];
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
+            vec![Box::new(flow_id.0.to_string()), Box::new(cutoff_seq)];
         for pin in &pinned {
             params_vec.push(Box::new(pin.clone()));
         }
@@ -491,11 +493,7 @@ fn collect_undo_redo_pins(
 
 fn parse_uuid_rusqlite(s: &str) -> Result<uuid::Uuid, rusqlite::Error> {
     uuid::Uuid::from_str(s).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(
-            0,
-            rusqlite::types::Type::Text,
-            Box::new(e),
-        )
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
     })
 }
 

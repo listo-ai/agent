@@ -1,7 +1,7 @@
 // Zod schemas for the dashboard UI surface.
 // Field-for-field mirror of `clients/rs/src/types.rs` UI DTOs, which in
-// turn mirror the server's `dashboard_transport::{nav,resolve}` types.
-// See docs/design/NEW-API.md for the parity rule.
+// turn mirror the server's `dashboard_transport::{nav,resolve}` and
+// `ui_ir` types. See docs/design/NEW-API.md for the parity rule.
 
 import { z } from "zod";
 
@@ -42,33 +42,167 @@ export const UiResolveRequestSchema = z.object({
 });
 export type UiResolveRequest = z.infer<typeof UiResolveRequestSchema>;
 
-/** Tagged widget render output. Discriminator `kind`. */
-export const UiRenderedWidgetSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("ui.widget"),
-    id: z.string(),
-    widget_type: z.string(),
-    values: z.record(z.string(), z.unknown()),
-    layout_hint: z.unknown().optional(),
-  }),
-  z.object({
-    kind: z.literal("ui.widget.forbidden"),
-    id: z.string(),
-    reason: z.string(),
-  }),
-  z.object({
-    kind: z.literal("ui.widget.dangling"),
-    id: z.string(),
-  }),
-]);
-export type UiRenderedWidget = z.infer<typeof UiRenderedWidgetSchema>;
+// ---- Action ---------------------------------------------------------------
 
-export const UiRenderTreeSchema = z.object({
-  page_id: z.string(),
-  title: z.string().nullable(),
-  widgets: z.array(UiRenderedWidgetSchema),
+export const UiActionSchema = z.object({
+  handler: z.string(),
+  args: z.unknown().optional(),
 });
-export type UiRenderTree = z.infer<typeof UiRenderTreeSchema>;
+export type UiAction = z.infer<typeof UiActionSchema>;
+
+// ---- Table helpers --------------------------------------------------------
+
+export const UiTableSourceSchema = z.object({
+  query: z.string(),
+  subscribe: z.boolean().optional(),
+});
+export type UiTableSource = z.infer<typeof UiTableSourceSchema>;
+
+export const UiTableColumnSchema = z.object({
+  title: z.string(),
+  field: z.string(),
+  sortable: z.boolean().optional(),
+});
+export type UiTableColumn = z.infer<typeof UiTableColumnSchema>;
+
+export const UiDiffAnnotationSchema = z.object({
+  line: z.number().int(),
+  text: z.string(),
+  author: z.string().optional(),
+  created_at: z.string().optional(),
+});
+export type UiDiffAnnotation = z.infer<typeof UiDiffAnnotationSchema>;
+
+// ---- Component (recursive) ------------------------------------------------
+
+/** Recursive component tree node. Discriminator `type`. */
+export interface UiComponent {
+  type: string;
+  [key: string]: unknown;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const UiTabSchema: z.ZodType<any> = z.lazy(() =>
+  z.object({
+    id: z.string().optional(),
+    label: z.string(),
+    children: z.array(UiComponentSchema),
+  }),
+);
+export type UiTab = { id?: string; label: string; children: UiComponent[] };
+
+export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    // layout
+    z.object({
+      type: z.literal("page"),
+      id: z.string(),
+      title: z.string().nullable().optional(),
+      children: z.array(UiComponentSchema).default([]),
+    }),
+    z.object({
+      type: z.literal("row"),
+      id: z.string().optional(),
+      children: z.array(UiComponentSchema).default([]),
+      gap: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("col"),
+      id: z.string().optional(),
+      children: z.array(UiComponentSchema).default([]),
+      gap: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("grid"),
+      id: z.string().optional(),
+      children: z.array(UiComponentSchema).default([]),
+      columns: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("tabs"),
+      id: z.string().optional(),
+      tabs: z.array(UiTabSchema),
+    }),
+    // display
+    z.object({
+      type: z.literal("text"),
+      id: z.string().optional(),
+      content: z.string(),
+      intent: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("heading"),
+      id: z.string().optional(),
+      content: z.string(),
+      level: z.number().int().optional(),
+    }),
+    z.object({
+      type: z.literal("badge"),
+      id: z.string().optional(),
+      label: z.string(),
+      intent: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("diff"),
+      id: z.string().optional(),
+      old_text: z.string(),
+      new_text: z.string(),
+      language: z.string().optional(),
+      annotations: z.array(UiDiffAnnotationSchema).default([]),
+      line_action: UiActionSchema.optional(),
+    }),
+    // data
+    z.object({
+      type: z.literal("table"),
+      id: z.string().optional(),
+      source: UiTableSourceSchema,
+      columns: z.array(UiTableColumnSchema),
+      row_action: UiActionSchema.optional(),
+      page_size: z.number().int().optional(),
+    }),
+    // input
+    z.object({
+      type: z.literal("rich_text"),
+      id: z.string().optional(),
+      value: z.string().optional(),
+      placeholder: z.string().optional(),
+    }),
+    // interactive
+    z.object({
+      type: z.literal("button"),
+      id: z.string().optional(),
+      label: z.string(),
+      intent: z.string().optional(),
+      disabled: z.boolean().optional(),
+      action: UiActionSchema.optional(),
+    }),
+    // composite
+    z.object({
+      type: z.literal("form"),
+      id: z.string().optional(),
+      schema_ref: z.string(),
+      bindings: z.unknown().optional(),
+      submit: UiActionSchema.optional(),
+    }),
+    // placeholder stubs
+    z.object({
+      type: z.literal("forbidden"),
+      id: z.string(),
+      reason: z.string(),
+    }),
+    z.object({
+      type: z.literal("dangling"),
+      id: z.string(),
+    }),
+  ]),
+);
+
+/** Root of a resolved component tree. */
+export const UiComponentTreeSchema = z.object({
+  ir_version: z.number().int().nonnegative(),
+  root: UiComponentSchema,
+});
+export type UiComponentTree = z.infer<typeof UiComponentTreeSchema>;
 
 export const UiResolveMetaSchema = z.object({
   cache_key: z.number(),
@@ -100,7 +234,7 @@ export type UiSubscriptionPlan = z.infer<typeof UiSubscriptionPlanSchema>;
  */
 export const UiResolveResponseSchema = z.union([
   z.object({
-    render: UiRenderTreeSchema,
+    render: UiComponentTreeSchema,
     subscriptions: z.array(UiSubscriptionPlanSchema),
     meta: UiResolveMetaSchema,
   }),
@@ -109,3 +243,66 @@ export const UiResolveResponseSchema = z.union([
   }),
 ]);
 export type UiResolveResponse = z.infer<typeof UiResolveResponseSchema>;
+
+// ---- action ----------------------------------------------------------------
+
+export const UiActionContextSchema = z.object({
+  target: z.string().optional(),
+  stack: z.array(z.string()).default([]),
+  page_state: z.record(z.unknown()).default({}),
+  auth_subject: z.string().optional(),
+});
+export type UiActionContext = z.infer<typeof UiActionContextSchema>;
+
+export const UiActionRequestSchema = z.object({
+  handler: z.string(),
+  args: z.unknown().default(null),
+  context: UiActionContextSchema.default({}),
+});
+export type UiActionRequest = z.infer<typeof UiActionRequestSchema>;
+
+export const UiNavigateToSchema = z.object({
+  target_ref: z.string(),
+});
+export type UiNavigateTo = z.infer<typeof UiNavigateToSchema>;
+
+/**
+ * Tagged-union response from `POST /api/v1/ui/action`.
+ * Discriminated by the `type` field.
+ */
+export const UiActionResponseSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("patch"),
+    target_component_id: z.string(),
+    tree: UiComponentTreeSchema,
+  }),
+  z.object({
+    type: z.literal("navigate"),
+    to: UiNavigateToSchema,
+  }),
+  z.object({
+    type: z.literal("full_render"),
+    tree: UiComponentTreeSchema,
+  }),
+  z.object({
+    type: z.literal("toast"),
+    intent: z.enum(["ok", "warn", "danger"]),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("form_errors"),
+    errors: z.record(z.string()),
+  }),
+  z.object({
+    type: z.literal("download"),
+    url: z.string().url(),
+  }),
+  z.object({
+    type: z.literal("stream"),
+    channel: z.string(),
+  }),
+  z.object({
+    type: z.literal("none"),
+  }),
+]);
+export type UiActionResponse = z.infer<typeof UiActionResponseSchema>;

@@ -34,8 +34,11 @@ pub trait FlowRevisionRepo: Send + Sync + 'static {
     /// The callee increments `flows.head_seq` / `flows.head_revision_id`
     /// and persists the live document from `rev.snapshot`.  The `rev.seq`
     /// value is set by the caller (= previous `head_seq + 1`).
-    fn append_revision(&self, rev: &FlowRevision, new_document: &serde_json::Value)
-        -> Result<(), RepoError>;
+    fn append_revision(
+        &self,
+        rev: &FlowRevision,
+        new_document: &serde_json::Value,
+    ) -> Result<(), RepoError>;
 
     /// Fetch a single revision by id.
     fn get_revision(&self, id: RevisionId) -> Result<Option<FlowRevision>, RepoError>;

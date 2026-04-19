@@ -187,19 +187,21 @@ mod tests {
         let bound: Vec<(NodeId, u64)> = vec![];
         let ab = vec![(w1, 1), (w2, 2)];
         let ba = vec![(w2, 2), (w1, 1)];
-        let make = |list: &[(NodeId, u64)]| CacheKeyInputs {
-            page_ref: page,
-            page_node_version: 1,
-            template_node_version: None,
-            widget_node_versions: list,
-            bound_node_versions: &bound,
-            auth_subject: "s",
-            auth_role_epoch: 0,
-            stack: &stack,
-            page_state_hash: 0,
-            widget_registry_version: 0,
-        }
-        .derive();
+        let make = |list: &[(NodeId, u64)]| {
+            CacheKeyInputs {
+                page_ref: page,
+                page_node_version: 1,
+                template_node_version: None,
+                widget_node_versions: list,
+                bound_node_versions: &bound,
+                auth_subject: "s",
+                auth_role_epoch: 0,
+                stack: &stack,
+                page_state_hash: 0,
+                widget_registry_version: 0,
+            }
+            .derive()
+        };
         assert_eq!(make(&ab), make(&ba));
     }
 
@@ -230,19 +232,21 @@ mod tests {
                 node_ref: t1,
             },
         ]);
-        let make = |s: &ContextStack| CacheKeyInputs {
-            page_ref: page,
-            page_node_version: 1,
-            template_node_version: None,
-            widget_node_versions: &widgets,
-            bound_node_versions: &bound,
-            auth_subject: "s",
-            auth_role_epoch: 0,
-            stack: s,
-            page_state_hash: 0,
-            widget_registry_version: 0,
-        }
-        .derive();
+        let make = |s: &ContextStack| {
+            CacheKeyInputs {
+                page_ref: page,
+                page_node_version: 1,
+                template_node_version: None,
+                widget_node_versions: &widgets,
+                bound_node_versions: &bound,
+                auth_subject: "s",
+                auth_role_epoch: 0,
+                stack: s,
+                page_state_hash: 0,
+                widget_registry_version: 0,
+            }
+            .derive()
+        };
         assert_ne!(make(&stack_a), make(&stack_b));
     }
 

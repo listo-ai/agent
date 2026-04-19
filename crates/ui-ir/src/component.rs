@@ -24,7 +24,6 @@ use serde_json::Value as JsonValue;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Component {
     // ---- layout ---------------------------------------------------
-
     /// Root component for a resolved page.
     Page {
         id: String,
@@ -73,7 +72,6 @@ pub enum Component {
     },
 
     // ---- display --------------------------------------------------
-
     /// Plain text span.
     Text {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,7 +119,6 @@ pub enum Component {
     },
 
     // ---- data -----------------------------------------------------
-
     /// Server-paginated, sortable table. Rows fetched via
     /// `GET /api/v1/ui/table` (S3); S1 emits the schema only.
     Table {
@@ -136,7 +133,6 @@ pub enum Component {
     },
 
     // ---- input ----------------------------------------------------
-
     /// Markdown-aware rich-text editor.
     RichText {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,7 +144,6 @@ pub enum Component {
     },
 
     // ---- interactive ----------------------------------------------
-
     /// A button that fires an action on click.
     Button {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -163,7 +158,6 @@ pub enum Component {
     },
 
     // ---- composite ------------------------------------------------
-
     /// JSON-Schema-driven form. `schema_ref` is resolved from
     /// bindings; `submit` fires on form submission.
     Form {
@@ -180,19 +174,13 @@ pub enum Component {
     },
 
     // ---- placeholder stubs ----------------------------------------
-
     /// ACL-redacted widget — the caller lacks permission to see the
     /// bound data. Renderer shows a neutral stub.
-    Forbidden {
-        id: String,
-        reason: String,
-    },
+    Forbidden { id: String, reason: String },
 
     /// Widget whose bound node has been deleted. Renderer shows a
     /// neutral "missing" stub.
-    Dangling {
-        id: String,
-    },
+    Dangling { id: String },
 }
 
 // -------------------------------------------------------------------
@@ -298,13 +286,11 @@ mod tests {
                 query: "kind==sys.driver.point".into(),
                 subscribe: Some(true),
             },
-            columns: vec![
-                TableColumn {
-                    title: "Name".into(),
-                    field: "path".into(),
-                    sortable: Some(true),
-                },
-            ],
+            columns: vec![TableColumn {
+                title: "Name".into(),
+                field: "path".into(),
+                sortable: Some(true),
+            }],
             row_action: None,
             page_size: Some(50),
         };

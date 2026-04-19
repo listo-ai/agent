@@ -192,7 +192,14 @@ fn upsert_slot_row(conn: &mut Connection, s: &PersistedSlot) -> Result<(), Sqlit
             value=excluded.value,
             generation=excluded.generation,
             kind=excluded.kind",
-        params![s.node_id.to_string(), s.name, s.role, value, s.generation, s.kind],
+        params![
+            s.node_id.to_string(),
+            s.name,
+            s.role,
+            value,
+            s.generation,
+            s.kind
+        ],
     )?;
     Ok(())
 }

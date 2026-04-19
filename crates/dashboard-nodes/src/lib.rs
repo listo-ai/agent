@@ -18,11 +18,7 @@ pub mod contract;
 pub use contract::{validate_bound_args, ContractError, ParamSpec, ParamType, Requires};
 
 #[derive(NodeKind)]
-#[node(
-    kind = "ui.nav",
-    manifest = "manifests/nav.yaml",
-    behavior = "none"
-)]
+#[node(kind = "ui.nav", manifest = "manifests/nav.yaml", behavior = "none")]
 pub struct Nav;
 
 #[derive(NodeKind)]
@@ -34,11 +30,7 @@ pub struct Nav;
 pub struct Template;
 
 #[derive(NodeKind)]
-#[node(
-    kind = "ui.page",
-    manifest = "manifests/page.yaml",
-    behavior = "none"
-)]
+#[node(kind = "ui.page", manifest = "manifests/page.yaml", behavior = "none")]
 pub struct Page;
 
 #[derive(NodeKind)]

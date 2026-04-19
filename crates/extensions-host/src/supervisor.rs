@@ -343,8 +343,9 @@ mod tests {
                 capabilities: vec![],
             }))
         }
-        type DiscoverStream =
-            std::pin::Pin<Box<dyn futures_core::Stream<Item = Result<DiscoverEvent, Status>> + Send>>;
+        type DiscoverStream = std::pin::Pin<
+            Box<dyn futures_core::Stream<Item = Result<DiscoverEvent, Status>> + Send>,
+        >;
         async fn discover(
             &self,
             _req: Request<DiscoverRequest>,
@@ -381,7 +382,10 @@ mod tests {
         let stream = UnixListenerStream::new(listener);
         let svc = ExtensionServer::new(FakePlugin { id: id.to_string() });
         tokio::spawn(async move {
-            let _ = Server::builder().add_service(svc).serve_with_incoming(stream).await;
+            let _ = Server::builder()
+                .add_service(svc)
+                .serve_with_incoming(stream)
+                .await;
         });
     }
 

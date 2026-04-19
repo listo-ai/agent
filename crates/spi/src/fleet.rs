@@ -83,8 +83,7 @@ pub type SubscriptionStream =
 /// Stream of connection-health transitions. Always starts with the
 /// current state so subscribers don't need a separate "get current"
 /// call to initialise.
-pub type HealthStream =
-    Pin<Box<dyn futures_core::Stream<Item = HealthStatus> + Send + 'static>>;
+pub type HealthStream = Pin<Box<dyn futures_core::Stream<Item = HealthStatus> + Send + 'static>>;
 
 /// A registered server returned from `serve`. Dropping it deregisters
 /// the handler from the transport via `ServerHandle::shutdown`.
@@ -324,7 +323,10 @@ mod tests {
             agent_id: "edge-42".to_string(),
         };
         let json = serde_json::to_string(&remote).unwrap();
-        assert_eq!(json, r#"{"kind":"remote","tenant":"sys","agent_id":"edge-42"}"#);
+        assert_eq!(
+            json,
+            r#"{"kind":"remote","tenant":"sys","agent_id":"edge-42"}"#
+        );
         let back: FleetScope = serde_json::from_str(&json).unwrap();
         assert_eq!(back, remote);
     }

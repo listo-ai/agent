@@ -210,7 +210,11 @@ mod tests {
             .await
             .unwrap();
         let mut client = ExtensionClient::new(channel);
-        let id = client.describe(DescribeRequest {}).await.unwrap().into_inner();
+        let id = client
+            .describe(DescribeRequest {})
+            .await
+            .unwrap()
+            .into_inner();
         assert_eq!(id.extension_id, "com.acme.sdktest");
         assert_eq!(id.version, "9.9.9");
 

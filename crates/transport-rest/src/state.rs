@@ -6,7 +6,7 @@ use auth::DevNullProvider;
 use data_repos::PreferencesService;
 use domain_flows::FlowService;
 use engine::BehaviorRegistry;
-use extensions_host::PluginRegistry;
+use extensions_host::{PluginHost, PluginRegistry};
 use graph::GraphStore;
 use spi::{AuthProvider, FleetTransport, NullTransport};
 use tokio::sync::broadcast;
@@ -22,6 +22,10 @@ pub struct AppState {
     /// Ring buffer for reconnect replay — see `GET /api/v1/events?since=`.
     pub ring: EventRing,
     pub plugins: PluginRegistry,
+    /// Process-plugin runtime manager. `None` when the agent's plugins
+    /// dir isn't writable (tests, read-only containers) — enable /
+    /// disable endpoints fall back to registry-only flips in that case.
+    pub plugin_host: Option<PluginHost>,
     /// Fleet transport — `NullTransport` when the agent is configured
     /// with `fleet: null` (standalone / offline). Holding it in
     /// `AppState` makes the one handler fn usable from both the REST
@@ -54,6 +58,7 @@ impl AppState {
             events,
             ring: EventRing::new(crate::ring::DEFAULT_RING_CAPACITY),
             plugins,
+            plugin_host: None,
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),
             flows: None,
@@ -77,6 +82,7 @@ impl AppState {
             events,
             ring,
             plugins,
+            plugin_host: None,
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),
             flows: None,
@@ -87,6 +93,14 @@ impl AppState {
     /// Swap in a real fleet transport (e.g. `ZenohTransport`).
     pub fn with_fleet(mut self, fleet: Arc<dyn FleetTransport>) -> Self {
         self.fleet = fleet;
+        self
+    }
+
+    /// Attach the process-plugin host. Without this, enable/disable
+    /// endpoints only flip the registry's bit; with it, they also
+    /// start/stop the child processes.
+    pub fn with_plugin_host(mut self, host: PluginHost) -> Self {
+        self.plugin_host = Some(host);
         self
     }
 

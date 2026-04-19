@@ -1,0 +1,60 @@
+// Wasm-plugin contract — mirrors the gRPC extension.proto in spirit
+// but narrowed to what an in-process node-behaviour plugin needs.
+//
+// Stability: any change here is a major-version bump of
+// `us:extension`. Additive changes (new world exports, new record
+// fields) go into the next minor version — never remove or rename.
+package us:extension@1.0.0;
+
+// The `plugin` world is the single entry point the host instantiates
+// per plugin module. One module = one plugin = one or more kinds.
+//
+// Every call is synchronous — the host enforces fuel + wall-clock
+// timeouts around it. No async imports in this first landing; they
+// slot in alongside when we wire WASI-P2 I/O.
+world plugin {
+  // Identity + declared kinds. Called once at load, right after
+  // instantiation, to check namespace ownership and register kinds
+  // with the engine.
+  export describe: func() -> describe-response;
+
+  // Dispatch an input message to a node instance. `node-id` identifies
+  // the engine-side node; `port` is the input slot; `msg-json` is the
+  // Msg payload serialised by the host.
+  //
+  // The plugin returns zero or more output messages, each targeted at
+  // one of its output ports. The host fans these into the graph.
+  export on-input: func(
+    node-id: string,
+    kind-id: string,
+    port: string,
+    msg-json: string,
+  ) -> result<list<output-msg>, string>;
+
+  record describe-response {
+    // Reverse-DNS id. Must equal the plugin directory name (host
+    // cross-checks and refuses on mismatch).
+    extension-id: string,
+    version: string,
+    kinds: list<kind-decl>,
+  }
+
+  record kind-decl {
+    // Full kind id — must live under the plugin's namespace.
+    kind-id: string,
+    // Free-form, for Studio display.
+    display-name: string,
+    // One port name per input / output the node exposes. Engine uses
+    // these to route messages in / out of the wasm instance.
+    inputs: list<string>,
+    outputs: list<string>,
+  }
+
+  record output-msg {
+    port: string,
+    // JSON-encoded Msg value. Keeping it JSON for now lets us evolve
+    // Msg shape without rev'ing the WIT world. A future major can
+    // swap this for a typed variant.
+    msg-json: string,
+  }
+}

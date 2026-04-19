@@ -2,7 +2,7 @@
 
 use crate::error::ClientError;
 use crate::http::HttpClient;
-use crate::types::PluginSummary;
+use crate::types::{PluginRuntimeEntry, PluginRuntimeState, PluginSummary};
 
 pub struct Plugins<'c> {
     http: &'c HttpClient,
@@ -52,6 +52,23 @@ impl<'c> Plugins<'c> {
     pub async fn reload(&self) -> Result<(), ClientError> {
         self.http
             .post_no_body(&format!("{}/plugins/reload", self.base))
+            .await
+    }
+
+    /// Get the current process-runtime state for one plugin. 404 when
+    /// the plugin isn't a process plugin or the host is unavailable.
+    pub async fn runtime(&self, id: &str) -> Result<PluginRuntimeState, ClientError> {
+        let encoded = encode_value(id);
+        self.http
+            .get::<PluginRuntimeState>(&format!("{}/plugins/{encoded}/runtime", self.base))
+            .await
+    }
+
+    /// Snapshot every process plugin's runtime state. Empty when the
+    /// agent has no process plugins or no host attached.
+    pub async fn runtime_all(&self) -> Result<Vec<PluginRuntimeEntry>, ClientError> {
+        self.http
+            .get::<Vec<PluginRuntimeEntry>>(&format!("{}/plugins/runtime", self.base))
             .await
     }
 }

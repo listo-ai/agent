@@ -136,8 +136,7 @@ impl Binding {
     ) -> Result<BindingValue, BindingError> {
         let (mut value, mut cursor_node) = self.seed_value(ctx)?;
         for segment in &self.path {
-            let (next_value, next_node) =
-                walk_one(&value, cursor_node, segment, ctx.reader, ctx)?;
+            let (next_value, next_node) = walk_one(&value, cursor_node, segment, ctx.reader, ctx)?;
             value = next_value;
             cursor_node = next_node;
         }
@@ -219,7 +218,9 @@ fn read_slot<R: NodeReader + ?Sized>(
     node: &NodeId,
     slot: &str,
 ) -> Result<JsonValue, BindingError> {
-    let snap = reader.get(node).ok_or(BindingError::RefNodeMissing(*node))?;
+    let snap = reader
+        .get(node)
+        .ok_or(BindingError::RefNodeMissing(*node))?;
     snap.slots
         .get(slot)
         .cloned()
@@ -273,9 +274,7 @@ fn try_as_noderef(v: &JsonValue) -> Option<NodeId> {
 
 fn split_head(expr: &str) -> (String, Option<&str>) {
     // Head is $stack / $self / $user / $page up to the first `.` or `[`.
-    let end = expr
-        .find(['.', '['])
-        .unwrap_or(expr.len());
+    let end = expr.find(['.', '[']).unwrap_or(expr.len());
     let (head, rest) = expr.split_at(end);
     let rest = if rest.starts_with('.') {
         Some(&rest[1..])
@@ -294,9 +293,9 @@ fn parse_stack_source(rest: Option<&str>) -> Result<(Source, Option<&str>), Bind
         BindingError::Malformed("$stack must be followed by .alias or [index]".into())
     })?;
     if rest.starts_with('[') {
-        let close = rest.find(']').ok_or_else(|| {
-            BindingError::Malformed("$stack[...] missing closing bracket".into())
-        })?;
+        let close = rest
+            .find(']')
+            .ok_or_else(|| BindingError::Malformed("$stack[...] missing closing bracket".into()))?;
         let idx: i64 = rest[1..close]
             .parse()
             .map_err(|_| BindingError::Malformed("$stack index is not an integer".into()))?;
@@ -436,7 +435,9 @@ mod tests {
         let empty_user: HashMap<String, JsonValue> = HashMap::new();
         let page = json!({});
         let b = Binding::parse("$stack.target").unwrap();
-        let v = b.evaluate(&ctx(&reader, &stack, NodeId::new(), &empty_user, &page)).unwrap();
+        let v = b
+            .evaluate(&ctx(&reader, &stack, NodeId::new(), &empty_user, &page))
+            .unwrap();
         assert_eq!(v, json!({ "id": t1.0.to_string() }));
     }
 

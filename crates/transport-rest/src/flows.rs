@@ -37,18 +37,12 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/flows", get(list_flows).post(create_flow))
-        .route(
-            "/api/v1/flows/:id",
-            get(get_flow).delete(delete_flow),
-        )
+        .route("/api/v1/flows/:id", get(get_flow).delete(delete_flow))
         .route("/api/v1/flows/:id/edit", post(edit_flow))
         .route("/api/v1/flows/:id/undo", post(undo_flow))
         .route("/api/v1/flows/:id/redo", post(redo_flow))
         .route("/api/v1/flows/:id/revert", post(revert_flow))
-        .route(
-            "/api/v1/flows/:id/revisions",
-            get(list_revisions),
-        )
+        .route("/api/v1/flows/:id/revisions", get(list_revisions))
         .route(
             "/api/v1/flows/:id/revisions/:rev_id",
             get(get_revision_document),
@@ -151,19 +145,21 @@ struct MutationResult {
 
 fn flow_err_to_response(err: FlowError) -> Response {
     match &err {
-        FlowError::NotFound(_) | FlowError::RevisionNotFound(_) => {
-            (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": err.to_string() }))).into_response()
-        }
-        FlowError::Conflict { .. } | FlowError::StaleRedoCursor { .. } => {
-            (StatusCode::CONFLICT, Json(serde_json::json!({ "error": err.to_string() }))).into_response()
-        }
-        FlowError::NothingToUndo(_) | FlowError::NothingToRedo(_) => {
-            (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(serde_json::json!({ "error": err.to_string() })),
-            )
-                .into_response()
-        }
+        FlowError::NotFound(_) | FlowError::RevisionNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        )
+            .into_response(),
+        FlowError::Conflict { .. } | FlowError::StaleRedoCursor { .. } => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        )
+            .into_response(),
+        FlowError::NothingToUndo(_) | FlowError::NothingToRedo(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        )
+            .into_response(),
         _ => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": err.to_string() })),
@@ -223,10 +219,7 @@ fn require_flows(state: &AppState) -> Result<&FlowService, Response> {
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
-async fn list_flows(
-    State(state): State<AppState>,
-    Query(q): Query<PaginationQuery>,
-) -> Response {
+async fn list_flows(State(state): State<AppState>, Query(q): Query<PaginationQuery>) -> Response {
     let svc = match require_flows(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -240,10 +233,7 @@ async fn list_flows(
     }
 }
 
-async fn create_flow(
-    State(state): State<AppState>,
-    Json(body): Json<CreateFlowBody>,
-) -> Response {
+async fn create_flow(State(state): State<AppState>, Json(body): Json<CreateFlowBody>) -> Response {
     let svc = match require_flows(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -254,10 +244,7 @@ async fn create_flow(
     }
 }
 
-async fn get_flow(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Response {
+async fn get_flow(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     let svc = match require_flows(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -312,8 +299,17 @@ async fn edit_flow(
         Ok(v) => v,
         Err(r) => return r,
     };
-    match svc.edit(flow_id, expected_head, body.document, body.author, body.summary) {
-        Ok(rev_id) => Json(MutationResult { head_revision_id: rev_id.to_string() }).into_response(),
+    match svc.edit(
+        flow_id,
+        expected_head,
+        body.document,
+        body.author,
+        body.summary,
+    ) {
+        Ok(rev_id) => Json(MutationResult {
+            head_revision_id: rev_id.to_string(),
+        })
+        .into_response(),
         Err(e) => flow_err_to_response(e),
     }
 }
@@ -336,7 +332,10 @@ async fn undo_flow(
         Err(r) => return r,
     };
     match svc.undo(flow_id, expected_head, body.author) {
-        Ok(rev_id) => Json(MutationResult { head_revision_id: rev_id.to_string() }).into_response(),
+        Ok(rev_id) => Json(MutationResult {
+            head_revision_id: rev_id.to_string(),
+        })
+        .into_response(),
         Err(e) => flow_err_to_response(e),
     }
 }
@@ -363,7 +362,10 @@ async fn redo_flow(
         Err(r) => return r,
     };
     match svc.redo(flow_id, expected_head, expected_target, body.author) {
-        Ok(rev_id) => Json(MutationResult { head_revision_id: rev_id.to_string() }).into_response(),
+        Ok(rev_id) => Json(MutationResult {
+            head_revision_id: rev_id.to_string(),
+        })
+        .into_response(),
         Err(e) => flow_err_to_response(e),
     }
 }
@@ -390,7 +392,10 @@ async fn revert_flow(
         Err(r) => return r,
     };
     match svc.revert(flow_id, expected_head, target_rev_id, body.author) {
-        Ok(rev_id) => Json(MutationResult { head_revision_id: rev_id.to_string() }).into_response(),
+        Ok(rev_id) => Json(MutationResult {
+            head_revision_id: rev_id.to_string(),
+        })
+        .into_response(),
         Err(e) => flow_err_to_response(e),
     }
 }

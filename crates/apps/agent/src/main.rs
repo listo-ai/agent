@@ -16,20 +16,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
 use auth::{DevNullProvider, StaticTokenProvider};
+use clap::{Parser, Subcommand};
 use config::{
     default_db_path, default_plugins_dir, from_env, from_file, AgentConfig, AgentConfigOverlay,
     AuthConfig, DatabaseOverlay, Defaults, FleetConfig, FleetOverlay, LogOverlay, PluginsOverlay,
     Role, ZenohFleetOverlay,
 };
-use data_sqlite::SqliteGraphRepo;
+use data_repos::PreferencesService;
 use data_sqlite::SqliteFlowRevisionRepo;
+use data_sqlite::SqliteGraphRepo;
 use data_sqlite::SqlitePreferencesRepo;
 use domain_flows::FlowService;
-use data_repos::PreferencesService;
 use engine::{kinds as engine_kinds, Engine};
-use extensions_host::PluginRegistry;
+use extensions_host::{HostPolicy, PluginHost, PluginRegistry};
 use graph::{seed, GraphStore, KindRegistry};
 use spi::{AuthProvider, FleetTransport, KindId, TenantId};
 use tokio::signal::unix::{signal, SignalKind};
@@ -234,7 +234,33 @@ async fn run_daemon(
     engine.start().await?;
     info!(state = ?engine.state(), "engine running");
 
-    let mut app_state = AppState::new_with_ring(graph.clone(), engine.behaviors().clone(), events, ring, plugins);
+    // Start the process-plugin host. Sockets go under
+    // <plugins_dir>/.sockets/ so they share the plugins dir's
+    // writability guarantees without colliding with plugin contents.
+    let socket_dir = cfg.plugins.dir.join(".sockets");
+    let plugin_host = match PluginHost::start(plugins.clone(), socket_dir, HostPolicy::default())
+        .await
+    {
+        Ok(h) => {
+            info!("process-plugin host started");
+            Some(h)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "process-plugin host unavailable — process plugins will not run");
+            None
+        }
+    };
+
+    let mut app_state = AppState::new_with_ring(
+        graph.clone(),
+        engine.behaviors().clone(),
+        events,
+        ring,
+        plugins,
+    );
+    if let Some(ref h) = plugin_host {
+        app_state = app_state.with_plugin_host(h.clone());
+    }
 
     // Resolve the identity provider. Absent / `dev_null` → default
     // `DevNullProvider` stays; `static_token` → swap in a
@@ -340,6 +366,10 @@ async fn run_daemon(
     info!("termination signal received \u{2014} beginning graceful shutdown");
 
     server.abort();
+    if let Some(host) = plugin_host {
+        info!("shutting down process plugins");
+        host.shutdown().await;
+    }
     engine.shutdown().await?;
     info!(state = ?engine.state(), "agent exited cleanly");
     Ok(())

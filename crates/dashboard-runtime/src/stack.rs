@@ -78,13 +78,10 @@ impl ContextStack {
             let snap = reader.get(id).ok_or(StackError::NodeMissing(*id))?;
             assert_nav_kind(&snap)?;
 
-            let alias = snap
-                .slots
-                .get(FRAME_ALIAS_SLOT)
-                .and_then(|v| match v {
-                    JsonValue::String(s) if !s.is_empty() => Some(s.clone()),
-                    _ => None,
-                });
+            let alias = snap.slots.get(FRAME_ALIAS_SLOT).and_then(|v| match v {
+                JsonValue::String(s) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            });
 
             let frame_ref = snap.slots.get(FRAME_REF_SLOT);
             let node_ref = match frame_ref {
@@ -101,7 +98,10 @@ impl ContextStack {
             };
 
             if let Some(a) = &alias {
-                if frames.iter().any(|f| f.alias.as_deref() == Some(a.as_str())) {
+                if frames
+                    .iter()
+                    .any(|f| f.alias.as_deref() == Some(a.as_str()))
+                {
                     shadowed.push(a.clone());
                 }
             }
@@ -260,9 +260,10 @@ mod tests {
         let n1 = NodeId::new();
         let n2 = NodeId::new();
         let t2 = NodeId::new();
-        let reader = InMemoryReader::new()
-            .with(nav(n1, None, None))
-            .with(nav(n2, Some("x"), Some(t2)));
+        let reader =
+            InMemoryReader::new()
+                .with(nav(n1, None, None))
+                .with(nav(n2, Some("x"), Some(t2)));
         let stack = ContextStack::build(&reader, &[n1, n2], 16).unwrap();
         assert_eq!(stack.len(), 1);
         assert_eq!(stack.by_alias("x").unwrap().node_ref, t2);

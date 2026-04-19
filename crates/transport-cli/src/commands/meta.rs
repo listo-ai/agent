@@ -141,9 +141,12 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &PLUGINS_ENABLE,
         &PLUGINS_DISABLE,
         &PLUGINS_RELOAD,
+        &PLUGINS_RUNTIME,
+        &PLUGINS_RUNTIME_ALL,
         &AUTH_WHOAMI,
         &UI_NAV,
         &UI_RESOLVE,
+        &UI_ACTION,
         &FLOWS_LIST,
         &FLOWS_GET,
         &FLOWS_CREATE,
@@ -695,7 +698,11 @@ static SEED: CommandMeta = CommandMeta {
         type_name: "identifier",
         description: "Preset name: count_chain, trigger_demo, or ui_demo",
     }],
-    examples: &["agent seed count_chain", "agent seed trigger_demo", "agent seed ui_demo"],
+    examples: &[
+        "agent seed count_chain",
+        "agent seed trigger_demo",
+        "agent seed ui_demo",
+    ],
     related: &["nodes list"],
     input_schema: || {
         serde_json::json!({
@@ -881,6 +888,54 @@ static PLUGINS_RELOAD: CommandMeta = CommandMeta {
     }],
 };
 
+static PLUGINS_RUNTIME: CommandMeta = CommandMeta {
+    name: "plugins runtime",
+    summary: "Get the process-runtime state for one plugin.",
+    args: &[ArgInfo {
+        name: "id",
+        required: true,
+        type_name: "plugin-id",
+        description: "Plugin id",
+    }],
+    examples: &["agent plugins runtime com.acme.bacnet"],
+    related: &["plugins runtime-all", "plugins list"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id": { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::PluginRuntimeState>,
+    errors: &[
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static PLUGINS_RUNTIME_ALL: CommandMeta = CommandMeta {
+    name: "plugins runtime-all",
+    summary: "Snapshot runtime state of every process plugin.",
+    args: &[],
+    examples: &["agent plugins runtime-all"],
+    related: &["plugins runtime", "plugins list"],
+    input_schema: empty_input,
+    output_schema: schema_for_vec::<types::PluginRuntimeState>,
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
+};
+
 // ---- auth -----------------------------------------------------------------
 
 // ---- ui (dashboard) -------------------------------------------------------
@@ -1006,6 +1061,88 @@ static UI_RESOLVE: CommandMeta = CommandMeta {
     ],
 };
 
+static UI_ACTION: CommandMeta = CommandMeta {
+    name: "ui action",
+    summary: "Dispatch a named action handler and receive a response.",
+    args: &[
+        ArgInfo {
+            name: "--handler",
+            required: true,
+            type_name: "string",
+            description: "Fully-qualified handler name (e.g. com.acme.hello.greet)",
+        },
+        ArgInfo {
+            name: "--args",
+            required: false,
+            type_name: "json",
+            description: "Handler arguments as a JSON value",
+        },
+        ArgInfo {
+            name: "--target",
+            required: false,
+            type_name: "string",
+            description: "Originating component id",
+        },
+        ArgInfo {
+            name: "--stack",
+            required: false,
+            type_name: "uuid-list",
+            description: "Comma-separated ui.nav ids forming the context stack",
+        },
+        ArgInfo {
+            name: "--page-state",
+            required: false,
+            type_name: "json",
+            description: "Page-local state as a JSON object",
+        },
+        ArgInfo {
+            name: "--auth-subject",
+            required: false,
+            type_name: "string",
+            description: "Opaque subject id threaded into audit events",
+        },
+    ],
+    examples: &[
+        "agent ui action --handler com.acme.hello.greet",
+        "agent ui action --handler com.acme.hello.greet --args '{\"name\":\"World\"}'",
+    ],
+    related: &["ui resolve", "ui nav"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["handler"],
+            "properties": {
+                "handler":      { "type": "string" },
+                "args":         {},
+                "target":       { "type": "string" },
+                "stack":        { "type": "string" },
+                "page_state":   { "type": "object" },
+                "auth_subject": { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::UiActionResponse>,
+    errors: &[
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "unprocessable_entity",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
 static AUTH_WHOAMI: CommandMeta = CommandMeta {
     name: "auth whoami",
     summary: "Show the resolved auth context — actor, tenant, scopes, provider.",
@@ -1035,23 +1172,38 @@ static FLOWS_LIST: CommandMeta = CommandMeta {
     name: "flows list",
     summary: "List all flows, newest-first by head_seq.",
     args: &[
-        ArgInfo { name: "--limit", required: false, type_name: "u32",  description: "Maximum number of flows to return (default: 50)" },
-        ArgInfo { name: "--offset", required: false, type_name: "u32",  description: "Skip this many flows (default: 0)" },
+        ArgInfo {
+            name: "--limit",
+            required: false,
+            type_name: "u32",
+            description: "Maximum number of flows to return (default: 50)",
+        },
+        ArgInfo {
+            name: "--offset",
+            required: false,
+            type_name: "u32",
+            description: "Skip this many flows (default: 0)",
+        },
     ],
-    examples: &[
-        "agent flows list",
-        "agent flows list --limit 10",
-    ],
+    examples: &["agent flows list", "agent flows list --limit 10"],
     related: &["flows get", "flows create"],
     input_schema: empty_input,
     output_schema: schema_for_vec::<types::FlowDto>,
-    errors: &[ErrorInfo { code: "agent_unreachable", exit_code: 2 }],
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
 };
 
 static FLOWS_GET: CommandMeta = CommandMeta {
     name: "flows get",
     summary: "Fetch a single flow by id.",
-    args: &[ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" }],
+    args: &[ArgInfo {
+        name: "id",
+        required: true,
+        type_name: "string",
+        description: "Flow id (UUID)",
+    }],
     examples: &["agent flows get <id>"],
     related: &["flows list"],
     input_schema: || {
@@ -1064,9 +1216,18 @@ static FLOWS_GET: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::FlowDto>,
     errors: &[
-        ErrorInfo { code: "not_found",        exit_code: 1 },
-        ErrorInfo { code: "conflict",         exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "conflict",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1074,9 +1235,24 @@ static FLOWS_CREATE: CommandMeta = CommandMeta {
     name: "flows create",
     summary: "Create a new flow with an optional initial document.",
     args: &[
-        ArgInfo { name: "name", required: true, type_name: "string", description: "Human-readable name" },
-        ArgInfo { name: "--document", required: false, type_name: "string", description: "Initial document as JSON (default: {})" },
-        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+        ArgInfo {
+            name: "name",
+            required: true,
+            type_name: "string",
+            description: "Human-readable name",
+        },
+        ArgInfo {
+            name: "--document",
+            required: false,
+            type_name: "string",
+            description: "Initial document as JSON (default: {})",
+        },
+        ArgInfo {
+            name: "--author",
+            required: false,
+            type_name: "string",
+            description: "Author tag (default: cli)",
+        },
     ],
     examples: &[
         "agent flows create my-flow",
@@ -1096,15 +1272,28 @@ static FLOWS_CREATE: CommandMeta = CommandMeta {
         })
     },
     output_schema: schema_for_type::<types::FlowDto>,
-    errors: &[ErrorInfo { code: "agent_unreachable", exit_code: 2 }],
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
 };
 
 static FLOWS_DELETE: CommandMeta = CommandMeta {
     name: "flows delete",
     summary: "Delete a flow and its entire revision history.",
     args: &[
-        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
-        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard; omit to bypass)" },
+        ArgInfo {
+            name: "id",
+            required: true,
+            type_name: "string",
+            description: "Flow id (UUID)",
+        },
+        ArgInfo {
+            name: "--expected-head",
+            required: false,
+            type_name: "string",
+            description: "Expected head revision id (OCC guard; omit to bypass)",
+        },
     ],
     examples: &[
         "agent flows delete <id>",
@@ -1124,9 +1313,18 @@ static FLOWS_DELETE: CommandMeta = CommandMeta {
     },
     output_schema: status_output,
     errors: &[
-        ErrorInfo { code: "not_found",        exit_code: 1 },
-        ErrorInfo { code: "conflict",         exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "conflict",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1134,15 +1332,38 @@ static FLOWS_EDIT: CommandMeta = CommandMeta {
     name: "flows edit",
     summary: "Append a forward edit revision to a flow.",
     args: &[
-        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
-        ArgInfo { name: "document", required: true, type_name: "string", description: "New document as a JSON string" },
-        ArgInfo { name: "--summary", required: false, type_name: "string", description: "Short description (default: \"edited via CLI\")" },
-        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
-        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+        ArgInfo {
+            name: "id",
+            required: true,
+            type_name: "string",
+            description: "Flow id (UUID)",
+        },
+        ArgInfo {
+            name: "document",
+            required: true,
+            type_name: "string",
+            description: "New document as a JSON string",
+        },
+        ArgInfo {
+            name: "--summary",
+            required: false,
+            type_name: "string",
+            description: "Short description (default: \"edited via CLI\")",
+        },
+        ArgInfo {
+            name: "--expected-head",
+            required: false,
+            type_name: "string",
+            description: "Expected head revision id (OCC guard)",
+        },
+        ArgInfo {
+            name: "--author",
+            required: false,
+            type_name: "string",
+            description: "Author tag (default: cli)",
+        },
     ],
-    examples: &[
-        "agent flows edit <id> '{\"nodes\":[]}' --expected-head <rev-id>",
-    ],
+    examples: &["agent flows edit <id> '{\"nodes\":[]}' --expected-head <rev-id>"],
     related: &["flows undo", "flows redo", "flows revert"],
     input_schema: || {
         serde_json::json!({
@@ -1160,9 +1381,18 @@ static FLOWS_EDIT: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::FlowMutationResult>,
     errors: &[
-        ErrorInfo { code: "not_found",        exit_code: 1 },
-        ErrorInfo { code: "conflict",         exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "conflict",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1170,9 +1400,24 @@ static FLOWS_UNDO: CommandMeta = CommandMeta {
     name: "flows undo",
     summary: "Undo the last logical edit (appends an undo revision — non-destructive).",
     args: &[
-        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
-        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
-        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+        ArgInfo {
+            name: "id",
+            required: true,
+            type_name: "string",
+            description: "Flow id (UUID)",
+        },
+        ArgInfo {
+            name: "--expected-head",
+            required: false,
+            type_name: "string",
+            description: "Expected head revision id (OCC guard)",
+        },
+        ArgInfo {
+            name: "--author",
+            required: false,
+            type_name: "string",
+            description: "Author tag (default: cli)",
+        },
     ],
     examples: &["agent flows undo <id> --expected-head <rev-id>"],
     related: &["flows redo", "flows revert"],
@@ -1190,10 +1435,22 @@ static FLOWS_UNDO: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::FlowMutationResult>,
     errors: &[
-        ErrorInfo { code: "not_found",           exit_code: 1 },
-        ErrorInfo { code: "conflict",            exit_code: 1 },
-        ErrorInfo { code: "unprocessable_entity", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable",   exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "conflict",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "unprocessable_entity",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1201,10 +1458,30 @@ static FLOWS_REDO: CommandMeta = CommandMeta {
     name: "flows redo",
     summary: "Redo the next undone edit.",
     args: &[
-        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
-        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
-        ArgInfo { name: "--expected-target", required: false, type_name: "string", description: "Expected redo-target revision id (stale-cursor guard)" },
-        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+        ArgInfo {
+            name: "id",
+            required: true,
+            type_name: "string",
+            description: "Flow id (UUID)",
+        },
+        ArgInfo {
+            name: "--expected-head",
+            required: false,
+            type_name: "string",
+            description: "Expected head revision id (OCC guard)",
+        },
+        ArgInfo {
+            name: "--expected-target",
+            required: false,
+            type_name: "string",
+            description: "Expected redo-target revision id (stale-cursor guard)",
+        },
+        ArgInfo {
+            name: "--author",
+            required: false,
+            type_name: "string",
+            description: "Author tag (default: cli)",
+        },
     ],
     examples: &["agent flows redo <id> --expected-head <rev-id>"],
     related: &["flows undo"],
@@ -1223,10 +1500,22 @@ static FLOWS_REDO: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::FlowMutationResult>,
     errors: &[
-        ErrorInfo { code: "not_found",           exit_code: 1 },
-        ErrorInfo { code: "conflict",            exit_code: 1 },
-        ErrorInfo { code: "unprocessable_entity", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable",   exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "conflict",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "unprocessable_entity",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1234,10 +1523,30 @@ static FLOWS_REVERT: CommandMeta = CommandMeta {
     name: "flows revert",
     summary: "Revert a flow to the document state at a specific revision (non-destructive).",
     args: &[
-        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
-        ArgInfo { name: "--to", required: false, type_name: "string", description: "Target revision id to revert to" },
-        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
-        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+        ArgInfo {
+            name: "id",
+            required: true,
+            type_name: "string",
+            description: "Flow id (UUID)",
+        },
+        ArgInfo {
+            name: "--to",
+            required: false,
+            type_name: "string",
+            description: "Target revision id to revert to",
+        },
+        ArgInfo {
+            name: "--expected-head",
+            required: false,
+            type_name: "string",
+            description: "Expected head revision id (OCC guard)",
+        },
+        ArgInfo {
+            name: "--author",
+            required: false,
+            type_name: "string",
+            description: "Author tag (default: cli)",
+        },
     ],
     examples: &["agent flows revert <id> --to <rev-id>"],
     related: &["flows undo", "flows revisions"],
@@ -1256,9 +1565,18 @@ static FLOWS_REVERT: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::FlowMutationResult>,
     errors: &[
-        ErrorInfo { code: "not_found",        exit_code: 1 },
-        ErrorInfo { code: "conflict",         exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "conflict",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1266,9 +1584,24 @@ static FLOWS_REVISIONS: CommandMeta = CommandMeta {
     name: "flows revisions",
     summary: "List revisions for a flow, newest first.",
     args: &[
-        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
-        ArgInfo { name: "--limit", required: false, type_name: "u32",    description: "Maximum revisions to return (default: 50)" },
-        ArgInfo { name: "--offset", required: false, type_name: "u32",    description: "Skip this many revisions (default: 0)" },
+        ArgInfo {
+            name: "id",
+            required: true,
+            type_name: "string",
+            description: "Flow id (UUID)",
+        },
+        ArgInfo {
+            name: "--limit",
+            required: false,
+            type_name: "u32",
+            description: "Maximum revisions to return (default: 50)",
+        },
+        ArgInfo {
+            name: "--offset",
+            required: false,
+            type_name: "u32",
+            description: "Skip this many revisions (default: 0)",
+        },
     ],
     examples: &[
         "agent flows revisions <id>",
@@ -1289,8 +1622,14 @@ static FLOWS_REVISIONS: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_vec::<types::FlowRevisionDto>,
     errors: &[
-        ErrorInfo { code: "not_found",        exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1298,8 +1637,18 @@ static FLOWS_DOCUMENT_AT: CommandMeta = CommandMeta {
     name: "flows document-at",
     summary: "Return the materialised flow document at a specific revision.",
     args: &[
-        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
-        ArgInfo { name: "--rev-id", required: false, type_name: "string", description: "Revision id" },
+        ArgInfo {
+            name: "id",
+            required: true,
+            type_name: "string",
+            description: "Flow id (UUID)",
+        },
+        ArgInfo {
+            name: "--rev-id",
+            required: false,
+            type_name: "string",
+            description: "Revision id",
+        },
     ],
     examples: &["agent flows document-at <id> --rev-id <rev-id>"],
     related: &["flows revisions"],
@@ -1322,7 +1671,13 @@ static FLOWS_DOCUMENT_AT: CommandMeta = CommandMeta {
         })
     },
     errors: &[
-        ErrorInfo { code: "not_found",        exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };

@@ -34,9 +34,7 @@ pub enum AuthConfig {
     /// Bearer-token table loaded from config. Token material never
     /// leaves the agent's config file; issuance is out-of-band (`agent
     /// auth issue-token`, future).
-    StaticToken {
-        tokens: Vec<auth::StaticTokenEntry>,
-    },
+    StaticToken { tokens: Vec<auth::StaticTokenEntry> },
 }
 
 /// Resolved fleet-transport configuration. See

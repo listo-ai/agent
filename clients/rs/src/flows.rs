@@ -92,7 +92,11 @@ impl<'c> Flows<'c> {
     /// List all flows, newest-first by `head_seq`.
     ///
     /// `limit` defaults to 50; `offset` defaults to 0.
-    pub async fn list(&self, limit: Option<u32>, offset: Option<u32>) -> Result<Vec<FlowDto>, ClientError> {
+    pub async fn list(
+        &self,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) -> Result<Vec<FlowDto>, ClientError> {
         let mut parts: Vec<String> = Vec::new();
         if let Some(l) = limit {
             parts.push(format!("limit={l}"));
@@ -110,7 +114,9 @@ impl<'c> Flows<'c> {
 
     /// Fetch one flow by id.
     pub async fn get(&self, id: &str) -> Result<FlowDto, ClientError> {
-        self.http.get::<FlowDto>(&format!("{}/flows/{id}", self.base)).await
+        self.http
+            .get::<FlowDto>(&format!("{}/flows/{id}", self.base))
+            .await
     }
 
     /// Create a new flow with an initial `create` revision.
@@ -120,8 +126,14 @@ impl<'c> Flows<'c> {
         document: JsonValue,
         author: &str,
     ) -> Result<FlowDto, ClientError> {
-        let body = CreateBody { name, document: &document, author };
-        self.http.post::<FlowDto, _>(&format!("{}/flows", self.base), &body).await
+        let body = CreateBody {
+            name,
+            document: &document,
+            author,
+        };
+        self.http
+            .post::<FlowDto, _>(&format!("{}/flows", self.base), &body)
+            .await
     }
 
     /// Delete a flow (and its entire revision history).
@@ -129,11 +141,7 @@ impl<'c> Flows<'c> {
     /// Pass `expected_head` for optimistic-concurrency checking — `409
     /// Conflict` if the live head doesn't match. Pass `None` to skip
     /// the check (unsafe; only for admin tooling).
-    pub async fn delete(
-        &self,
-        id: &str,
-        expected_head: Option<&str>,
-    ) -> Result<(), ClientError> {
+    pub async fn delete(&self, id: &str, expected_head: Option<&str>) -> Result<(), ClientError> {
         let path = match expected_head {
             Some(h) => format!("{}/flows/{id}?expected_head={h}", self.base),
             None => format!("{}/flows/{id}", self.base),
@@ -154,7 +162,12 @@ impl<'c> Flows<'c> {
         author: &str,
         summary: &str,
     ) -> Result<FlowMutationResult, ClientError> {
-        let body = EditBody { expected_head, document: &document, author, summary };
+        let body = EditBody {
+            expected_head,
+            document: &document,
+            author,
+            summary,
+        };
         self.http
             .post::<FlowMutationResult, _>(&format!("{}/flows/{id}/edit", self.base), &body)
             .await
@@ -170,7 +183,10 @@ impl<'c> Flows<'c> {
         expected_head: Option<&str>,
         author: &str,
     ) -> Result<FlowMutationResult, ClientError> {
-        let body = UndoBody { expected_head, author };
+        let body = UndoBody {
+            expected_head,
+            author,
+        };
         self.http
             .post::<FlowMutationResult, _>(&format!("{}/flows/{id}/undo", self.base), &body)
             .await
@@ -188,7 +204,11 @@ impl<'c> Flows<'c> {
         expected_target: Option<&str>,
         author: &str,
     ) -> Result<FlowMutationResult, ClientError> {
-        let body = RedoBody { expected_head, expected_target, author };
+        let body = RedoBody {
+            expected_head,
+            expected_target,
+            author,
+        };
         self.http
             .post::<FlowMutationResult, _>(&format!("{}/flows/{id}/redo", self.base), &body)
             .await
@@ -203,7 +223,11 @@ impl<'c> Flows<'c> {
         target_rev_id: &str,
         author: &str,
     ) -> Result<FlowMutationResult, ClientError> {
-        let body = RevertBody { expected_head, target_rev_id, author };
+        let body = RevertBody {
+            expected_head,
+            target_rev_id,
+            author,
+        };
         self.http
             .post::<FlowMutationResult, _>(&format!("{}/flows/{id}/revert", self.base), &body)
             .await
@@ -232,11 +256,7 @@ impl<'c> Flows<'c> {
     }
 
     /// Return the materialised flow document at a specific revision.
-    pub async fn document_at(
-        &self,
-        id: &str,
-        rev_id: &str,
-    ) -> Result<JsonValue, ClientError> {
+    pub async fn document_at(&self, id: &str, rev_id: &str) -> Result<JsonValue, ClientError> {
         self.http
             .get::<JsonValue>(&format!("{}/flows/{id}/revisions/{rev_id}", self.base))
             .await

@@ -13,7 +13,8 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat) -> Result<()> {
             output::ok(fmt, &manifest)?;
         }
         OutputFormat::Table => {
-            println!( // NO_PRINTLN_LINT:allow
+            println!(
+                // NO_PRINTLN_LINT:allow
                 "agent {}  ·  api v{}  ·  flow_schema={}  node_schema={}",
                 manifest.platform.version,
                 manifest.api.rest,

@@ -1,0 +1,5 @@
+{
+  "type": "toast",
+  "intent": "ok",
+  "message": "Hello from fixture handler!"
+}

@@ -8,9 +8,7 @@
 
 mod component;
 
-pub use component::{
-    Action, Component, DiffAnnotation, Tab, TableColumn, TableSource,
-};
+pub use component::{Action, Component, DiffAnnotation, Tab, TableColumn, TableSource};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -68,29 +66,27 @@ mod tests {
         let tree = ComponentTree::new(Component::Page {
             id: "p1".into(),
             title: Some("Test".into()),
-            children: vec![
-                Component::Col {
-                    id: None,
-                    children: vec![
-                        Component::Text {
-                            id: Some("t1".into()),
-                            content: "Hello".into(),
-                            intent: None,
-                        },
-                        Component::Button {
-                            id: Some("b1".into()),
-                            label: "Click".into(),
-                            intent: None,
-                            disabled: None,
-                            action: Some(Action {
-                                handler: "do_thing".into(),
-                                args: None,
-                            }),
-                        },
-                    ],
-                    gap: None,
-                },
-            ],
+            children: vec![Component::Col {
+                id: None,
+                children: vec![
+                    Component::Text {
+                        id: Some("t1".into()),
+                        content: "Hello".into(),
+                        intent: None,
+                    },
+                    Component::Button {
+                        id: Some("b1".into()),
+                        label: "Click".into(),
+                        intent: None,
+                        disabled: None,
+                        action: Some(Action {
+                            handler: "do_thing".into(),
+                            args: None,
+                        }),
+                    },
+                ],
+                gap: None,
+            }],
         });
         let json = serde_json::to_string(&tree).unwrap();
         let back: ComponentTree = serde_json::from_str(&json).unwrap();

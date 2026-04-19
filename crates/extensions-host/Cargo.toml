@@ -19,11 +19,14 @@ serde_yml = { workspace = true }
 semver = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+anyhow = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 tower = "0.5"
 hyper-util = { version = "0.1", features = ["tokio"] }
 process-wrap = { workspace = true }
+tokio-util = "0.7"
+wasmtime = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

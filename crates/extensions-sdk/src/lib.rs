@@ -35,6 +35,9 @@ pub mod settings;
 #[cfg(feature = "process")]
 pub mod process;
 
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 pub use ctx::{
     DynBehavior, EmitSink, GraphAccess, NodeCtx, TimerHandle, TimerScheduler, TypedBehavior,
 };

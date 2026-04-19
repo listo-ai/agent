@@ -1,6 +1,14 @@
 import type { RequestTransport } from "../transport/request.js";
-import { PluginSummarySchema } from "../schemas/plugin.js";
-import type { PluginSummary } from "../schemas/plugin.js";
+import {
+  PluginRuntimeEntrySchema,
+  PluginRuntimeStateSchema,
+  PluginSummarySchema,
+} from "../schemas/plugin.js";
+import type {
+  PluginRuntimeEntry,
+  PluginRuntimeState,
+  PluginSummary,
+} from "../schemas/plugin.js";
 
 /**
  * Plugin operations against the Rust REST surface
@@ -21,6 +29,10 @@ export interface PluginsApi {
   disable(id: string): Promise<void>;
   /** Rescan the plugins dir. Dev-loop ergonomics. */
   reload(): Promise<void>;
+  /** Runtime state for a single process plugin. */
+  runtime(id: string): Promise<PluginRuntimeState>;
+  /** Snapshot of all process-plugin runtime states. */
+  runtimeAll(): Promise<PluginRuntimeEntry[]>;
 }
 
 export function createPluginsApi(http: RequestTransport, apiVersion: number): PluginsApi {
@@ -55,6 +67,18 @@ export function createPluginsApi(http: RequestTransport, apiVersion: number): Pl
 
     async reload(): Promise<void> {
       await http.postNoContent(`${base}/plugins/reload`, {});
+    },
+
+    async runtime(id: string): Promise<PluginRuntimeState> {
+      const raw = await http.get<unknown>(
+        `${base}/plugins/${encodeURIComponent(id)}/runtime`,
+      );
+      return PluginRuntimeStateSchema.parse(raw);
+    },
+
+    async runtimeAll(): Promise<PluginRuntimeEntry[]> {
+      const raw = await http.get<unknown[]>(`${base}/plugins/runtime`);
+      return raw.map((r) => PluginRuntimeEntrySchema.parse(r));
     },
   };
 }

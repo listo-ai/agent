@@ -34,7 +34,12 @@ export type {
 export type { NodeSnapshot, NodeListResponse, PageMeta, Slot } from "./schemas/node.js";
 export type { Link, LinkEndpoint } from "./schemas/link.js";
 export type { Kind, Facet, SlotDefinition, SlotRole } from "./schemas/kind.js";
-export type { PluginSummary, PluginLifecycle } from "./schemas/plugin.js";
+export type {
+  PluginSummary,
+  PluginLifecycle,
+  PluginRuntimeState,
+  PluginRuntimeEntry,
+} from "./schemas/plugin.js";
 export type { WhoAmI, Scope } from "./schemas/auth.js";
 // FleetScope is both a const namespace (constructors/guards) and a discriminated
 // union type — a single export covers both because TS tracks value and type
@@ -49,13 +54,17 @@ export type {
 
 export type {
   UiNavNode,
-  UiRenderedWidget,
-  UiRenderTree,
+  UiComponent,
+  UiComponentTree,
   UiResolveMeta,
   UiResolveIssue,
   UiResolveRequest,
   UiResolveResponse,
   UiSubscriptionPlan,
+  UiAction,
+  UiTableSource,
+  UiTableColumn,
+  UiDiffAnnotation,
 } from "./schemas/ui.js";
 export type { WriteSlotResponse } from "./schemas/slot.js";
 export type { SeedResult, SeededNode } from "./schemas/seed.js";

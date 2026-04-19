@@ -28,6 +28,7 @@ export const CapabilityManifestSchema = z.object({
   platform: PlatformInfoSchema,
   api: ApiInfoSchema,
   capabilities: z.array(CapabilitySchema),
+  ir_version: z.number().int().nonnegative().default(0),
 });
 
 export type Capability = z.infer<typeof CapabilitySchema>;

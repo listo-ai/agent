@@ -48,7 +48,10 @@ pub struct WhoAmIDto {
     pub provider: String,
 }
 
-async fn whoami(ctx: AuthContext, axum::extract::State(s): axum::extract::State<AppState>) -> Json<WhoAmIDto> {
+async fn whoami(
+    ctx: AuthContext,
+    axum::extract::State(s): axum::extract::State<AppState>,
+) -> Json<WhoAmIDto> {
     let (actor_kind, actor_id, actor_display) = match &ctx.actor {
         Actor::User { id, display_name } => ("user", Some(id.to_string()), display_name.clone()),
         Actor::Machine { id, label } => ("machine", Some(id.to_string()), label.clone()),
@@ -67,7 +70,10 @@ async fn whoami(ctx: AuthContext, axum::extract::State(s): axum::extract::State<
         Scope::ManageFleet,
         Scope::Admin,
     ];
-    let scopes: Vec<Scope> = all.into_iter().filter(|s| ctx.scopes.contains(*s)).collect();
+    let scopes: Vec<Scope> = all
+        .into_iter()
+        .filter(|s| ctx.scopes.contains(*s))
+        .collect();
 
     Json(WhoAmIDto {
         actor_kind,

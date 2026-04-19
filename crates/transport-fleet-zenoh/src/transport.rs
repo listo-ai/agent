@@ -186,9 +186,7 @@ impl FleetTransport for ZenohTransport {
             }
         });
 
-        Ok(Server::new(ZenohServerHandle {
-            task: Some(task),
-        }))
+        Ok(Server::new(ZenohServerHandle { task: Some(task) }))
     }
 
     fn health(&self) -> HealthStream {

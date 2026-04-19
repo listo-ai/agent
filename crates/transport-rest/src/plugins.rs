@@ -19,7 +19,7 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use extensions_host::{LoadedPluginSummary, PluginId};
+use extensions_host::{LoadedPluginSummary, PluginId, PluginRuntimeState};
 
 use crate::routes::ApiError;
 use crate::state::AppState;
@@ -27,12 +27,14 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/plugins", get(list))
-        // `reload` must come before the `:id` route; otherwise axum
-        // matches "reload" as an :id and returns 404 / bad-id.
+        // `reload` + `runtime` must come before the `:id` route;
+        // otherwise axum matches them as an :id.
         .route("/api/v1/plugins/reload", post(reload))
+        .route("/api/v1/plugins/runtime", get(runtime_all))
         .route("/api/v1/plugins/:id", get(get_one))
         .route("/api/v1/plugins/:id/enable", post(enable))
         .route("/api/v1/plugins/:id/disable", post(disable))
+        .route("/api/v1/plugins/:id/runtime", get(runtime_one))
         .route("/plugins/:id/*path", get(serve_ui))
 }
 
@@ -57,9 +59,18 @@ async fn get_one(
 
 async fn enable(State(s): State<AppState>, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     let pid = parse_id(&id)?;
-    s.plugins
-        .set_enabled(&pid, true)
-        .map_err(|e| ApiError::not_found(e.to_string()))?;
+    // Prefer the host: it flips the registry AND starts the process.
+    // Registry-only fallback exists for agents without a writable
+    // socket dir (tests, read-only roles).
+    if let Some(h) = &s.plugin_host {
+        h.enable(&pid)
+            .await
+            .map_err(|e| ApiError::not_found(e.to_string()))?;
+    } else {
+        s.plugins
+            .set_enabled(&pid, true)
+            .map_err(|e| ApiError::not_found(e.to_string()))?;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -68,10 +79,57 @@ async fn disable(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let pid = parse_id(&id)?;
-    s.plugins
-        .set_enabled(&pid, false)
-        .map_err(|e| ApiError::not_found(e.to_string()))?;
+    if let Some(h) = &s.plugin_host {
+        h.disable(&pid)
+            .await
+            .map_err(|e| ApiError::not_found(e.to_string()))?;
+    } else {
+        s.plugins
+            .set_enabled(&pid, false)
+            .map_err(|e| ApiError::not_found(e.to_string()))?;
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Current runtime state (Idle / Starting / Ready / Degraded /
+/// Restarting / Failed / Stopped) for one process plugin.
+/// Returns 404 when the plugin isn't a process plugin or no host is
+/// attached — status only makes sense when there's something to run.
+async fn runtime_one(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<PluginRuntimeState>, ApiError> {
+    let pid = parse_id(&id)?;
+    let host = s
+        .plugin_host
+        .as_ref()
+        .ok_or_else(|| ApiError::not_found("process-plugin host unavailable"))?;
+    host.state(&pid)
+        .await
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found(format!("plugin `{id}` is not running")))
+}
+
+/// All process-plugin runtime states, keyed by id. Empty when there
+/// are no process plugins or the host isn't attached.
+async fn runtime_all(State(s): State<AppState>) -> Json<Vec<PluginRuntimeEntry>> {
+    let Some(host) = &s.plugin_host else {
+        return Json(Vec::new());
+    };
+    let entries = host
+        .states()
+        .await
+        .into_iter()
+        .map(|(id, state)| PluginRuntimeEntry { id, state })
+        .collect();
+    Json(entries)
+}
+
+#[derive(serde::Serialize)]
+struct PluginRuntimeEntry {
+    id: PluginId,
+    #[serde(flatten)]
+    state: PluginRuntimeState,
 }
 
 /// Rescan the plugins directory from disk. Intended as a dev-loop

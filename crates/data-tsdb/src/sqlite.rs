@@ -24,8 +24,7 @@ pub struct SqliteTelemetryRepo {
 
 impl SqliteTelemetryRepo {
     pub fn open_file(path: &Path) -> Result<Self, TsdbError> {
-        let conn = Connection::open(path)
-            .map_err(|e| TsdbError::Backend(e.to_string()))?;
+        let conn = Connection::open(path).map_err(|e| TsdbError::Backend(e.to_string()))?;
         // The table is created by data-sqlite migrations; we just need
         // WAL mode enabled to avoid blocking graph writes.
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
@@ -36,10 +35,10 @@ impl SqliteTelemetryRepo {
     }
 
     pub fn open_memory() -> Result<Self, TsdbError> {
-        let conn = Connection::open_in_memory()
-            .map_err(|e| TsdbError::Backend(e.to_string()))?;
+        let conn = Connection::open_in_memory().map_err(|e| TsdbError::Backend(e.to_string()))?;
         // Bootstrap minimal schema for unit tests — mirrors migration v3.
-        conn.execute_batch(r#"
+        conn.execute_batch(
+            r#"
             CREATE TABLE IF NOT EXISTS slot_timeseries (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 node_id          TEXT    NOT NULL,
@@ -52,7 +51,9 @@ impl SqliteTelemetryRepo {
             );
             CREATE INDEX IF NOT EXISTS idx_st_node_slot_ts
                 ON slot_timeseries(node_id, slot_name, ts_ms);
-        "#).map_err(|e| TsdbError::Backend(e.to_string()))?;
+        "#,
+        )
+        .map_err(|e| TsdbError::Backend(e.to_string()))?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -162,32 +163,29 @@ impl TelemetryRepo for SqliteTelemetryRepo {
             );
             let nid = q.node_id.to_string();
             let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(
-                params![nid, q.slot_name, q.from_ms, q.to_ms],
-                |row| {
-                    let node_id_str: String = row.get(0)?;
-                    let node_id = Uuid::parse_str(&node_id_str).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            0,
-                            rusqlite::types::Type::Text,
-                            Box::new(e),
-                        )
-                    })?;
-                    let bool_value: Option<i64> = row.get(3)?;
-                    Ok(ScalarRecord {
-                        node_id,
-                        slot_name: row.get(1)?,
-                        ts_ms: row.get(2)?,
-                        bool_value: bool_value.map(|v| v != 0),
-                        num_value: row.get(4)?,
-                        ntp_synced: {
-                            let v: i64 = row.get(5)?;
-                            v != 0
-                        },
-                        last_sync_age_ms: row.get(6)?,
-                    })
-                },
-            )?;
+            let rows = stmt.query_map(params![nid, q.slot_name, q.from_ms, q.to_ms], |row| {
+                let node_id_str: String = row.get(0)?;
+                let node_id = Uuid::parse_str(&node_id_str).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
+                let bool_value: Option<i64> = row.get(3)?;
+                Ok(ScalarRecord {
+                    node_id,
+                    slot_name: row.get(1)?,
+                    ts_ms: row.get(2)?,
+                    bool_value: bool_value.map(|v| v != 0),
+                    num_value: row.get(4)?,
+                    ntp_synced: {
+                        let v: i64 = row.get(5)?;
+                        v != 0
+                    },
+                    last_sync_age_ms: row.get(6)?,
+                })
+            })?;
             rows.collect::<Result<Vec<_>, _>>()
         })
     }

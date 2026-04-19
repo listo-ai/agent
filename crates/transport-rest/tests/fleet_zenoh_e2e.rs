@@ -30,18 +30,10 @@ fn make_state_with_fleet(fleet: Arc<dyn FleetTransport>) -> AppState {
     let graph = Arc::new(GraphStore::new(kinds, Arc::new(NullSink)));
     graph.create_root(KindId::new("sys.core.station")).unwrap();
     graph
-        .create_child(
-            &NodePath::root(),
-            KindId::new("sys.core.folder"),
-            "alpha",
-        )
+        .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "alpha")
         .unwrap();
     graph
-        .create_child(
-            &NodePath::root(),
-            KindId::new("sys.core.folder"),
-            "beta",
-        )
+        .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "beta")
         .unwrap();
 
     let (events, _) = broadcast::channel(16);

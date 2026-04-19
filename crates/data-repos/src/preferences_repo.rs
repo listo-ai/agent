@@ -7,8 +7,7 @@
 use std::sync::Arc;
 
 use data_entities::{
-    MaybeUpdate, OrgPreferences, PreferencesPatch, ResolvedPreferences,
-    UserPreferences,
+    MaybeUpdate, OrgPreferences, PreferencesPatch, ResolvedPreferences, UserPreferences,
 };
 
 use crate::RepoError;
@@ -31,11 +30,7 @@ pub trait PreferencesRepo: Send + Sync + 'static {
 
     /// Return the user-per-org preferences row for `(user_id, org_id)`,
     /// or `None` if the user has never written any preferences for that org.
-    fn get_user(
-        &self,
-        user_id: &str,
-        org_id: &str,
-    ) -> Result<Option<UserPreferences>, RepoError>;
+    fn get_user(&self, user_id: &str, org_id: &str) -> Result<Option<UserPreferences>, RepoError>;
 
     /// Upsert the user-per-org preferences row.
     fn set_user(&self, prefs: &UserPreferences) -> Result<(), RepoError>;
@@ -62,22 +57,14 @@ impl PreferencesService {
     /// Return the fully resolved preferences for `(user_id, org_id)`.
     ///
     /// Resolution: `user_value ?? org_value ?? system_default`.
-    pub fn resolved(
-        &self,
-        user_id: &str,
-        org_id: &str,
-    ) -> Result<ResolvedPreferences, RepoError> {
+    pub fn resolved(&self, user_id: &str, org_id: &str) -> Result<ResolvedPreferences, RepoError> {
         let user = self.repo.get_user(user_id, org_id)?;
         let org = self.repo.get_org(org_id)?;
         Ok(resolve(user.as_ref(), org.as_ref()))
     }
 
     /// Return the raw user-layer row (all fields nullable).
-    pub fn user_layer(
-        &self,
-        user_id: &str,
-        org_id: &str,
-    ) -> Result<UserPreferences, RepoError> {
+    pub fn user_layer(&self, user_id: &str, org_id: &str) -> Result<UserPreferences, RepoError> {
         Ok(self
             .repo
             .get_user(user_id, org_id)?
@@ -182,10 +169,7 @@ impl PreferencesService {
 // ── Resolution algorithm ──────────────────────────────────────────────────────
 
 /// Three-layer null-coalesce: `user ?? org ?? system_default`.
-fn resolve(
-    user: Option<&UserPreferences>,
-    org: Option<&OrgPreferences>,
-) -> ResolvedPreferences {
+fn resolve(user: Option<&UserPreferences>, org: Option<&OrgPreferences>) -> ResolvedPreferences {
     let defaults = ResolvedPreferences::default();
 
     macro_rules! pick {
@@ -223,8 +207,7 @@ fn resolve(
 mod tests {
     use super::*;
     use data_entities::{
-        DEFAULT_LANGUAGE, DEFAULT_LOCALE, DEFAULT_THEME, DEFAULT_TIMEZONE,
-        DEFAULT_UNIT_SYSTEM,
+        DEFAULT_LANGUAGE, DEFAULT_LOCALE, DEFAULT_THEME, DEFAULT_TIMEZONE, DEFAULT_UNIT_SYSTEM,
     };
 
     fn user(timezone: Option<&str>, locale: Option<&str>) -> UserPreferences {

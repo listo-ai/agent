@@ -137,7 +137,7 @@ pub fn manifest() -> KindManifest {
     .with_facets(FacetSet::of([Facet::IsSystem]))
     .with_settings_schema(settings_schema())
     .with_slots(vec![
-        SlotSchema::new("status", SlotRole::Status).with_kind(SlotValueKind::Json),
+        SlotSchema::new("status", SlotRole::Status).with_kind(SlotValueKind::Json)
     ])
 }
 

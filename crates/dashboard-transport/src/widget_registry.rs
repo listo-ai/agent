@@ -38,10 +38,7 @@ impl WidgetRegistry {
     }
 
     pub fn contains(&self, id: &str) -> bool {
-        self.types
-            .read()
-            .map(|s| s.contains(id))
-            .unwrap_or(false)
+        self.types.read().map(|s| s.contains(id)).unwrap_or(false)
     }
 
     /// Monotonic version bumped whenever a *new* type is added. Feeds

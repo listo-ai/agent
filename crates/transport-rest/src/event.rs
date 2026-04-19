@@ -39,6 +39,9 @@ pub struct HelloFrame {
 
 impl HelloFrame {
     pub fn new(seq: u64) -> Self {
-        Self { event: "hello", seq }
+        Self {
+            event: "hello",
+            seq,
+        }
     }
 }

@@ -302,10 +302,7 @@ async fn set_config(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn stream_events(
-    State(s): State<AppState>,
-    Query(q): Query<EventsQuery>,
-) -> Response {
+async fn stream_events(State(s): State<AppState>, Query(q): Query<EventsQuery>) -> Response {
     // Determine replay set and current seq, or return 409 if cursor is
     // below the ring's floor.
     let (replay, current_seq) = if let Some(since) = q.since {

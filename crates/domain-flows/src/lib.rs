@@ -121,9 +121,7 @@ impl FlowService {
     }
 
     pub fn get_flow(&self, id: FlowId) -> Result<FlowDocument, FlowError> {
-        self.repo
-            .get_flow(id)?
-            .ok_or(FlowError::NotFound(id))
+        self.repo.get_flow(id)?.ok_or(FlowError::NotFound(id))
     }
 
     pub fn list_flows(&self, limit: u32, offset: u32) -> Result<Vec<FlowDocument>, FlowError> {
@@ -433,7 +431,10 @@ impl FlowService {
             };
         }
 
-        let target_id = stack.into_iter().next().ok_or(FlowError::NothingToRedo(flow_id))?;
+        let target_id = stack
+            .into_iter()
+            .next()
+            .ok_or(FlowError::NothingToRedo(flow_id))?;
 
         let target_rev = self
             .repo
@@ -452,10 +453,7 @@ impl FlowService {
     /// - Forward edit: the revision itself.
     /// - Undo: `target.parent` (undo stepped over `target`, so current = target's predecessor).
     /// - Redo: `target` (redo restored the target revision's content).
-    fn find_logical_current(
-        &self,
-        rev: &FlowRevision,
-    ) -> Result<FlowRevision, FlowError> {
+    fn find_logical_current(&self, rev: &FlowRevision) -> Result<FlowRevision, FlowError> {
         match &rev.op {
             op if op.is_forward() => Ok(rev.clone()),
             RevisionOp::Redo => {
@@ -504,10 +502,7 @@ impl FlowService {
             return Ok(());
         };
         if actual != Some(expected) {
-            return Err(FlowError::Conflict {
-                expected,
-                actual,
-            });
+            return Err(FlowError::Conflict { expected, actual });
         }
         Ok(())
     }

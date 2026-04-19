@@ -173,11 +173,9 @@ mod tests {
 
     #[test]
     fn optional_hole_may_be_omitted_when_default_present() {
-        let errors = validate_bound_args(
-            &requires_two_holes(),
-            &json!({ "target": { "id": "abc" } }),
-        )
-        .unwrap();
+        let errors =
+            validate_bound_args(&requires_two_holes(), &json!({ "target": { "id": "abc" } }))
+                .unwrap();
         assert!(errors.is_empty());
     }
 
@@ -190,11 +188,8 @@ mod tests {
 
     #[test]
     fn type_mismatch_reports_precise_error() {
-        let errors = validate_bound_args(
-            &requires_two_holes(),
-            &json!({ "target": "not-a-ref" }),
-        )
-        .unwrap();
+        let errors =
+            validate_bound_args(&requires_two_holes(), &json!({ "target": "not-a-ref" })).unwrap();
         assert_eq!(errors.len(), 1);
         match &errors[0] {
             ContractError::TypeMismatch {
@@ -257,11 +252,8 @@ mod tests {
 
     #[test]
     fn malformed_requires_rejected() {
-        let err = validate_bound_args(
-            &json!({ "target": { "type": "unknown-type" } }),
-            &json!({}),
-        )
-        .unwrap_err();
+        let err = validate_bound_args(&json!({ "target": { "type": "unknown-type" } }), &json!({}))
+            .unwrap_err();
         assert!(matches!(err, ContractError::MalformedRequires(_)));
     }
 }

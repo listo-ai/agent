@@ -60,10 +60,8 @@ impl FleetHandler for ListNodesHandler {
             let req: ListNodesQuery = if msg.payload.is_empty() {
                 ListNodesQuery::default()
             } else {
-                serde_json::from_slice(&msg.payload).map_err(|e| {
-                    FleetError::InvalidSubject {
-                        reason: format!("request body not valid ListNodesQuery JSON: {e}"),
-                    }
+                serde_json::from_slice(&msg.payload).map_err(|e| FleetError::InvalidSubject {
+                    reason: format!("request body not valid ListNodesQuery JSON: {e}"),
                 })?
             };
 
@@ -94,11 +92,7 @@ mod tests {
         let graph = Arc::new(GraphStore::new(kinds, Arc::new(NullSink)));
         graph.create_root(KindId::new("sys.core.station")).unwrap();
         graph
-            .create_child(
-                &NodePath::root(),
-                KindId::new("sys.core.folder"),
-                "alpha",
-            )
+            .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "alpha")
             .unwrap();
         let (events, _) = broadcast::channel(16);
         let (behaviors, _) = BehaviorRegistry::new(graph.clone());

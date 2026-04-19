@@ -10,8 +10,10 @@ use axum::routing::{get, post};
 use axum::Router;
 
 pub mod acl;
+pub mod action;
 pub mod audit;
 pub mod error;
+pub mod handler_registry;
 pub mod invalidate;
 pub mod limits;
 pub mod nav;
@@ -21,8 +23,10 @@ pub mod state;
 pub mod widget_registry;
 
 pub use acl::{AclCheck, AclSubject, AllowAll};
+pub use action::{ActionContext, ActionResponse, NavigateTo, ToastIntent};
 pub use audit::{AuditEvent, AuditSink, TracingAudit};
 pub use error::TransportError;
+pub use handler_registry::HandlerRegistry;
 pub use invalidate::{InvalidateEvent, InvalidateReason, InvalidateSink, TracingInvalidate};
 pub use reader::GraphReader;
 pub use state::DashboardState;
@@ -39,5 +43,6 @@ pub fn router(state: DashboardState) -> Router {
     Router::new()
         .route("/api/v1/ui/nav", get(nav::handler))
         .route("/api/v1/ui/resolve", post(resolve::handler))
+        .route("/api/v1/ui/action", post(action::handler))
         .with_state(state)
 }

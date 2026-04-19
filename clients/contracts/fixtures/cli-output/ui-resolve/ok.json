@@ -1,8 +1,12 @@
 {
   "render": {
-    "page_id": "VARIES",
-    "title": "Dashboard",
-    "widgets": []
+    "ir_version": 1,
+    "root": {
+      "type": "page",
+      "id": "VARIES",
+      "title": "Dashboard",
+      "children": []
+    }
   },
   "subscriptions": [],
   "meta": {

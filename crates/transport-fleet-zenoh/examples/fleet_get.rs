@@ -15,14 +15,18 @@ use transport_fleet_zenoh::{ZenohConfig, ZenohTransport};
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    let connect = args.get(1).cloned().unwrap_or_else(|| "tcp/127.0.0.1:17447".to_string());
+    let connect = args
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| "tcp/127.0.0.1:17447".to_string());
     let tenant = args.get(2).cloned().unwrap_or_else(|| "sys".to_string());
     let agent_id = args.get(3).cloned().unwrap_or_else(|| "edge-1".to_string());
-    let kind = args.get(4).cloned().unwrap_or_else(|| "api.v1.nodes.list".to_string());
+    let kind = args
+        .get(4)
+        .cloned()
+        .unwrap_or_else(|| "api.v1.nodes.list".to_string());
 
-    eprintln!(
-        "connecting to {connect}, querying fleet.{tenant}.{agent_id}.{kind}..."
-    );
+    eprintln!("connecting to {connect}, querying fleet.{tenant}.{agent_id}.{kind}...");
 
     let t = ZenohTransport::connect(ZenohConfig {
         listen: vec![],

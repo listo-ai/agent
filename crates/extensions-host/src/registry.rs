@@ -240,6 +240,23 @@ impl PluginRegistry {
         self.plugins_dir.read().expect("poisoned").clone()
     }
 
+    /// The on-disk root for a loaded plugin (`<plugins_dir>/<id>`),
+    /// or `None` if the plugin isn't known.
+    pub fn plugin_root(&self, id: &PluginId) -> Option<PathBuf> {
+        let map = self.inner.read().expect("poisoned");
+        map.get(id).map(|p| p.root.clone())
+    }
+
+    /// Process-bin contribution for a loaded plugin, or `None` if the
+    /// plugin isn't a process plugin / isn't known. Used by the
+    /// `PluginHost` to decide which plugins to supervise.
+    pub fn process_bin(&self, id: &PluginId) -> Option<crate::manifest::ProcessBinContribution> {
+        let map = self.inner.read().expect("poisoned");
+        map.get(id)
+            .and_then(|p| p.manifest.as_ref())
+            .and_then(|m| m.contributes.process_bin.clone())
+    }
+
     /// Flip a Validated/Enabled plugin to Disabled (or back). Does not
     /// unregister kinds — hot-unload is Stage 10.
     pub fn set_enabled(&self, id: &PluginId, enabled: bool) -> Result<(), PluginError> {

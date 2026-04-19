@@ -94,9 +94,19 @@ impl PreferencesRepo for SqlitePreferencesRepo {
                      currency         = excluded.currency,
                      updated_at       = excluded.updated_at",
                 params![
-                    p.org_id, p.timezone, p.locale, p.language, p.unit_system,
-                    p.temperature_unit, p.pressure_unit, p.date_format, p.time_format,
-                    p.week_start, p.number_format, p.currency, p.updated_at,
+                    p.org_id,
+                    p.timezone,
+                    p.locale,
+                    p.language,
+                    p.unit_system,
+                    p.temperature_unit,
+                    p.pressure_unit,
+                    p.date_format,
+                    p.time_format,
+                    p.week_start,
+                    p.number_format,
+                    p.currency,
+                    p.updated_at,
                 ],
             )
             .map(|_| ())
@@ -104,11 +114,7 @@ impl PreferencesRepo for SqlitePreferencesRepo {
         })
     }
 
-    fn get_user(
-        &self,
-        user_id: &str,
-        org_id: &str,
-    ) -> Result<Option<UserPreferences>, RepoError> {
+    fn get_user(&self, user_id: &str, org_id: &str) -> Result<Option<UserPreferences>, RepoError> {
         self.with_conn(|conn| {
             conn.query_row(
                 "SELECT user_id, org_id, timezone, locale, language, unit_system,
@@ -165,10 +171,21 @@ impl PreferencesRepo for SqlitePreferencesRepo {
                      theme            = excluded.theme,
                      updated_at       = excluded.updated_at",
                 params![
-                    p.user_id, p.org_id, p.timezone, p.locale, p.language,
-                    p.unit_system, p.temperature_unit, p.pressure_unit,
-                    p.date_format, p.time_format, p.week_start, p.number_format,
-                    p.currency, p.theme, p.updated_at,
+                    p.user_id,
+                    p.org_id,
+                    p.timezone,
+                    p.locale,
+                    p.language,
+                    p.unit_system,
+                    p.temperature_unit,
+                    p.pressure_unit,
+                    p.date_format,
+                    p.time_format,
+                    p.week_start,
+                    p.number_format,
+                    p.currency,
+                    p.theme,
+                    p.updated_at,
                 ],
             )
             .map(|_| ())

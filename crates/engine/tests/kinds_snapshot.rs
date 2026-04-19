@@ -33,6 +33,10 @@ fn flow_manifest_is_pinned() {
                 ParentMatcher::Kind(KindId::new("sys.engine.read_slot")),
                 ParentMatcher::Kind(KindId::new("sys.engine.write_slot")),
                 ParentMatcher::Kind(KindId::new("sys.core.flow")),
+                ParentMatcher::Kind(KindId::new("ui.nav")),
+                ParentMatcher::Kind(KindId::new("ui.page")),
+                ParentMatcher::Kind(KindId::new("ui.template")),
+                ParentMatcher::Kind(KindId::new("ui.widget")),
             ])
             .with_cardinality(Cardinality::ManyPerParent)
             .with_cascade(CascadePolicy::Strict),

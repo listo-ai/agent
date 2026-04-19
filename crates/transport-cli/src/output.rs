@@ -179,7 +179,8 @@ pub fn ok_table<T: Serialize>(
 pub fn ok_status(fmt: OutputFormat, message: &str) -> anyhow::Result<()> {
     match fmt {
         OutputFormat::Json => {
-            println!( // NO_PRINTLN_LINT:allow
+            println!(
+                // NO_PRINTLN_LINT:allow
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({ "status": message }))?,
             );

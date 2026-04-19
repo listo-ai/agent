@@ -41,6 +41,11 @@ fn is_exempt_path(path: &Path) -> bool {
     if s.ends_with("/apps/agent/src/main.rs") {
         return true;
     }
+    // Cargo build scripts *must* use `println!("cargo:...")` to emit
+    // directives — the print macro is the protocol. Exempt.
+    if s.ends_with("/build.rs") {
+        return true;
+    }
     // Skip target/ if it somehow lives under crates/ (it shouldn't).
     if s.contains("/target/") {
         return true;

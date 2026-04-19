@@ -169,14 +169,14 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
 
         FlowsCmd::Get { id } => {
             let flow = client.flows().get(id).await?;
-            output::ok_msg(
-                fmt,
-                &flow,
-                &format!("{} ({})", flow.name, flow.id),
-            )?;
+            output::ok_msg(fmt, &flow, &format!("{} ({})", flow.name, flow.id))?;
         }
 
-        FlowsCmd::Create { name, document, author } => {
+        FlowsCmd::Create {
+            name,
+            document,
+            author,
+        } => {
             let doc: JsonValue = serde_json::from_str(document)
                 .map_err(|e| anyhow::anyhow!("invalid JSON for --document: {e}"))?;
             let flow = client.flows().create(name, doc, author).await?;
@@ -192,7 +192,13 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
             output::ok_status(fmt, &format!("deleted flow {id}"))?;
         }
 
-        FlowsCmd::Edit { id, document, summary, expected_head, author } => {
+        FlowsCmd::Edit {
+            id,
+            document,
+            summary,
+            expected_head,
+            author,
+        } => {
             let doc: JsonValue = serde_json::from_str(document)
                 .map_err(|e| anyhow::anyhow!("invalid JSON for document: {e}"))?;
             let result = client
@@ -206,7 +212,11 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
             )?;
         }
 
-        FlowsCmd::Undo { id, expected_head, author } => {
+        FlowsCmd::Undo {
+            id,
+            expected_head,
+            author,
+        } => {
             let result = client
                 .flows()
                 .undo(id, expected_head.as_deref(), author)
@@ -218,10 +228,20 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
             )?;
         }
 
-        FlowsCmd::Redo { id, expected_head, expected_target, author } => {
+        FlowsCmd::Redo {
+            id,
+            expected_head,
+            expected_target,
+            author,
+        } => {
             let result = client
                 .flows()
-                .redo(id, expected_head.as_deref(), expected_target.as_deref(), author)
+                .redo(
+                    id,
+                    expected_head.as_deref(),
+                    expected_target.as_deref(),
+                    author,
+                )
                 .await?;
             output::ok_msg(
                 fmt,
@@ -230,7 +250,12 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
             )?;
         }
 
-        FlowsCmd::Revert { id, to, expected_head, author } => {
+        FlowsCmd::Revert {
+            id,
+            to,
+            expected_head,
+            author,
+        } => {
             let result = client
                 .flows()
                 .revert(id, expected_head.as_deref(), to, author)
