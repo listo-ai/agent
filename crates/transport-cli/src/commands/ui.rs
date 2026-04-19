@@ -76,6 +76,9 @@ pub enum UiCmd {
         auth_subject: Option<String>,
     },
 
+    /// Dump the `ui_ir::Component` JSON Schema (`GET /api/v1/ui/vocabulary`).
+    Vocabulary,
+
     /// Render a node's default SDUI view (`GET /api/v1/ui/render`).
     Render {
         /// Target node id (UUID).
@@ -124,6 +127,7 @@ impl UiCmd {
             Self::Action { .. } => "ui action",
             Self::Table { .. } => "ui table",
             Self::Render { .. } => "ui render",
+            Self::Vocabulary => "ui vocabulary",
         }
     }
 }
@@ -242,6 +246,22 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
             let resp = client.ui().action(&req).await?;
             output::ok(fmt, &resp)?;
         }
+        UiCmd::Vocabulary => {
+            let resp = client.ui().vocabulary().await?;
+            match fmt {
+                OutputFormat::Json => output::ok(fmt, &resp)?,
+                OutputFormat::Table => {
+                    let rows = vocabulary_rows(&resp.schema);
+                    output::ok_table(fmt, &["TYPE", "DESCRIPTION"], &rows, |r| {
+                        vec![r.type_name.clone(), r.description.clone()]
+                    })?;
+                    eprintln!( // NO_PRINTLN_LINT:allow
+                        "ir_version={}",
+                        resp.ir_version,
+                    );
+                }
+            }
+        }
         UiCmd::Render { target, view } => {
             let resp = client.ui().render(target, view.as_deref()).await?;
             match (&resp, fmt) {
@@ -333,6 +353,40 @@ fn flatten(n: &agent_client::types::UiNavNode, depth: usize) -> Vec<NavRow> {
         out.extend(flatten(c, depth + 1));
     }
     out
+}
+
+#[derive(serde::Serialize)]
+struct VocabRow {
+    type_name: String,
+    description: String,
+}
+
+fn vocabulary_rows(schema: &serde_json::Value) -> Vec<VocabRow> {
+    let mut rows = Vec::new();
+    let variants = schema.get("oneOf").and_then(|v| v.as_array());
+    if let Some(arr) = variants {
+        for v in arr {
+            let type_name = v
+                .pointer("/properties/type/enum/0")
+                .and_then(|x| x.as_str())
+                .or_else(|| v.pointer("/properties/type/const").and_then(|x| x.as_str()))
+                .unwrap_or("")
+                .to_string();
+            let description = v
+                .get("description")
+                .and_then(|x| x.as_str())
+                .or_else(|| v.get("title").and_then(|x| x.as_str()))
+                .unwrap_or("")
+                .to_string();
+            if !type_name.is_empty() {
+                rows.push(VocabRow {
+                    type_name,
+                    description,
+                });
+            }
+        }
+    }
+    rows
 }
 
 #[derive(serde::Serialize)]

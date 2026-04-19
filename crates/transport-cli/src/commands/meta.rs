@@ -153,6 +153,7 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &UI_ACTION,
         &UI_TABLE,
         &UI_RENDER,
+        &UI_VOCABULARY,
         &FLOWS_LIST,
         &FLOWS_GET,
         &FLOWS_CREATE,
@@ -1514,6 +1515,20 @@ static UI_RENDER: CommandMeta = CommandMeta {
             exit_code: 2,
         },
     ],
+};
+
+static UI_VOCABULARY: CommandMeta = CommandMeta {
+    name: "ui vocabulary",
+    summary: "Dump the ui_ir::Component JSON Schema.",
+    args: &[],
+    examples: &["agent ui vocabulary", "agent ui vocabulary -o json"],
+    related: &["ui resolve", "ui render"],
+    input_schema: empty_input,
+    output_schema: schema_for_type::<types::UiVocabulary>,
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
 };
 
 static AUTH_WHOAMI: CommandMeta = CommandMeta {

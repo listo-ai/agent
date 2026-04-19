@@ -394,7 +394,9 @@ Pages created by the builder and pages hand-authored by the CLI are indistinguis
 ## Summary
 
 - **Stage 0 is pure validation.** No new code. Scripted + unscripted + exploratory walkthroughs, stress tests, three LLM runs with an existence gate for Stage 2, error-shape audit, docs round-trip.
-- **Two pre-Stage-1 fixes are blocking**: extend `/ui/resolve --dry-run` to emit binding errors; add `expected_generation` to slot writes.
+- **Three pre-Stage-1 fixes are blocking**: extend `/ui/resolve --dry-run` to emit binding errors; add `expected_generation` to slot writes; ship `GET /api/v1/ui/vocabulary` + client method + CLI command (referenced across design docs but never actually implemented).
+- **Separation of concerns is a structural rule.** `model/` is pure TS, no React; `store/` is headless; `panels/` and `canvas/` never import from each other; `preview/` doesn't import from `persistence/`. ESLint enforces; every layer has its own test shape.
+- **No builder code calls `fetch` directly.** Every network call goes through the TS client per NEW-API.md's five-touchpoint rule.
 - **OCC invariant is a hard rule**: the "someone else edited this" banner is non-dismissable. Reload or export, nothing else.
 - **Stage 1 is the whole v1 bet.** Monaco + live preview + the extended `dry_run`. For the power user named above.
 - **Stage 2 is probationary.** Ships only if the Stage 0.3 existence gate proves LLM+Monaco can't handle the seeds. Even if it ships, seed templates are chosen from the failures — not all five by default.

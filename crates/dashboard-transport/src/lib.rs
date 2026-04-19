@@ -23,6 +23,7 @@ pub mod render;
 pub mod resolve;
 pub mod state;
 pub mod table;
+pub mod vocabulary;
 
 pub use acl::{AclCheck, AclSubject, AllowAll};
 pub use action::{ActionContext, ActionResponse, NavigateTo, ToastIntent};
@@ -48,6 +49,7 @@ pub fn router(state: DashboardState) -> Router {
         .route("/api/v1/ui/action", post(action::handler))
         .route("/api/v1/ui/table", get(table::handler))
         .route("/api/v1/ui/render", get(render::handler))
+        .route("/api/v1/ui/vocabulary", get(vocabulary::handler))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

@@ -909,6 +909,16 @@ pub struct UiResolveIssue {
     pub message: String,
 }
 
+/// Response from `GET /api/v1/ui/vocabulary` — the JSON Schema of the
+/// `ui_ir::Component` union. Consumed by Monaco, Studio's palette, and
+/// LLM authors so they can discover the full component vocabulary from
+/// a single endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiVocabulary {
+    pub ir_version: u32,
+    pub schema: JsonValue,
+}
+
 // ---- ui table ---------------------------------------------------------------
 
 /// Query params for `GET /api/v1/ui/table`.

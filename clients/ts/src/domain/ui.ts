@@ -7,6 +7,7 @@ import {
   UiNavNodeSchema,
   UiResolveResponseSchema,
   UiTableResponseSchema,
+  UiVocabularySchema,
   type UiActionRequest,
   type UiActionResponse,
   type UiNavNode,
@@ -14,6 +15,7 @@ import {
   type UiResolveResponse,
   type UiTableParams,
   type UiTableResponse,
+  type UiVocabulary,
 } from "../schemas/ui.js";
 
 export interface UiApi {
@@ -49,6 +51,13 @@ export interface UiApi {
    * template, and returns the same response shape as `resolve`.
    */
   render(target: string, view?: string): Promise<UiResolveResponse>;
+
+  /**
+   * Fetch the `ui_ir::Component` JSON Schema
+   * (`GET /api/v1/ui/vocabulary`). Consumed by Monaco, Studio's palette,
+   * and LLM authoring tools.
+   */
+  vocabulary(): Promise<UiVocabulary>;
 }
 
 export function createUiApi(http: RequestTransport, apiVersion: number): UiApi {
@@ -90,6 +99,11 @@ export function createUiApi(http: RequestTransport, apiVersion: number): UiApi {
       if (view) qs.set("view", view);
       const raw = await http.get<unknown>(`${base}/render?${qs.toString()}`);
       return UiResolveResponseSchema.parse(raw);
+    },
+
+    async vocabulary(): Promise<UiVocabulary> {
+      const raw = await http.get<unknown>(`${base}/vocabulary`);
+      return UiVocabularySchema.parse(raw);
     },
   };
 }

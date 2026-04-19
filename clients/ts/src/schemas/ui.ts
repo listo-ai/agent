@@ -429,6 +429,15 @@ export const UiActionResponseSchema = z.discriminatedUnion("type", [
 ]);
 export type UiActionResponse = z.infer<typeof UiActionResponseSchema>;
 
+// ---- vocabulary ------------------------------------------------------------
+
+/** Response from `GET /api/v1/ui/vocabulary`. */
+export const UiVocabularySchema = z.object({
+  ir_version: z.number().int().nonnegative(),
+  schema: z.unknown(),
+});
+export type UiVocabulary = z.infer<typeof UiVocabularySchema>;
+
 // ---- table -----------------------------------------------------------------
 
 /** Query params for `GET /api/v1/ui/table`. */

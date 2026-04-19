@@ -53,6 +53,8 @@ interface FlowCanvasProps {
   onOpenNode?: (nodePath: string) => void;
   /** Open the add-child-node dialog with this node as the parent. */
   onAddChildNode?: (nodePath: string) => void;
+  /** Open the history panel for this node. */
+  onOpenHistory?: (nodePath: string) => void;
 }
 
 export function FlowCanvas(props: FlowCanvasProps) {
@@ -82,6 +84,7 @@ function FlowCanvasInner({
   onReady,
   onOpenNode,
   onAddChildNode,
+  onOpenHistory,
 }: FlowCanvasProps) {
   const [canvasNodes, setCanvasNodes] = useState(nodes);
   const [canvasEdges, setCanvasEdges] = useState(edges);
@@ -220,6 +223,7 @@ function FlowCanvasInner({
               selectNodeById(contextMenu.nodeId);
               setContextMenu(null);
             },
+            ...(onOpenHistory ? { onHistory: () => { onOpenHistory(contextMenu.nodePath); setContextMenu(null); } } : {}),
             onDelete: () => {
               onDeleteNodes([contextMenu.nodeId]);
               setContextMenu(null);

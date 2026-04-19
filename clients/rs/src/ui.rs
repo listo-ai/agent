@@ -9,7 +9,7 @@ use crate::error::ClientError;
 use crate::http::HttpClient;
 use crate::types::{
     UiActionRequest, UiActionResponse, UiNavNode, UiResolveRequest, UiResolveResponse,
-    UiTableParams, UiTableResponse,
+    UiTableParams, UiTableResponse, UiVocabulary,
 };
 
 pub struct Ui<'c> {
@@ -87,6 +87,14 @@ impl<'c> Ui<'c> {
             qp.push(("view", v.to_string()));
         }
         self.http.get_query(&format!("{}/render", self.base), &qp).await
+    }
+
+    /// Fetch the JSON Schema of the `ui_ir::Component` union. Drives
+    /// Monaco / Studio / LLM vocabulary lookups from one endpoint.
+    pub async fn vocabulary(&self) -> Result<UiVocabulary, ClientError> {
+        self.http
+            .get_query(&format!("{}/vocabulary", self.base), &[])
+            .await
     }
 
     /// Fetch a paginated table of nodes matching `params.query`.

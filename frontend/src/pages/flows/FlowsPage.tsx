@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "@xyflow/react/dist/style.css";
 import { AGENT_BASE_URL } from "@/lib/agent";
@@ -5,6 +6,7 @@ import { CenteredMessage, formatError } from "./flow-page-shared";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { FlowBreadcrumbBar } from "./components/FlowBreadcrumbBar";
 import { FlowPropertyPanel } from "./components/FlowPropertyPanel";
+import { NodeHistoryPanel } from "./components/NodeHistoryPanel";
 import { FlowSidebar } from "./components/FlowSidebar";
 import { FlowToolbar } from "./components/FlowToolbar";
 import { AddChildNodeDialog } from "@/components/AddChildNodeDialog";
@@ -18,6 +20,9 @@ export function FlowsPage() {
   // deep-links straight to the canvas for that flow.
   const { "*": splat } = useParams();
   const pathFromUrl = splat ? `/${splat}` : null;
+
+  // History panel: which node path's slot history is being viewed.
+  const [historyPath, setHistoryPath] = useState<string | null>(null);
 
   const {
     agent,
@@ -138,6 +143,7 @@ export function FlowsPage() {
                 }}
                 onOpenNode={handleOpenNode}
                 onAddChildNode={handleAddChildNode}
+                onOpenHistory={(nodePath) => setHistoryPath(nodePath)}
               />
             ) : (
               <CenteredMessage
@@ -147,12 +153,19 @@ export function FlowsPage() {
             )}
           </div>
 
-          <FlowPropertyPanel
-            node={selectedNode}
-            kind={selectedKind}
-            live={selectedLive}
-            onSaveSettings={saveSettings}
-          />
+          {historyPath ? (
+            <NodeHistoryPanel
+              node={visibleNodes.find((n) => n.path === historyPath)}
+              onClose={() => setHistoryPath(null)}
+            />
+          ) : (
+            <FlowPropertyPanel
+              node={selectedNode}
+              kind={selectedKind}
+              live={selectedLive}
+              onSaveSettings={saveSettings}
+            />
+          )}
         </div>
       </section>
 

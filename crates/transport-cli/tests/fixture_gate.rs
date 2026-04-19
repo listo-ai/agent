@@ -748,6 +748,18 @@ async fn ui_action_not_found() {
 }
 
 #[tokio::test]
+async fn ui_vocabulary_ok() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let resp = c.ui().vocabulary().await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
+    let fixture = load_fixture("ui-vocabulary/ok.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(resp.ir_version, 1);
+    assert!(resp.schema.is_object(), "schema must be a JSON object");
+}
+
+#[tokio::test]
 async fn ui_table_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
@@ -1009,6 +1021,7 @@ fn every_variant_has_a_fixture() {
         "ui-resolve",
         "ui-action",
         "ui-render",
+        "ui-vocabulary",
     ];
     let dir = fixtures_dir();
     for cmd in required {
