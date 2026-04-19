@@ -7,6 +7,7 @@ import { AuthProvider } from "./auth";
 import { RegistryProvider } from "./registry";
 import { GraphStoreProvider } from "./graph-store";
 import { ThemeProvider } from "./theme";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 interface ProvidersProps {
   children: ReactNode;
@@ -17,6 +18,8 @@ export function Providers({ children }: ProvidersProps) {
     // QueryProvider wraps everything so auth + extension hooks can use useQuery.
     <ThemeProvider>
     <QueryProvider>
+      {/* TooltipProvider enables Radix tooltips globally. */}
+      <TooltipProvider>
       {/* RegistryProvider exposes the service map as an MF singleton. */}
       <RegistryProvider>
         {/* AuthProvider hydrates user session from OIDC. */}
@@ -27,6 +30,7 @@ export function Providers({ children }: ProvidersProps) {
           </GraphStoreProvider>
         </AuthProvider>
       </RegistryProvider>
+      </TooltipProvider>
     </QueryProvider>
     </ThemeProvider>
   );

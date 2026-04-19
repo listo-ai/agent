@@ -13,6 +13,7 @@
 
 mod manifest;
 mod registry;
+pub mod supervisor;
 
 pub use manifest::{
     Contributes, NativeLibContribution, PluginId, PluginManifest, ProcessBinContribution,
@@ -21,3 +22,4 @@ pub use manifest::{
 pub use registry::{
     LoadedPlugin, LoadedPluginSummary, PluginError, PluginLifecycle, PluginRegistry,
 };
+pub use supervisor::{ProcessSupervisor, SupervisorError, SOCKET_ENV};

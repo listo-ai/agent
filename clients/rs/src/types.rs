@@ -151,6 +151,9 @@ pub struct CapabilityManifest {
     pub platform: PlatformInfo,
     pub api: ApiInfo,
     pub capabilities: Vec<Capability>,
+    /// SDUI component IR version supported by the agent.
+    #[serde(default)]
+    pub ir_version: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -459,7 +462,7 @@ pub struct UiResolveRequest {
 #[serde(untagged)]
 pub enum UiResolveResponse {
     Ok {
-        render: UiRenderTree,
+        render: UiComponentTree,
         subscriptions: Vec<UiSubscriptionPlan>,
         meta: UiResolveMeta,
     },
@@ -477,30 +480,180 @@ pub struct UiSubscriptionPlan {
     pub debounce_ms: u32,
 }
 
+/// Root of a resolved component tree. Mirrors `ui_ir::ComponentTree`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct UiRenderTree {
-    pub page_id: String,
-    pub title: Option<String>,
-    pub widgets: Vec<UiRenderedWidget>,
+pub struct UiComponentTree {
+    pub ir_version: u32,
+    pub root: UiComponent,
 }
 
-/// Tagged by `"kind"` — `"ui.widget"` (rendered), `"ui.widget.forbidden"`,
-/// or `"ui.widget.dangling"`. Mirrors the server's `RenderedWidget`.
+/// A single component in the IR tree. Discriminated by `"type"`.
+/// Mirrors `ui_ir::Component`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind")]
-pub enum UiRenderedWidget {
-    #[serde(rename = "ui.widget")]
-    Rendered {
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UiComponent {
+    // layout
+    Page {
         id: String,
-        widget_type: String,
-        values: std::collections::HashMap<String, JsonValue>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        layout_hint: Option<JsonValue>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(default)]
+        children: Vec<UiComponent>,
     },
-    #[serde(rename = "ui.widget.forbidden")]
+    Row {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default)]
+        children: Vec<UiComponent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        gap: Option<String>,
+    },
+    Col {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default)]
+        children: Vec<UiComponent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        gap: Option<String>,
+    },
+    Grid {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default)]
+        children: Vec<UiComponent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        columns: Option<String>,
+    },
+    Tabs {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        tabs: Vec<UiTab>,
+    },
+    // display
+    Text {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+    },
+    Heading {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        level: Option<u8>,
+    },
+    Badge {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        label: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+    },
+    Diff {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        old_text: String,
+        new_text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        language: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        annotations: Vec<UiDiffAnnotation>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        line_action: Option<UiAction>,
+    },
+    // data
+    Table {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        source: UiTableSource,
+        columns: Vec<UiTableColumn>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        row_action: Option<UiAction>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page_size: Option<u32>,
+    },
+    // input
+    RichText {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        value: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+    },
+    // interactive
+    Button {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        label: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        disabled: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        action: Option<UiAction>,
+    },
+    // composite
+    Form {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        schema_ref: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bindings: Option<JsonValue>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        submit: Option<UiAction>,
+    },
+    // placeholder stubs
     Forbidden { id: String, reason: String },
-    #[serde(rename = "ui.widget.dangling")]
     Dangling { id: String },
+}
+
+/// Action reference — mirrors `ui_ir::Action`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiAction {
+    pub handler: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<JsonValue>,
+}
+
+/// Table data source — mirrors `ui_ir::TableSource`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTableSource {
+    pub query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscribe: Option<bool>,
+}
+
+/// Table column — mirrors `ui_ir::TableColumn`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTableColumn {
+    pub title: String,
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sortable: Option<bool>,
+}
+
+/// Diff annotation — mirrors `ui_ir::DiffAnnotation`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiDiffAnnotation {
+    pub line: u32,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+}
+
+/// Tab entry — mirrors `ui_ir::Tab`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTab {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub label: String,
+    #[serde(default)]
+    pub children: Vec<UiComponent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

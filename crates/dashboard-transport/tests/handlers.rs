@@ -9,7 +9,8 @@ use dashboard_runtime::{InMemoryReader, NodeReader, NodeSnapshot};
 use dashboard_transport::acl::{AclCheck, DenyNodes};
 use dashboard_transport::audit::{OwnedAuditEvent, RecordingAudit};
 use dashboard_transport::nav::{NavNode, NavQuery};
-use dashboard_transport::resolve::{RenderedWidget, ResolveRequest, ResolveResponse};
+use dashboard_transport::resolve::{ResolveRequest, ResolveResponse};
+use ui_ir::Component;
 use dashboard_transport::{DashboardState, TransportError};
 use serde_json::{json, Value as JsonValue};
 use spi::NodeId;
@@ -99,18 +100,18 @@ async fn resolve_renders_widget_with_bindings() {
         ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
         other => panic!("expected Ok variant, got {other:?}"),
     };
-    assert_eq!(render.widgets.len(), 1);
-    match &render.widgets[0] {
-        RenderedWidget::Rendered {
-            widget_type,
-            values,
-            ..
-        } => {
-            assert_eq!(widget_type, CARD);
-            assert_eq!(values["label"], json!("HQ"));
-            assert_eq!(values["heading"], json!(CARD));
+    let children = match &render.root {
+        Component::Page { children, .. } => children,
+        other => panic!("expected Page root, got {other:?}"),
+    };
+    assert_eq!(children.len(), 1);
+    // In S1, resolved widgets map to Text components showing the
+    // widget type. Verify the component is present.
+    match &children[0] {
+        Component::Text { content, .. } => {
+            assert!(content.contains(CARD));
         }
-        other => panic!("expected Rendered, got {other:?}"),
+        other => panic!("expected Text, got {other:?}"),
     }
     assert_eq!(meta.widget_count, 1);
     assert_eq!(meta.forbidden_count, 0);
@@ -265,9 +266,13 @@ async fn unknown_widget_type_becomes_forbidden_placeholder_and_audits() {
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.forbidden_count, 1);
+    let children = match &render.root {
+        Component::Page { children, .. } => children,
+        other => panic!("expected Page root, got {other:?}"),
+    };
     assert!(matches!(
-        render.widgets[0],
-        RenderedWidget::Forbidden { reason, .. } if reason == "unknown_widget_type"
+        &children[0],
+        Component::Forbidden { reason, .. } if reason == "unknown_widget_type"
     ));
     let events = audit.events();
     assert_eq!(events.len(), 1);
@@ -302,9 +307,13 @@ async fn acl_denied_bound_node_redacts_widget_and_audits() {
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.forbidden_count, 1);
+    let children = match &render.root {
+        Component::Page { children, .. } => children,
+        other => panic!("expected Page root, got {other:?}"),
+    };
     assert!(matches!(
-        render.widgets[0],
-        RenderedWidget::Forbidden { reason, .. } if reason == "acl"
+        &children[0],
+        Component::Forbidden { reason, .. } if reason == "acl"
     ));
 
     let events = audit.events();
@@ -364,14 +373,17 @@ async fn acl_page_with_mixed_allowed_denied_widgets() {
         ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
-    assert_eq!(render.widgets.len(), 2);
+    let children = match &render.root {
+        Component::Page { children, .. } => children,
+        other => panic!("expected Page root, got {other:?}"),
+    };
+    assert_eq!(children.len(), 2);
     assert_eq!(meta.forbidden_count, 1);
     // The "ok" widget only reads $self, which the recorder logs, but
     // its own node isn't denied — it should render.
-    let rendered_count = render
-        .widgets
+    let rendered_count = children
         .iter()
-        .filter(|w| matches!(w, RenderedWidget::Rendered { .. }))
+        .filter(|w| matches!(w, Component::Text { .. }))
         .count();
     assert_eq!(rendered_count, 1);
 }
@@ -399,7 +411,11 @@ async fn missing_bound_node_becomes_dangling_placeholder() {
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.dangling_count, 1);
-    assert!(matches!(render.widgets[0], RenderedWidget::Dangling { .. }));
+    let children = match &render.root {
+        Component::Page { children, .. } => children,
+        other => panic!("expected Page root, got {other:?}"),
+    };
+    assert!(matches!(&children[0], Component::Dangling { .. }));
     assert!(audit.events().iter().any(|e| matches!(
         e,
         OwnedAuditEvent::WidgetDangling { missing_node, .. } if *missing_node == ghost

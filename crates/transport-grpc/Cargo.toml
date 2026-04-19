@@ -9,6 +9,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[build-dependencies]
+tonic-build = { workspace = true }
+
 [dependencies]
 spi = { workspace = true }
-
+tonic = { workspace = true }
+prost = { workspace = true }

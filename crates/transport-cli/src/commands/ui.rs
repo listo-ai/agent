@@ -4,7 +4,7 @@
 //! `docs/design/NEW-API.md` for the five-touchpoint rule this module
 //! completes.
 
-use agent_client::types::{UiResolveRequest, UiResolveResponse};
+use agent_client::types::{UiComponent, UiResolveRequest, UiResolveResponse};
 use agent_client::AgentClient;
 use anyhow::{anyhow, Result};
 use clap::Subcommand;
@@ -121,16 +121,23 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                     },
                     OutputFormat::Table,
                 ) => {
-                    let rows: Vec<WidgetRow> = render
-                        .widgets
-                        .iter()
-                        .map(widget_row)
-                        .collect();
-                    output::ok_table(fmt, &["ID", "KIND", "TYPE_OR_REASON"], &rows, |r| {
-                        vec![r.id.clone(), r.kind.clone(), r.detail.clone()]
-                    })?;
+                    let mut rows: Vec<ComponentRow> = Vec::new();
+                    flatten_component(&render.root, 0, &mut rows);
+                    output::ok_table(
+                        fmt,
+                        &["DEPTH", "TYPE", "ID"],
+                        &rows,
+                        |r| {
+                            vec![
+                                r.depth.to_string(),
+                                r.component_type.clone(),
+                                r.id.clone(),
+                            ]
+                        },
+                    )?;
                     eprintln!( // NO_PRINTLN_LINT:allow
-                        "cache_key={}  widgets={}  forbidden={}  dangling={}",
+                        "ir_version={}  cache_key={}  widgets={}  forbidden={}  dangling={}",
+                        render.ir_version,
                         meta.cache_key, meta.widget_count, meta.forbidden_count, meta.dangling_count,
                     );
                 }
@@ -164,31 +171,44 @@ fn flatten(n: &agent_client::types::UiNavNode, depth: usize) -> Vec<NavRow> {
 }
 
 #[derive(serde::Serialize)]
-struct WidgetRow {
+struct ComponentRow {
+    depth: usize,
+    component_type: String,
     id: String,
-    kind: String,
-    detail: String,
 }
 
-fn widget_row(w: &agent_client::types::UiRenderedWidget) -> WidgetRow {
-    use agent_client::types::UiRenderedWidget::*;
-    match w {
-        Rendered {
-            id, widget_type, ..
-        } => WidgetRow {
-            id: id.clone(),
-            kind: "ui.widget".into(),
-            detail: widget_type.clone(),
-        },
-        Forbidden { id, reason } => WidgetRow {
-            id: id.clone(),
-            kind: "ui.widget.forbidden".into(),
-            detail: reason.clone(),
-        },
-        Dangling { id } => WidgetRow {
-            id: id.clone(),
-            kind: "ui.widget.dangling".into(),
-            detail: String::new(),
-        },
+fn flatten_component(
+    c: &UiComponent,
+    depth: usize,
+    out: &mut Vec<ComponentRow>,
+) {
+    let (ctype, id, children) = component_info(c);
+    out.push(ComponentRow {
+        depth,
+        component_type: ctype.into(),
+        id: id.unwrap_or("").into(),
+    });
+    for child in children {
+        flatten_component(child, depth + 1, out);
+    }
+}
+
+fn component_info(c: &UiComponent) -> (&str, Option<&str>, &[UiComponent]) {
+    match c {
+        UiComponent::Page { id, children, .. } => ("page", Some(id), children),
+        UiComponent::Row { id, children, .. } => ("row", id.as_deref(), children),
+        UiComponent::Col { id, children, .. } => ("col", id.as_deref(), children),
+        UiComponent::Grid { id, children, .. } => ("grid", id.as_deref(), children),
+        UiComponent::Tabs { id, .. } => ("tabs", id.as_deref(), &[]),
+        UiComponent::Text { id, .. } => ("text", id.as_deref(), &[]),
+        UiComponent::Heading { id, .. } => ("heading", id.as_deref(), &[]),
+        UiComponent::Badge { id, .. } => ("badge", id.as_deref(), &[]),
+        UiComponent::Diff { id, .. } => ("diff", id.as_deref(), &[]),
+        UiComponent::Table { id, .. } => ("table", id.as_deref(), &[]),
+        UiComponent::RichText { id, .. } => ("rich_text", id.as_deref(), &[]),
+        UiComponent::Button { id, .. } => ("button", id.as_deref(), &[]),
+        UiComponent::Form { id, .. } => ("form", id.as_deref(), &[]),
+        UiComponent::Forbidden { id, .. } => ("forbidden", Some(id), &[]),
+        UiComponent::Dangling { id } => ("dangling", Some(id), &[]),
     }
 }

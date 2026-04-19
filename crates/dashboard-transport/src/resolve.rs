@@ -14,13 +14,14 @@
 //! With `dry_run: true` the handler validates inputs and the
 //! template parameter contract and returns `{ "errors": [...] }`
 //! without producing a render tree. Otherwise it returns a resolved
-//! render tree plus `meta`. See DASHBOARD.md § M3-M5.
+//! [`ComponentTree`] plus `meta`. See DASHBOARD.md § M3-M5 and
+//! SDUI.md § S1.
 //!
 //! Per-widget ACL redaction is applied (§ "ACL policy"): if any node
 //! touched during a widget's binding evaluation is unreadable by the
-//! caller, the widget becomes a [`RenderedWidget::Forbidden`] stub and
+//! caller, the widget becomes a [`Component::Forbidden`] stub and
 //! one audit event fires per redaction. Missing bound nodes surface as
-//! [`RenderedWidget::Dangling`]. Unknown widget types are a dry-run
+//! [`Component::Dangling`]. Unknown widget types are a dry-run
 //! validation issue; in real resolve they also emit a forbidden stub
 //! tagged `unknown_widget_type`.
 //!
@@ -40,6 +41,7 @@ use dashboard_runtime::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use spi::{KindId, NodeId};
+use ui_ir::{Component, ComponentTree};
 
 use crate::acl::{AclCheck, AclSubject};
 use crate::audit::AuditEvent;
@@ -78,20 +80,13 @@ fn empty_object() -> JsonValue {
 #[serde(untagged)]
 pub enum ResolveResponse {
     Ok {
-        render: RenderTree,
+        render: ComponentTree,
         subscriptions: Vec<SubscriptionPlan>,
         meta: ResolveMeta,
     },
     DryRun {
         errors: Vec<ResolveIssue>,
     },
-}
-
-#[derive(Debug, Serialize)]
-pub struct RenderTree {
-    pub page_id: NodeId,
-    pub title: Option<String>,
-    pub widgets: Vec<RenderedWidget>,
 }
 
 /// Subscription plan for a single widget — mechanically derived from
@@ -111,31 +106,6 @@ pub struct SubscriptionPlan {
 /// Per-widget debounce default. The client can override if it cares;
 /// the value feeds the cache-key indirectly via subscription churn.
 const DEFAULT_DEBOUNCE_MS: u32 = 250;
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind")]
-pub enum RenderedWidget {
-    #[serde(rename = "ui.widget")]
-    Rendered {
-        id: NodeId,
-        widget_type: String,
-        values: HashMap<String, JsonValue>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        layout_hint: Option<JsonValue>,
-    },
-    #[serde(rename = "ui.widget.forbidden")]
-    Forbidden { id: NodeId, reason: &'static str },
-    #[serde(rename = "ui.widget.dangling")]
-    Dangling { id: NodeId },
-}
-
-impl RenderedWidget {
-    pub fn id(&self) -> NodeId {
-        match self {
-            Self::Rendered { id, .. } | Self::Forbidden { id, .. } | Self::Dangling { id } => *id,
-        }
-    }
-}
 
 #[derive(Debug, Serialize)]
 pub struct ResolveMeta {
@@ -176,7 +146,7 @@ pub async fn handler(
         return Err(first.into());
     }
 
-    let mut rendered: Vec<RenderedWidget> = Vec::with_capacity(widgets.len());
+    let mut rendered: Vec<Component> = Vec::with_capacity(widgets.len());
     let mut subscriptions: Vec<SubscriptionPlan> = Vec::with_capacity(widgets.len());
     for w in &widgets {
         let (r, subs) = resolve_widget(reader, &stack, w, &req, &state);
@@ -190,11 +160,11 @@ pub async fn handler(
 
     let forbidden_count = rendered
         .iter()
-        .filter(|w| matches!(w, RenderedWidget::Forbidden { .. }))
+        .filter(|w| matches!(w, Component::Forbidden { .. }))
         .count();
     let dangling_count = rendered
         .iter()
-        .filter(|w| matches!(w, RenderedWidget::Dangling { .. }))
+        .filter(|w| matches!(w, Component::Dangling { .. }))
         .count();
 
     let cache_key = build_cache_key(&req, &state, &page, &widgets, &stack);
@@ -205,11 +175,12 @@ pub async fn handler(
         dangling_count,
         stack_shadowed: stack.shadowed().to_vec(),
     };
-    let render = RenderTree {
-        page_id: page.id,
-        title: page.slots.get("title").and_then(|v| v.as_str()).map(String::from),
-        widgets: rendered,
-    };
+    let title = page.slots.get("title").and_then(|v| v.as_str()).map(String::from);
+    let render = ComponentTree::new(Component::Page {
+        id: page.id.0.to_string(),
+        title,
+        children: rendered,
+    });
 
     enforce_render_tree_size(&render)?;
     Ok(Json(ResolveResponse::Ok {
@@ -292,7 +263,8 @@ fn resolve_widget<R: NodeReader + ?Sized>(
     w: &NodeSnapshot,
     req: &ResolveRequest,
     state: &DashboardState,
-) -> (RenderedWidget, Option<SubscriptionPlan>) {
+) -> (Component, Option<SubscriptionPlan>) {
+    let wid = w.id.0.to_string();
     let subject = AclSubject {
         subject: req.auth_subject.as_deref(),
     };
@@ -301,9 +273,9 @@ fn resolve_widget<R: NodeReader + ?Sized>(
         Ok(t) => t,
         Err(_) => {
             return (
-                RenderedWidget::Forbidden {
-                    id: w.id,
-                    reason: "malformed_widget",
+                Component::Forbidden {
+                    id: wid,
+                    reason: "malformed_widget".into(),
                 },
                 None,
             );
@@ -316,9 +288,9 @@ fn resolve_widget<R: NodeReader + ?Sized>(
             subject: subject.subject,
         });
         return (
-            RenderedWidget::Forbidden {
-                id: w.id,
-                reason: "unknown_widget_type",
+            Component::Forbidden {
+                id: wid,
+                reason: "unknown_widget_type".into(),
             },
             None,
         );
@@ -328,9 +300,9 @@ fn resolve_widget<R: NodeReader + ?Sized>(
         Ok(b) => b,
         Err(_) => {
             return (
-                RenderedWidget::Forbidden {
-                    id: w.id,
-                    reason: "malformed_widget",
+                Component::Forbidden {
+                    id: wid,
+                    reason: "malformed_widget".into(),
                 },
                 None,
             );
@@ -345,9 +317,9 @@ fn resolve_widget<R: NodeReader + ?Sized>(
             Ok(b) => b,
             Err(_) => {
                 return (
-                    RenderedWidget::Forbidden {
-                        id: w.id,
-                        reason: "malformed_binding",
+                    Component::Forbidden {
+                        id: wid,
+                        reason: "malformed_binding".into(),
                     },
                     None,
                 );
@@ -370,13 +342,13 @@ fn resolve_widget<R: NodeReader + ?Sized>(
                     missing_node: id,
                     subject: subject.subject,
                 });
-                return (RenderedWidget::Dangling { id: w.id }, None);
+                return (Component::Dangling { id: wid }, None);
             }
             Err(_) => {
                 return (
-                    RenderedWidget::Forbidden {
-                        id: w.id,
-                        reason: "malformed_binding",
+                    Component::Forbidden {
+                        id: wid,
+                        reason: "malformed_binding".into(),
                     },
                     None,
                 );
@@ -398,9 +370,9 @@ fn resolve_widget<R: NodeReader + ?Sized>(
     }
     if denied {
         return (
-            RenderedWidget::Forbidden {
-                id: w.id,
-                reason: "acl",
+            Component::Forbidden {
+                id: wid,
+                reason: "acl".into(),
             },
             None,
         );
@@ -412,12 +384,15 @@ fn resolve_widget<R: NodeReader + ?Sized>(
     // check keeps the contract explicit).
     let subjects = derive_subjects(access_log.into_inner(), &state.acl, subject);
 
+    // Map the resolved ui.widget to a Text component showing the
+    // widget type + values. A richer mapping (per-widget-type IR
+    // emission) comes in later milestones. For S1 this preserves the
+    // resolved data in the tree.
     (
-        RenderedWidget::Rendered {
-            id: w.id,
-            widget_type: wtype,
-            values,
-            layout_hint: w.slots.get("layout_hint").cloned().filter(|v| !v.is_null()),
+        Component::Text {
+            id: Some(wid),
+            content: format!("[{wtype}]"),
+            intent: None,
         },
         Some(SubscriptionPlan {
             widget_id: w.id,
@@ -480,7 +455,7 @@ fn enforce_page_state_size(v: &JsonValue) -> Result<(), TransportError> {
     Ok(())
 }
 
-fn enforce_render_tree_size(tree: &RenderTree) -> Result<(), TransportError> {
+fn enforce_render_tree_size(tree: &ComponentTree) -> Result<(), TransportError> {
     let len = serde_json::to_vec(tree).map(|b| b.len()).unwrap_or(usize::MAX);
     if len > limits::MAX_RENDER_TREE_BYTES {
         return Err(TransportError::LimitExceeded {

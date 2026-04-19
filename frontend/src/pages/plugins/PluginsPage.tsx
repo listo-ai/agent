@@ -5,6 +5,19 @@ import { RefreshCw, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePlugins, usePluginMutations } from "@/hooks/usePlugins";
 import { usePluginMount } from "@/hooks/usePluginMount";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Skeleton,
+} from "@/components/ui";
+
+// ---------------------------------------------------------------------------
+// Page component — connects hooks to presentational layer
+// ---------------------------------------------------------------------------
 
 export function PluginsPage() {
   const { data, isLoading, isError, error } = usePlugins();
@@ -21,18 +34,20 @@ export function PluginsPage() {
         <span className="text-xs text-muted-foreground">
           Discovered by the agent from its plugins directory.
         </span>
-        <button
+        <Button
+          variant="outline"
+          size="xs"
           onClick={() => reload.mutate()}
           disabled={reload.isPending}
-          className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+          className="ml-auto"
           title="POST /api/v1/plugins/reload"
         >
           <RefreshCw size={12} className={cn(reload.isPending && "animate-spin")} />
           {reload.isPending ? "Rescanning…" : "Rescan"}
-        </button>
+        </Button>
       </header>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {isLoading && <PluginsLoadingSkeleton />}
 
       {isError && (
         <p className="text-sm text-destructive">
@@ -68,46 +83,81 @@ export function PluginsPage() {
 
       {/* Plugin UI mount section */}
       {(mount.Panel || mount.error || mount.loading) && (
-        <section className="mt-4 flex flex-col gap-2 rounded-md border border-border p-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-medium">Plugin preview</h2>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>
-                host React: <code>{hostReactVersion}</code>
-              </span>
-              {mount.remoteReact && (
-                <>
-                  <span>
-                    remote React: <code>{mount.remoteReact}</code>
-                  </span>
-                  <span className={singletonOk ? "text-emerald-500" : "text-destructive"}>
-                    {singletonOk ? "singleton ✓" : "MISMATCH — duplicate React!"}
-                  </span>
-                </>
-              )}
-            </div>
-            <button
-              onClick={mount.unmount}
-              className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-            >
-              <EyeOff size={12} /> Close
-            </button>
-          </div>
-
-          {mount.loading && (
-            <p className="text-sm text-muted-foreground">Loading plugin bundle…</p>
-          )}
-          {mount.error && (
-            <p className="text-sm text-destructive">{mount.error}</p>
-          )}
-          {mount.Panel && (
-            <div className="mt-2">
-              <mount.Panel />
-            </div>
-          )}
-        </section>
+        <PluginPreview
+          Panel={mount.Panel}
+          error={mount.error}
+          loading={mount.loading}
+          remoteReact={mount.remoteReact}
+          singletonOk={singletonOk}
+          onClose={mount.unmount}
+        />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Presentational sub-components
+// ---------------------------------------------------------------------------
+
+function PluginsLoadingSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-16 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+interface PluginPreviewProps {
+  Panel: React.ComponentType | null;
+  error: string | null;
+  loading: boolean;
+  remoteReact: string | undefined;
+  singletonOk: boolean;
+  onClose: () => void;
+}
+
+function PluginPreview({
+  Panel,
+  error,
+  loading,
+  remoteReact,
+  singletonOk,
+  onClose,
+}: PluginPreviewProps) {
+  return (
+    <Card className="mt-4">
+      <CardHeader className="flex-row items-center gap-3">
+        <CardTitle className="text-sm">Plugin preview</CardTitle>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>
+            host React: <code>{hostReactVersion}</code>
+          </span>
+          {remoteReact && (
+            <>
+              <span>
+                remote React: <code>{remoteReact}</code>
+              </span>
+              <span className={singletonOk ? "text-emerald-500" : "text-destructive"}>
+                {singletonOk ? "singleton ✓" : "MISMATCH — duplicate React!"}
+              </span>
+            </>
+          )}
+        </div>
+        <Button variant="outline" size="xs" onClick={onClose} className="ml-auto">
+          <EyeOff size={12} /> Close
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading && (
+          <p className="text-sm text-muted-foreground">Loading plugin bundle…</p>
+        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {Panel && <Panel />}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -133,93 +183,94 @@ function PluginRow({
   const canMount = plugin.has_ui && plugin.lifecycle === "enabled";
 
   return (
-    <li className="rounded-md border border-border px-4 py-3 text-sm">
-      <div className="flex items-center gap-3">
-        <div className="flex flex-col">
-          <span className="font-medium">{plugin.display_name ?? plugin.id}</span>
-          <span className="text-xs text-muted-foreground">
-            {plugin.id} · v{plugin.version}
-            {plugin.has_ui && (
-              <>
-                {" · "}
-                <span className="text-muted-foreground">
-                  UI: <code>{plugin.ui_entry}</code>
-                </span>
-              </>
-            )}
-            {plugin.kinds.length > 0 && (
-              <>
-                {" · "}
-                <span className="text-muted-foreground">
-                  {plugin.kinds.length} kind{plugin.kinds.length === 1 ? "" : "s"}
-                </span>
-              </>
-            )}
-          </span>
-        </div>
+    <li>
+      <Card className="py-3">
+        <CardContent className="px-4 py-0">
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{plugin.display_name ?? plugin.id}</span>
+              <span className="text-xs text-muted-foreground">
+                {plugin.id} · v{plugin.version}
+                {plugin.has_ui && (
+                  <>
+                    {" · "}
+                    <span className="text-muted-foreground">
+                      UI: <code>{plugin.ui_entry}</code>
+                    </span>
+                  </>
+                )}
+                {plugin.kinds.length > 0 && (
+                  <>
+                    {" · "}
+                    <span className="text-muted-foreground">
+                      {plugin.kinds.length} kind{plugin.kinds.length === 1 ? "" : "s"}
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
 
-        <LifecycleBadge lifecycle={plugin.lifecycle} />
+            <PluginLifecycleBadge lifecycle={plugin.lifecycle} />
 
-        <div className="ml-auto flex items-center gap-2">
-          {canMount && (
-            <button
-              onClick={onMount}
-              disabled={mountLoading}
-              className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
-              title="Load and mount this plugin's UI panel"
-            >
-              <Eye size={12} />
-              View
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {canMount && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={onMount}
+                  disabled={mountLoading}
+                  title="Load and mount this plugin's UI panel"
+                >
+                  <Eye size={12} />
+                  View
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={disabled ? onEnable : onDisable}
+                disabled={mutating || failed}
+                title={
+                  failed
+                    ? "Plugin failed to load — fix the manifest and rescan"
+                    : undefined
+                }
+              >
+                {disabled ? "Enable" : "Disable"}
+              </Button>
+            </div>
+          </div>
+
+          {plugin.description && (
+            <p className="mt-2 text-xs text-muted-foreground">{plugin.description}</p>
           )}
-          <button
-            onClick={disabled ? onEnable : onDisable}
-            disabled={mutating || failed}
-            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
-            title={
-              failed
-                ? "Plugin failed to load — fix the manifest and rescan"
-                : undefined
-            }
-          >
-            {disabled ? "Enable" : "Disable"}
-          </button>
-        </div>
-      </div>
 
-      {plugin.description && (
-        <p className="mt-2 text-xs text-muted-foreground">{plugin.description}</p>
-      )}
-
-      {plugin.load_errors.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-1">
-          {plugin.load_errors.map((err, i) => (
-            <li key={i} className="text-xs text-destructive">
-              {err}
-            </li>
-          ))}
-        </ul>
-      )}
+          {plugin.load_errors.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1">
+              {plugin.load_errors.map((err, i) => (
+                <li key={i} className="text-xs text-destructive">
+                  {err}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </li>
   );
 }
 
-function LifecycleBadge({ lifecycle }: { lifecycle: PluginLifecycle }) {
-  const style: Record<PluginLifecycle, string> = {
-    enabled: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    disabled: "bg-muted text-muted-foreground",
-    failed: "bg-destructive/15 text-destructive",
-    discovered: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-    validated: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+function PluginLifecycleBadge({ lifecycle }: { lifecycle: PluginLifecycle }) {
+  const variantMap: Record<PluginLifecycle, "default" | "secondary" | "destructive" | "outline"> = {
+    enabled: "default",
+    disabled: "secondary",
+    failed: "destructive",
+    discovered: "outline",
+    validated: "outline",
   };
   return (
-    <span
-      className={cn(
-        "rounded-full px-2 py-0.5 text-xs font-medium",
-        style[lifecycle],
-      )}
-    >
+    <Badge variant={variantMap[lifecycle]} className="text-xs">
       {lifecycle}
-    </span>
+    </Badge>
   );
 }

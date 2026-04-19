@@ -22,6 +22,14 @@ import { isFlowNode } from "@/pages/flows/flow-model";
 import { buildNodeContextItems, NodeContextMenu } from "@/components/NodeContextMenu";
 import { AddChildNodeDialog } from "@/components/AddChildNodeDialog";
 import { cn } from "@/lib/utils";
+import {
+  Button,
+  ScrollArea,
+  Separator,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui";
 
 // ---------------------------------------------------------------------------
 // Static nav items rendered below the flows tree
@@ -48,36 +56,67 @@ export function Sidebar() {
       style={{ width: sidebarCollapsed ? "48px" : "var(--sidebar-width)" }}
       className="flex h-full flex-col border-r border-border bg-card transition-all duration-200 overflow-hidden"
     >
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        <FlowsTree collapsed={sidebarCollapsed} />
+      <ScrollArea className="flex-1">
+        <nav className="flex min-h-0 flex-col gap-0.5 p-2">
+          <FlowsTree collapsed={sidebarCollapsed} />
 
-        {!sidebarCollapsed && <div className="my-1 h-px bg-border" />}
+          {!sidebarCollapsed && <Separator className="my-1" />}
 
-        {BOTTOM_NAV.map(({ label, to, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                "hover:bg-accent hover:text-accent-foreground",
-                isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground",
-              )
-            }
+          {BOTTOM_NAV.map(({ label, to, icon: Icon }) =>
+            sidebarCollapsed ? (
+              <Tooltip key={to}>
+                <TooltipTrigger asChild>
+                  <NavLink
+                    to={to}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center justify-center rounded-md p-1.5 transition-colors",
+                        "hover:bg-accent hover:text-accent-foreground",
+                        isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground",
+                      )
+                    }
+                  >
+                    <Icon size={16} className="shrink-0" />
+                  </NavLink>
+                </TooltipTrigger>
+                <TooltipContent side="right">{label}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground",
+                  )
+                }
+              >
+                <Icon size={16} className="shrink-0" />
+                <span>{label}</span>
+              </NavLink>
+            ),
+          )}
+        </nav>
+      </ScrollArea>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={toggleSidebar}
+            className="mx-auto mb-1 text-muted-foreground"
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            <Icon size={16} className="shrink-0" />
-            {!sidebarCollapsed && <span>{label}</span>}
-          </NavLink>
-        ))}
-      </nav>
-
-      <button
-        onClick={toggleSidebar}
-        className="flex shrink-0 items-center justify-center p-2 text-muted-foreground hover:text-foreground"
-        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      >
-        {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-      </button>
+            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          {sidebarCollapsed ? "Expand" : "Collapse"} sidebar
+        </TooltipContent>
+      </Tooltip>
     </aside>
   );
 }

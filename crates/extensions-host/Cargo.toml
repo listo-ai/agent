@@ -12,12 +12,21 @@ workspace = true
 [dependencies]
 spi = { workspace = true }
 graph = { workspace = true }
+transport-grpc = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
 semver = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
+process-wrap = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
+tokio-stream = { workspace = true, features = ["net"] }
+futures-core = "0.3"

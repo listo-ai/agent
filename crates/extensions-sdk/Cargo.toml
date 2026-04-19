@@ -15,7 +15,7 @@ workspace = true
 default = ["native"]
 native = []
 wasm = []
-process = []
+process = ["dep:transport-grpc", "dep:tokio", "dep:tonic", "dep:async-trait", "dep:tokio-stream"]
 
 [dependencies]
 spi = { workspace = true }
@@ -24,3 +24,16 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
 thiserror = { workspace = true }
+
+# Process-feature only. Pulled in when building a process-plugin binary.
+transport-grpc = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true, features = ["net"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3"
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }

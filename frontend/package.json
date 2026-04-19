@@ -14,7 +14,6 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@sys/agent-client": "workspace:*",
     "@module-federation/enhanced": "^0.6.0",
     "@radix-ui/react-dialog": "^1.1.0",
     "@radix-ui/react-dropdown-menu": "^2.1.0",
@@ -23,6 +22,7 @@
     "@radix-ui/react-tooltip": "^1.1.0",
     "@rjsf/core": "^6.5.1",
     "@rjsf/validator-ajv8": "^6.5.1",
+    "@sys/agent-client": "workspace:*",
     "@tanstack/react-query": "^5.40.0",
     "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.0",
@@ -30,6 +30,7 @@
     "dagre": "^0.8.5",
     "lucide-react": "^0.400.0",
     "oidc-client-ts": "^3.0.0",
+    "radix-ui": "^1.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0",

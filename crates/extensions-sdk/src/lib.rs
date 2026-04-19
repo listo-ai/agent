@@ -32,6 +32,9 @@ pub mod prelude;
 pub mod requires;
 pub mod settings;
 
+#[cfg(feature = "process")]
+pub mod process;
+
 pub use ctx::{
     DynBehavior, EmitSink, GraphAccess, NodeCtx, TimerHandle, TimerScheduler, TypedBehavior,
 };

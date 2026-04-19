@@ -32,6 +32,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 semver = { workspace = true }
 uuid = { workspace = true }
+ui-ir = { workspace = true }
 
 [dev-dependencies]
 transport-fleet-zenoh = { workspace = true }

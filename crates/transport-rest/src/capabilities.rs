@@ -27,6 +27,9 @@ pub struct CapabilityManifest {
     pub platform: PlatformInfo,
     pub api: ApiInfo,
     pub capabilities: Vec<Capability>,
+    /// SDUI component IR version. Clients use this to refuse
+    /// incompatible trees before rendering.
+    pub ir_version: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +65,7 @@ pub fn host_capabilities() -> CapabilityManifest {
             // refuses to install today instead of failing at runtime.
             Capability::new(platform::data_sqlite(), Version::new(3, 45, 0)),
         ],
+        ir_version: ui_ir::IR_VERSION,
     }
 }
 
