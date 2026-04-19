@@ -1,0 +1,6 @@
+{
+  "event": "node_removed",
+  "id": "00000000-0000-0000-0000-000000000201",
+  "kind": "acme.compute.count",
+  "path": "/count_chain/count"
+}

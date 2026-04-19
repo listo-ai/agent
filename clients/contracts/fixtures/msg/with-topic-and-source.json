@@ -1,0 +1,7 @@
+{
+  "payload": { "temp_c": 21.5 },
+  "topic": "sensors/floor3",
+  "_msgid": "00000000-0000-0000-0000-000000000002",
+  "_ts": 1776556801000,
+  "_source": "/station/floor3/ahu-1/temp"
+}

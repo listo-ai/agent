@@ -1,147 +1,75 @@
-Task: Stage 3a-2 — NodeCtx + BehaviorRegistry + acme.compute.count.
-First real behaviour kind end-to-end through the new dispatch seam.
+Two sessions of Stage 3 work just shipped. Picking what comes next.
 
-Read first (in order, before touching code):
+---
 
-  docs/design/NEW-SESSION.md
-       — especially the READ-THIS section with Rule A + Rule B.
-         This stage is where Rule A lands at per-instance granularity.
+## What shipped this round
 
-  docs/design/EVERYTHING-AS-NODE.md
-       — § "The agent itself is a node too — no parallel state"
-         is the template. Behaviours follow the same rule at the
-         instance level.
+**Option A — Manual-test surface** (Stage 3a-bonus, round 2):
+- `POST /api/v1/links`, `GET /api/v1/links`, `DELETE /api/v1/links/:id`
+- `POST /api/v1/lifecycle` `{path, to}`
+- `POST /api/v1/seed` `{preset: "count_chain" | "trigger_demo"}` — one-click chain with auto-`on_init`
+- SVG visual graph in the vanilla-JS UI; click-to-select; per-node lifecycle transition button; link form; unlink buttons
+- `GraphStore::remove_link` + regression test
+- End-to-end browser demo: seed → write `in` → count emits → trigger arms, live-wire fan-out visible in the event log
 
-  docs/design/NODE-AUTHORING.md
-       — § "Behaviours are stateless — state lives in slots" is
-         the rule for this stage. No per-instance fields on behaviour
-         structs. Trait takes &self, not &mut self.
+**Option B — Stage 3a-4 wire-shape fixtures:**
+- `/clients/contracts/fixtures/msg/*.json` (5 variants) + `events/*.json` (8, one per `GraphEvent` variant)
+- Round-trip tests in `crates/spi` and `crates/graph`; structural-equality compare
+- `every_variant_has_a_fixture` guard fails if a new `GraphEvent` variant lands without a fixture
+- Stale pre-existing fixtures (ISO-string `ts`, PascalCase `type`) replaced to match the actual Rust wire
+- TS schemas at `/clients/ts/src/schemas/` still stale — Stage 4's problem per the original deferral
 
-  docs/sessions/NODE-SCOPE.md
-       — the acme.compute.count example shows the exact corrected
-         shape (unit struct, no self.value, slot-backed state).
+Full status: [docs/sessions/STEPS.md](sessions/STEPS.md).
 
-  docs/sessions/STEPS.md § Stage 3a-2
-       — full deliverable list and the slot-source regression test.
+---
 
-  docs/design/TESTS.md
-       — how tests are structured here. Specifically the
-         "write-through / fail-closed" pattern — use it for the
-         slot-source regression test.
+## Three options for next session
 
-Survey before coding:
+### Option C — Stage 3b Wasm flavour (the remaining Stage 3 unknown)
 
-  crates/extensions-sdk/src/         (current trait stubs; 3a-1 landed)
-  crates/extensions-sdk-macros/src/  (derive macro; may not need changes)
-  crates/engine/src/                 (live-wire executor + queue;
-                                       BehaviorRegistry slots in beside it)
-  crates/graph/src/store.rs          (slot read/write — NodeCtx wraps this)
-  crates/spi/src/containment.rs      (Slot, SlotSchema — NodeCtx consumes)
-  crates/spi/src/capabilities.rs     (requires! macro input types)
+The biggest technical bet in the project per Stage 3's "Proves" line: does one `NodeBehavior` trait really cover native + Wasm + process? Scope:
 
-Scope — what ships in 3a-2:
+- Wasmtime in `extensions-host`; fuel metering + memory caps
+- Host-function allowlist (`emit`, `read_slot`, `update_status`, `log`, `schedule`)
+- Wasm adapter feature in `extensions-sdk`
+- Example kind `acme.wasm.math_expr`
+- End-to-end test that fuel exhaustion produces `NodeError`, not a killed agent
 
-1. NodeCtx real surface in extensions-sdk (under native feature for now;
-   wasm/process feature impls stub-only for 3a-2):
-     - emit(port: &str, msg: Msg) -> Result<(), NodeError>
-     - read_slot(path: &NodePath, slot: &str) -> Result<Value, NodeError>
-     - read_status(slot: &str) -> Result<Value, NodeError>        (this node)
-     - read_config(slot: &str) -> Result<Value, NodeError>        (this node)
-     - update_status(slot: &str, value: Value) -> Result<(), NodeError>
-     - schedule — stubbed; real impl in 3a-3 for trigger
-     - resolve_settings(msg: &Msg) -> Result<ResolvedSettings<T>, NodeError>
-     - logger — route via observability::prelude once Stage 2d's
-       wiring lands; for now tracing:: with canonical fields is fine
-       but flag the call sites so 2d can find them.
+Multi-session. Low visibility until the example runs. Highest architectural value.
 
-   NodeCtx binds to a specific NodeId at dispatch time; graph access
-   goes through a trait object (GraphAccess or similar) so tests can
-   mock it cheaply.
+---
 
-2. NodeBehavior trait update in extensions-sdk:
-     - &self methods, not &mut self. This is the compiler-enforced rule.
-     - on_init(ctx, cfg), on_message(ctx, port, msg),
-       on_config_change(ctx, cfg), on_shutdown(ctx).
-     - No default panicking impl of on_message — required.
+### Option D — Stage 2c engine-as-a-node + Stage 2d observability
 
-3. Settings / ResolvedSettings<T> in extensions-sdk:
-     - Resolution order: msg > config > schema default.
-     - Reads msg_overrides map from the manifest; if msg has the field
-       listed there (under metadata.<msg_field>), it wins.
-     - Validates the merged result against the settings schema before
-       returning.
+Both are already-scoped "no parallel state" follow-ups sitting in STEPS.md. Together they're ~300 LOC of graph/engine refactor + log-call migration, no new architectural bets. What you get:
 
-4. BehaviorRegistry in crates/engine:
-     - HashMap<KindId, BehaviorEntry> where BehaviorEntry holds the
-       dispatch fn and any kind-level singleton resources.
-     - Registered at boot from the kinds in spi KindRegistry that
-       declared behavior = "custom" at derive time. Native-feature
-       kinds self-register via linkme or inventory — justify the
-       choice in the design sketch.
-     - Dispatcher: subscribes to GraphEvent::SlotChanged, filters for
-       trigger:true input slots, looks up kind, calls on_message with
-       NodeCtx bound to the target node. Lives beside the live-wire
-       executor; both consume the same event stream.
+- `acme.agent.self` + `acme.agent.engine` kinds with `state` / `flows_running` / `last_transition_ts` status slots
+- Engine writes its own state into the graph — a flow can subscribe to engine transitions via the same `SlotChanged` fabric as everything else
+- `SafeStatePolicy` becomes a config-role slot on each writable output
+- Every `tracing::*!` in `engine` + `graph` + `apps/agent` routes through `observability::prelude` with canonical fields
 
-5. requires! macro in extensions-sdk:
-     - Emits const REQUIRES: &[Requirement] = &[...];
-     - Consumes spi::capabilities::{CapabilityId, SemverRange}.
-     - First user is acme.compute.count, which requires spi.msg@^1.
+Value: the "everything is a node" rule stops having asterisks. Cost: one session, no visible UI change.
 
-6. New crate crates/domain-compute/:
-     - Houses acme.compute.count.
-     - Unit struct pub struct Count; with #[derive(NodeKind)]
-       (behavior = "custom"). NO per-instance fields.
-     - CountConfig with serde + SettingsSchema derive.
-     - impl NodeBehavior for Count with on_init + on_message matching
-       the NODE-SCOPE corrected example — read current count from the
-       status slot via ctx.read_status("count"), not from self.
+---
 
-7. Manifest: crates/domain-compute/manifests/count.yaml
-     - Matches the NODE-SCOPE manifest section: two inputs, one output,
-       status slot count, settings schema, trigger_policy on_any,
-       msg_overrides for step/reset/initial.
+### Option E — More manual-test scaffolding (keep the browser alive)
 
-8. Tests:
-     - Unit: apply_step() arithmetic — step, clamp, wrap, negative step.
-     - Unit: resolve_settings resolution order (msg > config > default).
-     - Integration (behaviour dispatch): create a count node in a test
-       graph, wire an upstream "number" source, write a value, assert
-       count slot and out port both reflect the increment.
-     - SLOT-SOURCE REGRESSION TEST (required, per STEPS 3a-2):
-         1. Create count node with initial=10.
-         2. Write count slot directly via GraphStore::write_slot to 42.
-         3. Fire an "in" message.
-         4. Assert emitted out value is 43 (42+1), NOT 11 (10+1).
-         This catches any attempt to cache slot state in a struct field.
-     - Reset test: both port="reset" AND msg.reset=true reset to initial.
-     - Multi-input msg_overrides: msg.step=5 with step=1 config uses 5.
+Build on Option A's momentum with the obvious next scenarios:
 
-9. Deferrals in 3a-2 (call out in the design sketch so they don't silently slip):
-     - Timers (NodeCtx::schedule real impl) — 3a-3 with trigger.
-     - wasm/process adapter impls of NodeCtx — stub-only for 3a-2;
-       real in 3b/3c.
-     - acme.logic.trigger — 3a-3.
+- **Kind picker in the "create" row** — fetch `/api/v1/kinds` (new), render a dropdown of available kinds instead of typing the kind id
+- **`DELETE /api/v1/nodes/:id`** — delete a node from the UI (currently you can only create)
+- **Kind-aware seed presets** — `trigger_chain` (count → trigger → count), `fanout` (one count → three triggers), exercises live-wire fan-out visually
+- **Inline config editor** — click a node, see its current config JSON, edit + submit via `POST /api/v1/config`
+- **Event-log filter** — checkboxes to suppress `SlotChanged` noise while you're watching lifecycle
 
-Constraints:
-  - Non-negotiables #1-#7 from NEW-SESSION. Especially #1.
-  - File cap 400, function cap 50 per CODE-LAYOUT.
-  - TDD per docs/design/TESTS.md — tests arrive in the same PR, fail
-    if the implementation is reverted.
-  - No println!/eprintln! in library code; tracing is allowed for now
-    but flag call sites so Stage 2d's observability wiring knows where
-    they are.
-  - fmt --check, clippy --workspace --all-targets -- -D warnings, and
-    cargo test --workspace must stay green.
+Low per-item cost, high demo value, keeps each session "clickable" while 3b brews.
 
-Before coding: post a 30-second design sketch for my eyeballs — same
-pattern as 3a-1. I want to see:
-  - NodeCtx exact method signatures and which trait it sits behind
-    for mockability.
-  - How BehaviorRegistry discovers kinds (linkme vs inventory vs
-    explicit registration in domain-compute's lib.rs).
-  - Dispatch path from SlotChanged → NodeCtx → on_message, written
-    as ~5 bullets.
-  - Any open trade-off worth a decision before typing.
+---
 
-Then I'll green-light and you code.
+## Recommendation: **D then C**.
+
+Rationale: Option A gave us a *visible* runtime; Option B locked the wire. The remaining Stage 3 risk is the Wasm unknown (C), but C is a multi-session slog with no intermediate wins. D is the last piece of Stage 2 cleanup before the graph model is truly consistent — doing it now means everything C / Stage 4 hangs off a graph that doesn't contradict its own rules. E is fun but doesn't unblock anything.
+
+If you disagree: E is the right call if you want to keep the browser-demo momentum, C is the right call if you're tired of infrastructure and want to cash in on the architectural bet.
+
+Tell me C / D / E.

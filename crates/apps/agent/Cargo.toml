@@ -27,6 +27,11 @@ data-repos = { workspace = true }
 data-sqlite = { workspace = true }
 config = { workspace = true }
 clap = { workspace = true }
+transport-rest = { workspace = true }
+domain-compute = { workspace = true }
+domain-logic = { workspace = true }
+extensions-sdk = { workspace = true }
+axum = { workspace = true }
 
 [features]
 default = ["role-standalone"]

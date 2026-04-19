@@ -1,0 +1,54 @@
+id: acme.compute.count
+display_name: Count
+facets:
+  - isCompute
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: in
+    role: input
+    value_schema: {}
+    writable: true
+    trigger: true
+  - name: reset
+    role: input
+    value_schema: {}
+    writable: true
+    trigger: true
+  - name: out
+    role: output
+    value_schema: {}
+    writable: false
+  - name: count
+    role: status
+    value_schema:
+      type: integer
+    writable: true
+trigger_policy: on_any
+settings_schema:
+  type: object
+  properties:
+    initial:
+      type: integer
+      default: 0
+    step:
+      type: integer
+      default: 1
+    min:
+      type:
+        - integer
+        - "null"
+    max:
+      type:
+        - integer
+        - "null"
+    wrap:
+      type: boolean
+      default: false
+msg_overrides:
+  step: step
+  reset: reset
+  initial: initial

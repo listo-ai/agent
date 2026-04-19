@@ -6,12 +6,30 @@
 //! palette, the process-plugin gRPC describer). Keep it here so the SDK
 //! depends only on `spi`, never on `graph`.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 use crate::containment::ContainmentSchema;
 use crate::facets::FacetSet;
 use crate::ids::KindId;
 use crate::slot_schema::SlotSchema;
+
+/// When a behaviour's `on_message` should fire relative to inbound
+/// trigger-slot writes.
+///
+/// Stage 3a-2 ships only `OnAny` (each trigger slot write fires the
+/// behaviour exactly once). `OnAll` (await every trigger slot first)
+/// arrives with `acme.logic.gate` in a later stage — it's modelled here
+/// so manifests can declare it without a schema bump.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerPolicy {
+    #[default]
+    OnAny,
+    OnAll,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KindManifest {
@@ -23,6 +41,20 @@ pub struct KindManifest {
     pub containment: ContainmentSchema,
     #[serde(default)]
     pub slots: Vec<SlotSchema>,
+    /// JSON Schema describing the behaviour's settings object. Optional
+    /// — manifest-only kinds have no settings. The runtime feeds this
+    /// to `ResolvedSettings::resolve` to fill defaults and validate
+    /// merged settings.
+    #[serde(default)]
+    pub settings_schema: JsonValue,
+    /// Map from settings field name → message metadata key. If the
+    /// inbound `Msg` carries the named metadata key, its value wins
+    /// over the persisted config for that one resolution.
+    #[serde(default)]
+    pub msg_overrides: BTreeMap<String, String>,
+    /// How `on_message` fires across multiple trigger inputs.
+    #[serde(default)]
+    pub trigger_policy: TriggerPolicy,
     /// Manifest schema version — bumps per VERSIONING.md.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -40,8 +72,29 @@ impl KindManifest {
             facets: FacetSet::default(),
             containment,
             slots: Vec::new(),
+            settings_schema: JsonValue::Null,
+            msg_overrides: BTreeMap::new(),
+            trigger_policy: TriggerPolicy::default(),
             schema_version: 1,
         }
+    }
+
+    pub fn with_settings_schema(mut self, schema: JsonValue) -> Self {
+        self.settings_schema = schema;
+        self
+    }
+
+    pub fn with_msg_overrides<I, K, V>(mut self, items: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.msg_overrides = items
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self
     }
 
     pub fn with_facets(mut self, facets: FacetSet) -> Self {

@@ -131,30 +131,66 @@ The forcing function for the SDK design: if the SDK can't cleanly describe the k
 
 First real behaviour kind end-to-end through the new dispatch seam.
 
-**Before writing a line of this stage**: re-read the READ-THIS section of [NEW-SESSION.md](../design/NEW-SESSION.md) and the "agent is a node" section of [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md). The rules apply to behaviour instances too.
-
-- **`NodeBehavior` is stateless.** Trait methods take `&self`, not `&mut self` — compiler-enforceable. The node kind's struct carries **no per-instance state fields**. State lives in graph slots; behaviours read from and write to them via `NodeCtx`. Mirroring slot state on a struct field is the parallel-state antipattern at per-instance granularity — same failure mode as a subsystem with a private `Mutex<SomeState>`. Legitimate kind-level resources (a connection pool, a compiled regex) may exist as kind-level singletons (not per-instance); per-instance resources must be justified and are rare.
-- `NodeCtx` real surface — `emit(port, msg)`, `read_slot(path, slot)`, `read_status(slot)`, `read_config(slot)`, `update_status(slot, value)`, `schedule(duration, cb)`, `resolve_settings(&msg)`, structured logger. All access is graph-mediated; there is no back channel.
-- `BehaviorRegistry` in `crates/engine` — a map from `KindId` to behaviour dispatch functions. Static dispatch metadata, not dynamic state. On `SlotChanged` where the written slot is declared `trigger: true`, the dispatcher looks up the target node's kind, finds the behaviour, and invokes `on_message(ctx, port, msg)` with `NodeCtx` scoped to the target node. Lives beside (not instead of) the live-wire executor; both fire on the same event.
-- `Settings<T>` / `ResolvedSettings<T>` with the resolution order from [NODE-AUTHORING.md](../design/NODE-AUTHORING.md) (msg > config > default), including `msg_overrides` lookup.
-- `acme.compute.count` — unit struct `pub struct Count;` with `#[derive(NodeKind)]` (`behavior = "custom"`). Two inputs (`in`, `reset`) + `msg.reset` override, configurable `step`/`min`/`max`/`wrap`, `status.count` slot. The current count is read from and written to the `count` slot via `NodeCtx` — there is no `self.value` field. Lives in a new `/crates/domain-compute` (volume justifies separation from `domain-flows`).
-- `requires!` macro in `extensions-sdk` — emits `&[Requirement]` for install-time capability matching.
-- **Slot-source test** — write `count` slot directly via `GraphStore::write_slot`, fire an `in` message, assert the next emitted value is `count + step` computed from the *slot's* current value, not from any struct-cached value. This is the regression test for the parallel-state antipattern; if behaviour drifts from slot state, this test fails.
-- End-to-end test — flow with two `demo.point` nodes, a `count` node between them, write to the input produces the counted output on the downstream point.
+- [DONE] **`NodeBehavior` flipped to `&self`** — `crates/extensions-sdk/src/node.rs`. Trait methods take `&self`, not `&mut self`; the parallel-state antipattern at instance granularity is now a compile error. `Count` is a unit struct with no fields.
+- [DONE] **`NodeCtx` native surface** — `crates/extensions-sdk/src/ctx.rs`. Self-scoped only: `read_status(slot)` / `read_config(slot)` / `update_status(slot, value)` / `emit(port, msg)` / `resolve_settings(msg)`. Graph access goes through the `GraphAccess` trait (mockable); emit goes through `EmitSink`. **Cross-node `read_slot(path, slot)` was deliberately dropped** — nodes communicate by message via ports, not by peeking at peers' slots (the doc's draft surface had it; that contradicted NODE-SCOPE encapsulation, so the dispatch surface scopes to self). `schedule` is a stubbed `Err` until 3a-3.
+- [DONE] **`DynBehavior` / `TypedBehavior` adapter** — object-safe wrapper so the engine can hold `Arc<dyn DynBehavior>` per kind despite `NodeBehavior::Config` being an associated type.
+- [DONE] **`ResolvedSettings<T>`** — `crates/extensions-sdk/src/settings.rs`. Merge order: schema defaults < persisted node config < `msg_overrides` from `msg.metadata`. Deref-to-`T` so behaviours treat it as the bare struct.
+- [DONE] **`requires!` macro** — `crates/extensions-sdk/src/requires.rs`. Emits a `pub fn requires() -> Vec<Requirement>` (not `const`, because `SemverRange::parse` isn't const). First user: `domain_compute::requires!{ "spi.msg" => "1" }`.
+- [DONE] **`spi::KindManifest` + `SlotSchema` extended** — added `trigger: bool` on `SlotSchema`, `settings_schema` / `msg_overrides` / `TriggerPolicy` (default `OnAny`) on `KindManifest`. Manifest YAML parses with the new fields optional; existing engine/seed manifests round-trip unchanged.
+- [DONE] **`BehaviorRegistry` in `crates/engine`** — `crates/engine/src/behavior.rs`. Holds kind→`Arc<dyn DynBehavior>` plus per-`NodeId` config blobs, plus an internal `GraphAdapter` that implements both `GraphAccess` and `EmitSink` over `Arc<GraphStore>`. `emit(port, msg)` writes the message JSON to the source's output slot; the existing live-wire executor fans it out to linked targets — no separate dispatch path. Wired into `engine::Engine`'s worker loop alongside `LiveWireExecutor`; both fire on the same `SlotChanged` event. Filters: only `role: input` AND `trigger: true` slots dispatch — status/config writes don't re-enter the behaviour, which makes the slot-source regression even possible.
+- [DONE] **`crates/domain-compute`** — new crate. `Count` (unit struct, `behavior = "custom"`) + `CountConfig` + pure `apply_step`. Manifest at `crates/domain-compute/manifests/count.yaml` declares two trigger inputs, one output, one status slot, settings schema with defaults, `msg_overrides: {step, reset, initial}`, `trigger_policy: on_any`. Public surface: `register_kinds(&KindRegistry)` + `behavior() -> Arc<dyn DynBehavior>`; the agent composition root calls both. The crate depends on `graph` (for the registry handle) but **not** `engine` (so the layering rule holds).
+- [DONE] **Slot-source regression test** — `crates/domain-compute/tests/dispatch.rs::slot_source_regression_external_write_wins`. Initial=10, write `count` slot directly to 42, fire `in`, assert emitted output is **43, not 11**. Plus: increment, reset-via-port, reset-via-`msg.reset`, msg.step override, status-write-doesn't-recurse, `requires()` declares `spi.msg`, and `apply_step` arithmetic unit tests.
+- [DEFERRED] **`NodeCtx::schedule` real impl** — stub now; lands in 3a-3 with `acme.logic.trigger`.
+- [DEFERRED] **wasm/process `GraphAccess`/`EmitSink` impls** — the SDK feature gates are unchanged; native is the only adapter that has a real `BehaviorRegistry`. Wasm in 3b, process in 3c.
+- [DEFERRED] **End-to-end test through `demo.point` → `count` → `demo.point`** — replaced by the focused unit-of-dispatch tests above. The graph integration is exercised by `slot_source_regression_external_write_wins` (uses real `GraphStore` + `BehaviorRegistry`); a multi-node wire test is cheap to add when `domain-devices` is migrated to the SDK.
+- [DEFERRED] **Structured logger via `observability::prelude`** — `BehaviorRegistry::handle` uses `tracing::warn!` directly with canonical fields; flagged for Stage 2d's observability wiring to absorb.
 
 ### Stage 3a-3 — `NodeCtx::schedule` + `acme.logic.trigger`
 
-- One-shot cancellable timer support in `NodeCtx` (tokio-backed, but exposed as an abstract `TimerHandle` so the Wasm/process adapters have a stable surface in 3b/3c).
-- `acme.logic.trigger` — Node-RED-style modes (`once`, `extend`, `manual_reset`), configurable trigger/reset payloads, delay timing via `schedule`.
-- Deterministic-time test harness so timer-dependent tests don't wall-clock.
+- [DONE] **`TimerHandle` + `TimerScheduler` trait + `NodeBehavior::on_timer`** in `crates/extensions-sdk/src/ctx.rs` and `node.rs`. `on_timer` has a default no-op so existing kinds (count) need no changes. Handle is `pub struct TimerHandle(pub u64)` — opaque, `Copy`, hashable. `NodeCtx::schedule(delay_ms) -> TimerHandle` and `NodeCtx::cancel(h)` delegate through the trait.
+- [DONE] **`Scheduler` in `crates/engine/src/scheduler.rs`** — tokio-backed one-shot timers; each `schedule` spawns a task that sleeps then sends `TimerFired { node, handle }` over an `mpsc::UnboundedSender`. Cancel via `AbortHandle`. The mpsc breaks the Scheduler ↔ `BehaviorRegistry` cycle (same pattern as graph events). `BehaviorRegistry::new` now returns `(Self, mpsc::UnboundedReceiver<TimerFired>)`.
+- [DONE] **`BehaviorRegistry::dispatch_timer`** + worker-loop wiring — `Engine::start` takes both the `GraphEvent` and `TimerFired` receivers; `worker_loop` selects over events / control / timers and routes each to the right dispatcher.
+- [DONE] **`crates/domain-logic`** — new crate. `Trigger` (unit struct, `behavior = "custom"`) + `TriggerConfig` + `TriggerMode { Once, Extend, ManualReset }`. Manifest at `crates/domain-logic/manifests/trigger.yaml` matches NODE-SCOPE: two trigger inputs, one output, status slots `armed` + `pending_timer`, settings schema with mode / payloads / delay, `msg_overrides: {delay_ms→delay, trigger_payload→trigger, reset_payload→reset_value}`.
+- [DONE] **State lives in slots** — `armed` (bool) and `pending_timer` (nullable u64) are status slots, not struct fields. The `on_timer` handler reads `pending_timer` from the slot and ignores stale fires whose handle no longer matches — defends against the cancel-vs-fire race without per-instance state.
+- [DONE] **Deterministic-time tests** in `crates/domain-logic/tests/dispatch.rs` — every timer-dependent test runs under `#[tokio::test(start_paused = true)]` and uses `tokio::time::advance` instead of wall-clock waits. The full engine worker drives dispatch (real `Scheduler` → mpsc → `dispatch_timer`), so the integration is the same code path the agent runs in production.
+- [DONE] **Slot-source regression for `armed`** — `armed_slot_source_regression`. Out-of-band write to `armed = false` mid-window must let the next input emit again; a struct-field cache would still ignore the input.
+- [DEFERRED] **Reusable test harness in `crates/engine/src/test_support.rs`** — the per-test `setup_with(config)` helper in `domain-logic/tests/dispatch.rs` is small enough that promoting it now would be premature. Lift into `engine` only when the second consumer (`acme.compute.timer`, `acme.io.http_in`, …) lands.
+- [DEFERRED] **wasm/process `TimerScheduler` impls** — stubs only; real impl in 3b/3c when those adapters land.
 
-### Stage 3a-4 — Wire-shape contract fixtures (Rust side)
+### Stage 3a-bonus — Manual-test HTTP surface
 
-TS consumption is deferred to Stage 4; the Rust half ships now so the wire shape is locked before the TS SDK imports it.
+A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*. Lets operators drive the running agent by hand before Studio (Stage 4) lands. Not the final public API surface — that gets OpenAPI, auth, pagination, etc. — but the URL shape, versioning, and capability manifest are the real ones, so this slot doesn't get re-cut later.
 
-- A committed fixture set of `Msg` values serialised by the Rust SDK with their expected JSON, under `crates/spi/tests/fixtures/msg/*.json`.
-- CI verifies Rust round-trips each fixture (serialise → parse → compare).
-- Stage 4's `@acme/extensions-sdk-ts` must round-trip the same fixtures as its acceptance test. This preserves Stage 0's "no TS before Stage 4" boundary while making Stage 4's TS work a known quantity.
+- [DONE] **`crates/transport-rest`** — axum router under `/api/v1/` per VERSIONING § "Public API":
+  * `GET  /healthz` (unversioned — orchestrator probe)
+  * `GET  /api/v1/capabilities`
+  * `GET  /api/v1/nodes`, `GET /api/v1/node?path=…`, `POST /api/v1/nodes`
+  * `POST /api/v1/slots`, `POST /api/v1/config`
+  * `GET  /api/v1/events` (SSE)
+  * `GET  /` (manual-test UI)
+- [DONE] **`AgentSink`** — composite `EventSink` fanning every graph event to both the engine mpsc (live-wire + behaviour dispatch) and a bounded `tokio::sync::broadcast` (SSE). Slow SSE consumers lag, never block the engine.
+- [DONE] **Capability manifest** at `/api/v1/capabilities` per VERSIONING § "Host-provided capability manifest". Returns platform version, REST API version, flow/node schema versions, and the host-provided `spi.*` + `data.sqlite` capability list. `runtime.wasmtime` and `runtime.extension_process` are deliberately absent — extensions that require them refuse to install today rather than failing at runtime. List is hand-maintained in `crates/transport-rest/src/capabilities.rs` with a comment pointing at `extensions-host::capability_registry` as the proper home once it lands.
+- [DONE] **`GraphStore::snapshots()`** — list-all helper backing `GET /api/v1/nodes`.
+- [DONE] **Static UI** at `crates/transport-rest/static/index.html` — vanilla JS, no build step, ~200 lines. Lists nodes, writes slot values inline, streams events into a colour-coded log, displays the agent's `agent X · api vN · flow_schema=… node_schema=…` versions in the header.
+- [DONE] **Agent bootstrap** — `apps/agent/src/main.rs` registers `domain-compute` + `domain-logic` behaviours, binds `--http` (default `127.0.0.1:8080`), runs the engine and the HTTP surface concurrently, shuts both down on SIGTERM/SIGINT.
+- [DONE] **Tests** — `transport-rest::capabilities::tests` pin `spi.msg@^1` matches and `runtime.wasmtime` is *intentionally* missing (so a future re-add doesn't slip in unannounced).
+- [DONE] **Links endpoints** — `GET /api/v1/links`, `POST /api/v1/links` (endpoint addressed by `{path, slot}` or `{node_id, slot}`), `DELETE /api/v1/links/:id`. New `GraphStore::remove_link` emits `LinkRemoved` (never `LinkBroken` — that's reserved for cascade-delete).
+- [DONE] **`POST /api/v1/lifecycle`** `{path, to}` — drives `GraphStore::transition`; accepts the `Lifecycle` snake_case form (`active`, `disabled`, …).
+- [DONE] **`POST /api/v1/seed`** `{preset: "count_chain" | "trigger_demo"}` — one-click preset that creates a folder subtree, seeds default configs, fires `on_init`, and wires the chain. Lands the first end-to-end browser demo: seed → write `in` → count emits → trigger arms in the same browser session.
+- [DONE] **SVG visual graph in the UI** — layered (depth by path-slash count), cubic-bezier links, click-to-select, per-node lifecycle dropdown + transition button, link-creation form, links list with unlink buttons, seed preset buttons in header. Still ~400 lines of vanilla JS; Studio proper lands in Stage 4.
+- [DEFERRED] **OpenAPI / `utoipa`** — the original lib.rs comment named utoipa as the eventual schema source. Slots into Stage 9 (Public API + versioning) when external SDKs start consuming this surface.
+- [DEFERRED] **Move capability list into `extensions-host::capability_registry`** — current location is acknowledged-stopgap, not architectural. Stage 3c lands the registry; this list moves at that point.
+
+### Stage 3a-4 — Wire-shape contract fixtures (Rust side) [DONE]
+
+- [DONE] **Hand-authored fixture set at `/clients/contracts/fixtures/`** — the cross-language source of truth, per the existing `/clients/contracts/README.md`. Five `Msg` variants (`bare-payload`, `with-topic-and-source`, `with-parent`, `with-custom-fields`, `null-payload`) and eight `GraphEvent` variants (one per enum variant: `node_created` / `node_removed` / `node_renamed` / `slot_changed` / `lifecycle_transition` / `link_added` / `link_removed` / `link_broken`). Pre-existing stale fixtures (ISO-string `ts`, PascalCase `type`, non-UUID `_msgid`) were replaced to match the current Rust wire.
+- [DONE] **Round-trip tests** — `crates/spi/tests/contract_fixtures_msg.rs` for `Msg`, `crates/graph/tests/contract_fixtures_events.rs` for `GraphEvent`. Each reads every `*.json`, deserialises, re-serialises, and asserts structural equality (parse both sides as `serde_json::Value`, `assert_eq`). Field order is intentionally not part of the contract.
+- [DONE] **Variant-coverage guard** — `every_variant_has_a_fixture` fails if a new `GraphEvent` variant lands without a fixture, forcing the author to think about how it serialises.
+- [DEFERRED] **`@acme/extensions-sdk-ts` round-trip** — Stage 4. The TS schemas in `/clients/ts/src/schemas/` are currently stale (they matched the old fixtures) and will be regenerated / aligned when Stage 4 begins, using these fixtures as the target.
+
+**Decisions locked (see `docs/NEXT.md` history):**
+- **Structural equality, not byte-level**: the contract is "same JSON value", not "same field order". Avoids forcing both sides to agree on a canonical order and keeps serde-struct-order changes non-breaking.
+- **`_ts` is hand-authored per fixture**: every fixture carries an explicit millisecond value; round-trip preserves it. No wall-clock fixtures, no magic placeholders.
 
 ### Stage 3b — Wasm flavor
 

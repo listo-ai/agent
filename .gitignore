@@ -14,3 +14,4 @@ Cargo.lock.bak
 node_modules/
 dist/
 .pnpm-store/
+agent.db

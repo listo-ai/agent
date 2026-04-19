@@ -25,15 +25,19 @@
 //! # Ok::<(), engine::EngineError>(())
 //! ```
 
+mod behavior;
 mod engine;
 mod error;
 pub mod kinds;
 mod live_wire;
 pub mod queue;
 pub mod safe_state;
+mod scheduler;
 mod state;
 
+pub use crate::behavior::BehaviorRegistry;
 pub use crate::engine::Engine;
+pub use crate::scheduler::TimerFired;
 pub use error::EngineError;
 pub use safe_state::{
     NoopOutputDriver, OutputDriver, SafeStateBinding, SafeStateError, SafeStatePolicy,

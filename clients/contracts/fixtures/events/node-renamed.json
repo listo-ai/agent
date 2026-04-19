@@ -1,0 +1,6 @@
+{
+  "event": "node_renamed",
+  "id": "00000000-0000-0000-0000-000000000202",
+  "old_path": "/count_chain/old_name",
+  "new_path": "/count_chain/new_name"
+}

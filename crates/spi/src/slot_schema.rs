@@ -27,6 +27,12 @@ pub struct SlotSchema {
     pub value_schema: JsonValue,
     #[serde(default)]
     pub writable: bool,
+    /// Input slots only: whether a write to this slot causes the node's
+    /// `NodeBehavior::on_message` to fire. Non-trigger inputs accumulate
+    /// state for the next trigger to read. Stage 3a-2 supports trigger
+    /// on input slots; the field is ignored on other roles.
+    #[serde(default)]
+    pub trigger: bool,
 }
 
 impl SlotSchema {
@@ -36,6 +42,7 @@ impl SlotSchema {
             role,
             value_schema: JsonValue::Object(Default::default()),
             writable: false,
+            trigger: false,
         }
     }
 
@@ -46,6 +53,11 @@ impl SlotSchema {
 
     pub fn with_schema(mut self, schema: JsonValue) -> Self {
         self.value_schema = schema;
+        self
+    }
+
+    pub fn triggers(mut self) -> Self {
+        self.trigger = true;
         self
     }
 }

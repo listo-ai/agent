@@ -6,33 +6,15 @@
 //! packaging choices via the mutually-exclusive feature flags `native`
 //! (default), `wasm`, `process`.
 //!
-//! Stage 3a-1 ships the **declarative** half of the SDK: the
-//! [`NodeKind`] trait driven by `#[derive(NodeKind)]`, plus the shape
-//! of the [`NodeBehavior`] trait that imperative kinds will implement
-//! in Stage 3a-2.
+//! Stage 3a-2 wires the **imperative** half end-to-end on the native
+//! adapter: real [`NodeCtx`] / [`NodeBehavior`] / [`ResolvedSettings`],
+//! plus the [`requires!`] capability-declaration macro. wasm/process
+//! adapters surface the same trait shapes but their `GraphAccess` /
+//! `EmitSink` impls are stubs until 3b/3c.
 //!
-//! See `docs/sessions/NODE-SCOPE.md` for the full surface and
-//! `docs/sessions/STEPS.md` § "Stage 3" for the current scope.
-//!
-//! ## Example — manifest-only container kind
-//!
-//! ```ignore
-//! use extensions_sdk::prelude::*;
-//!
-//! #[derive(NodeKind)]
-//! #[node(
-//!     kind = "acme.core.folder",
-//!     manifest = "manifests/folder.yaml",
-//!     behavior = "none",
-//! )]
-//! pub struct Folder;
-//! ```
-//!
-//! The `manifest` path is resolved relative to the *crate's*
-//! `CARGO_MANIFEST_DIR`, not the source file — keep YAMLs under a
-//! top-level `manifests/` directory in each crate.
+//! See `docs/sessions/NODE-SCOPE.md` for the full design and
+//! `docs/sessions/STEPS.md` § "Stage 3a-2" for the current scope.
 
-// Exactly one adapter feature may be active per consumer.
 #[cfg(any(
     all(feature = "native", feature = "wasm"),
     all(feature = "native", feature = "process"),
@@ -43,22 +25,26 @@ compile_error!(
      exclusive — enable exactly one on each consuming crate"
 );
 
+pub mod ctx;
 pub mod error;
 pub mod node;
 pub mod prelude;
+pub mod requires;
+pub mod settings;
 
+pub use ctx::{
+    DynBehavior, EmitSink, GraphAccess, NodeCtx, TimerHandle, TimerScheduler, TypedBehavior,
+};
 pub use error::NodeError;
-// Derive and trait share the name `NodeKind` (macro namespace vs type
-// namespace — both resolve unambiguously).
 pub use extensions_sdk_macros::NodeKind;
-pub use node::{NodeBehavior, NodeCtx, NodeKind};
+pub use node::{InputPort, NodeBehavior, NodeKind};
+pub use settings::ResolvedSettings;
 
-// Re-exports for the contract surface. Plugin authors refer to these
-// through the `prelude`; direct access works too.
+// Re-export the SPI surface authors reach through the prelude.
 pub use spi::capabilities;
 pub use spi::{
     Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindId, KindManifest,
-    MessageId, Msg, NodeId, NodePath, ParentMatcher, SlotRole, SlotSchema,
+    MessageId, Msg, NodeId, NodePath, ParentMatcher, SlotRole, SlotSchema, TriggerPolicy,
 };
 
 /// Private re-exports consumed by the `#[derive(NodeKind)]` expansion.

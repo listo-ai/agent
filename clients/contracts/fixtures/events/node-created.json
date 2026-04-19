@@ -1,0 +1,6 @@
+{
+  "event": "node_created",
+  "id": "00000000-0000-0000-0000-000000000200",
+  "kind": "acme.compute.count",
+  "path": "/count_chain/count"
+}

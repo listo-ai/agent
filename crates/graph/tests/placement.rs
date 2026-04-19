@@ -172,6 +172,69 @@ fn deleting_linked_node_emits_link_broken() {
 }
 
 #[test]
+fn remove_link_emits_link_removed_without_broken() {
+    let (sink, store) = fresh();
+    store
+        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "a")
+        .unwrap();
+    store
+        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "b")
+        .unwrap();
+    store
+        .create_child(
+            &NodePath::root().child("a"),
+            KindId::new("acme.driver.demo.device"),
+            "d",
+        )
+        .unwrap();
+    store
+        .create_child(
+            &NodePath::root().child("b"),
+            KindId::new("acme.driver.demo.device"),
+            "d",
+        )
+        .unwrap();
+    let pa = store
+        .create_child(
+            &NodePath::root().child("a").child("d"),
+            KindId::new("acme.driver.demo.point"),
+            "p",
+        )
+        .unwrap();
+    let pb = store
+        .create_child(
+            &NodePath::root().child("b").child("d"),
+            KindId::new("acme.driver.demo.point"),
+            "p",
+        )
+        .unwrap();
+    let link_id = store
+        .add_link(SlotRef::new(pa, "value"), SlotRef::new(pb, "value"))
+        .unwrap();
+    sink.take();
+
+    store.remove_link(link_id).expect("link removes cleanly");
+    let snap = sink.snapshot();
+    assert_eq!(
+        snap.iter()
+            .filter(|e| matches!(e, GraphEvent::LinkRemoved { .. }))
+            .count(),
+        1,
+    );
+    assert!(
+        snap.iter()
+            .all(|e| !matches!(e, GraphEvent::LinkBroken { .. })),
+        "explicit unlink never emits LinkBroken",
+    );
+    assert!(store.links().is_empty());
+
+    let err = store
+        .remove_link(link_id)
+        .expect_err("removing the same link twice is an error");
+    assert!(matches!(err, GraphError::BadLink(_)));
+}
+
+#[test]
 fn slot_write_emits_change_event() {
     let (sink, store) = fresh();
     store

@@ -1,72 +1,52 @@
 //! Core author traits — `NodeKind` (declarative) and `NodeBehavior`
 //! (imperative).
 //!
-//! In Stage 3a-1 only [`NodeKind`] is wired end-to-end. [`NodeBehavior`]
-//! is declared so plugin crates can pin their impl signatures against
-//! it; dispatch through the engine lands in Stage 3a-2 together with
-//! the real [`NodeCtx`].
+//! Stage 3a-2: behaviour methods take `&self` so per-instance state on
+//! the struct is a compile error. State lives in slots, accessed via
+//! [`NodeCtx`]. See `docs/sessions/NODE-SCOPE.md` § "Behaviours are
+//! stateless — state lives in slots".
 
+use crate::ctx::{NodeCtx, TimerHandle};
 use crate::error::NodeError;
 use crate::{KindId, KindManifest, Msg};
 
-/// Declarative half of a kind — kind id and manifest.
-///
-/// Implemented by `#[derive(NodeKind)]`. Authors do not write this by
-/// hand; the derive reads the YAML manifest at compile time and emits
-/// the impl. See the crate-level docs for an example.
+/// Declarative half of a kind — kind id and manifest. Implemented by
+/// `#[derive(NodeKind)]`.
 pub trait NodeKind {
     fn kind_id() -> KindId;
     fn manifest() -> KindManifest;
 }
 
-/// Port identifier — the named input that fired. Owned string so
-/// authors can do free-form matching; cheaply comparable against the
-/// manifest's slot names.
+/// Port identifier — the named input that fired.
 pub type InputPort = String;
 
-/// Context handed to a [`NodeBehavior`] on every entry point.
+/// Imperative half of a kind. Methods take `&self`: a behaviour is
+/// **stateless** (the unit struct typical of authoring), and any
+/// per-instance state must live in slots accessed through [`NodeCtx`].
 ///
-/// Stage 3a-1 ships the type as an opaque marker so `NodeBehavior`
-/// signatures are stable across the SDK right now. The real surface
-/// (`emit`, `read_slot`, `update_status`, `schedule`, `resolve_settings`)
-/// lands in Stage 3a-2 when the engine's behaviour dispatcher does.
-#[derive(Debug)]
-pub struct NodeCtx {
-    // Fields land in 3a-2 together with the BehaviorRegistry.
-    _private: (),
-}
-
-impl NodeCtx {
-    /// Construct a placeholder context. Only useful for documentation
-    /// examples in 3a-1; real construction is the dispatcher's job.
-    #[doc(hidden)]
-    pub fn __stub() -> Self {
-        Self { _private: () }
-    }
-}
-
-/// Imperative half of a kind — runtime behaviour on lifecycle events
-/// and on each inbound message.
-///
-/// Manifest-only (container) kinds do **not** implement this trait.
-/// They are declared via `#[node(..., behavior = "none")]` so the
-/// distinction is explicit — omitting the attribute is a compile error.
-///
-/// Stage 3a-1 pins the trait shape; Stage 3a-2 wires the dispatcher.
-pub trait NodeBehavior {
+/// Manifest-only (container) kinds do not implement this trait.
+pub trait NodeBehavior: Send + Sync {
     type Config: serde::de::DeserializeOwned + Send + 'static;
 
-    fn on_init(&mut self, _ctx: &NodeCtx, _cfg: &Self::Config) -> Result<(), NodeError> {
+    fn on_init(&self, _ctx: &NodeCtx, _cfg: &Self::Config) -> Result<(), NodeError> {
         Ok(())
     }
 
-    fn on_message(&mut self, ctx: &NodeCtx, port: InputPort, msg: Msg) -> Result<(), NodeError>;
+    fn on_message(&self, ctx: &NodeCtx, port: InputPort, msg: Msg) -> Result<(), NodeError>;
 
-    fn on_config_change(&mut self, _ctx: &NodeCtx, _cfg: &Self::Config) -> Result<(), NodeError> {
+    /// Fired by the runtime when a timer scheduled via
+    /// [`NodeCtx::schedule`] elapses. Default: no-op. Kinds that never
+    /// call `schedule` (like `acme.compute.count`) leave it that way;
+    /// `acme.logic.trigger` overrides to emit its delayed payload.
+    fn on_timer(&self, _ctx: &NodeCtx, _handle: TimerHandle) -> Result<(), NodeError> {
         Ok(())
     }
 
-    fn on_shutdown(&mut self, _ctx: &NodeCtx) -> Result<(), NodeError> {
+    fn on_config_change(&self, _ctx: &NodeCtx, _cfg: &Self::Config) -> Result<(), NodeError> {
+        Ok(())
+    }
+
+    fn on_shutdown(&self, _ctx: &NodeCtx) -> Result<(), NodeError> {
         Ok(())
     }
 }

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "capabilities": [
+    { "id": "spi.msg",         "version": "1.0.0" },
+    { "id": "spi.node.schema", "version": "1.0.0" }
+  ]
+}

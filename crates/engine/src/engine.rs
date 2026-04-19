@@ -16,13 +16,16 @@ use graph::{GraphEvent, GraphStore};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::behavior::BehaviorRegistry;
 use crate::error::EngineError;
 use crate::live_wire::LiveWireExecutor;
 use crate::safe_state::SafeStateBinding;
+use crate::scheduler::TimerFired;
 use crate::state::EngineState;
 
 pub struct Engine {
     graph: Arc<GraphStore>,
+    behaviors: BehaviorRegistry,
     state: Arc<Mutex<EngineState>>,
     inner: Mutex<EngineInner>,
     safe_state: Mutex<Vec<SafeStateBinding>>,
@@ -31,6 +34,7 @@ pub struct Engine {
 #[derive(Default)]
 struct EngineInner {
     events: Option<mpsc::UnboundedReceiver<GraphEvent>>,
+    timers: Option<mpsc::UnboundedReceiver<TimerFired>>,
     worker: Option<JoinHandle<()>>,
     control: Option<mpsc::UnboundedSender<Control>>,
 }
@@ -43,11 +47,14 @@ impl Engine {
     /// Build an engine around an existing graph store and the event
     /// receiver paired with the sink you passed to `GraphStore::new`.
     pub fn new(graph: Arc<GraphStore>, events: mpsc::UnboundedReceiver<GraphEvent>) -> Arc<Self> {
+        let (behaviors, timers) = BehaviorRegistry::new(graph.clone());
         Arc::new(Self {
             graph,
+            behaviors,
             state: Arc::new(Mutex::new(EngineState::Stopped)),
             inner: Mutex::new(EngineInner {
                 events: Some(events),
+                timers: Some(timers),
                 ..EngineInner::default()
             }),
             safe_state: Mutex::new(Vec::new()),
@@ -56,6 +63,10 @@ impl Engine {
 
     pub fn graph(&self) -> &Arc<GraphStore> {
         &self.graph
+    }
+
+    pub fn behaviors(&self) -> &BehaviorRegistry {
+        &self.behaviors
     }
 
     pub fn state(&self) -> EngineState {
@@ -71,14 +82,19 @@ impl Engine {
 
     pub async fn start(&self) -> Result<(), EngineError> {
         self.transition(EngineState::Starting)?;
-        let events = {
+        let (events, timers) = {
             let mut inner = self.inner.lock().expect("engine inner lock poisoned");
-            inner.events.take().ok_or(EngineError::AlreadyStarted)?
+            let e = inner.events.take().ok_or(EngineError::AlreadyStarted)?;
+            let t = inner.timers.take().ok_or(EngineError::AlreadyStarted)?;
+            (e, t)
         };
         let (control_tx, control_rx) = mpsc::unbounded_channel();
         let exec = LiveWireExecutor::new(self.graph.clone());
+        let behaviors = self.behaviors.clone();
         let state = self.state.clone();
-        let worker = tokio::spawn(worker_loop(events, control_rx, state, exec));
+        let worker = tokio::spawn(worker_loop(
+            events, timers, control_rx, state, exec, behaviors,
+        ));
         {
             let mut inner = self.inner.lock().expect("engine inner lock poisoned");
             inner.worker = Some(worker);
@@ -151,9 +167,11 @@ impl Engine {
 
 async fn worker_loop(
     mut events: mpsc::UnboundedReceiver<GraphEvent>,
+    mut timers: mpsc::UnboundedReceiver<TimerFired>,
     mut control: mpsc::UnboundedReceiver<Control>,
     state: Arc<Mutex<EngineState>>,
     exec: LiveWireExecutor,
+    behaviors: BehaviorRegistry,
 ) {
     loop {
         tokio::select! {
@@ -174,8 +192,26 @@ async fn worker_loop(
                     .unwrap_or(false);
                 if propagating {
                     exec.handle(&event);
+                    behaviors.handle(&event);
                 } else {
                     tracing::trace!("event arrived in non-running state \u{2014} skipping");
+                }
+            }
+            tick = timers.recv() => {
+                let Some(tick) = tick else { continue };
+                let propagating = state
+                    .lock()
+                    .map(|g| g.propagates())
+                    .unwrap_or(false);
+                if propagating {
+                    if let Err(err) = behaviors.dispatch_timer(tick.node, tick.handle) {
+                        tracing::warn!(
+                            node = %tick.node, handle = tick.handle.0, error = %err,
+                            "timer dispatch error",
+                        );
+                    }
+                } else {
+                    tracing::trace!("timer fired in non-running state \u{2014} skipping");
                 }
             }
         }
@@ -184,5 +220,7 @@ async fn worker_loop(
     while events.recv().await.is_some() {
         // drain remaining; we're done propagating
     }
+    timers.close();
+    while timers.recv().await.is_some() {}
     tracing::debug!("worker exited");
 }

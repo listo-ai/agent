@@ -7,6 +7,7 @@
 //! `cli > env > file > defaults`. The `config` crate owns the layer
 //! types; this binary only wires them.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -17,15 +18,13 @@ use config::{
     LogOverlay, Role,
 };
 use data_sqlite::SqliteGraphRepo;
-use engine::{kinds as engine_kinds, queue, Engine};
+use engine::{kinds as engine_kinds, Engine};
 use graph::{seed, GraphStore, KindRegistry};
 use spi::KindId;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::info;
+use transport_rest::AppState;
 
-/// Agent CLI. Flags take the highest precedence in the config layer
-/// stack. Keep the surface narrow \u{2014} every flag needs a corresponding
-/// config-file field so operators can pick their preferred source.
 #[derive(Debug, Parser)]
 #[command(
     name = "agent",
@@ -48,6 +47,10 @@ struct Cli {
     /// Tracing filter, e.g. `info,engine=debug`.
     #[arg(long, value_name = "DIRECTIVE")]
     log: Option<String>,
+
+    /// HTTP bind address for the REST + manual-test UI.
+    #[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8080")]
+    http: SocketAddr,
 }
 
 fn parse_role(s: &str) -> Result<Role, String> {
@@ -64,7 +67,6 @@ async fn main() -> Result<()> {
             tracing_subscriber::EnvFilter::try_new(&cfg.log.filter)
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
-        .json()
         .init();
 
     info!(
@@ -75,13 +77,24 @@ async fn main() -> Result<()> {
         "agent starting",
     );
 
-    let engine = bootstrap(&cfg).await?;
+    let (engine, graph, events) = bootstrap(&cfg).await?;
     engine.start().await?;
     info!(state = ?engine.state(), "engine running");
+
+    let app_state = AppState::new(graph, engine.behaviors().clone(), events);
+    let router = transport_rest::router(app_state);
+    let listener = tokio::net::TcpListener::bind(cli.http).await?;
+    info!(addr = %cli.http, "http surface listening");
+    let server = tokio::spawn(async move {
+        if let Err(err) = axum::serve(listener, router).await {
+            tracing::error!(error = %err, "http server exited");
+        }
+    });
 
     wait_for_termination().await;
     info!("termination signal received \u{2014} beginning graceful shutdown");
 
+    server.abort();
     engine.shutdown().await?;
     info!(state = ?engine.state(), "agent exited cleanly");
     Ok(())
@@ -110,11 +123,20 @@ fn resolve_config(cli: &Cli) -> Result<AgentConfig> {
         .resolve(default_db_path))
 }
 
-async fn bootstrap(cfg: &AgentConfig) -> Result<Arc<Engine>> {
-    let (sink, events) = queue::channel();
+async fn bootstrap(
+    cfg: &AgentConfig,
+) -> Result<(
+    Arc<Engine>,
+    Arc<GraphStore>,
+    tokio::sync::broadcast::Sender<graph::GraphEvent>,
+)> {
+    let (sink, events_rx, bcast) = transport_rest::agent_sink();
+
     let kinds = KindRegistry::new();
     seed::register_builtins(&kinds);
     engine_kinds::register(&kinds);
+    domain_compute::register_kinds(&kinds);
+    domain_logic::register_kinds(&kinds);
 
     let graph = match cfg.database.path.as_ref() {
         Some(path) => {
@@ -131,12 +153,25 @@ async fn bootstrap(cfg: &AgentConfig) -> Result<Arc<Engine>> {
         graph.create_root(KindId::new("acme.core.station"))?;
     }
     if !cfg.role.runs_engine() {
-        // Reserved for future roles that don't host an engine
-        // (Studio-only client, pure API gateway). All three current
-        // roles return true; keep the branch so the seam exists.
         tracing::debug!(role = %cfg.role, "role does not run the engine; keeping graph idle");
     }
-    Ok(Engine::new(graph, events))
+    let engine = Engine::new(graph.clone(), events_rx);
+    engine
+        .behaviors()
+        .register(
+            <domain_compute::Count as extensions_sdk::NodeKind>::kind_id(),
+            domain_compute::behavior(),
+        )
+        .context("registering count behaviour")?;
+    engine
+        .behaviors()
+        .register(
+            <domain_logic::Trigger as extensions_sdk::NodeKind>::kind_id(),
+            domain_logic::behavior(),
+        )
+        .context("registering trigger behaviour")?;
+
+    Ok((engine, graph, bcast))
 }
 
 async fn wait_for_termination() {

@@ -1,0 +1,58 @@
+id: acme.logic.trigger
+display_name: Trigger
+facets:
+  - isCompute
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: in
+    role: input
+    value_schema: {}
+    writable: true
+    trigger: true
+  - name: reset
+    role: input
+    value_schema: {}
+    writable: true
+    trigger: true
+  - name: out
+    role: output
+    value_schema: {}
+    writable: false
+  - name: armed
+    role: status
+    value_schema:
+      type: boolean
+    writable: true
+  - name: pending_timer
+    role: status
+    value_schema:
+      type:
+        - integer
+        - "null"
+    writable: true
+trigger_policy: on_any
+settings_schema:
+  type: object
+  properties:
+    mode:
+      type: string
+      enum:
+        - once
+        - extend
+        - manual_reset
+      default: once
+    trigger_payload:
+      default: true
+    reset_payload:
+      default: null
+    delay_ms:
+      type: integer
+      default: 0
+msg_overrides:
+  delay_ms: delay
+  trigger_payload: trigger
+  reset_payload: reset_value

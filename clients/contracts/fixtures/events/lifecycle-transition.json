@@ -1,0 +1,7 @@
+{
+  "event": "lifecycle_transition",
+  "id": "00000000-0000-0000-0000-000000000203",
+  "path": "/count_chain/count",
+  "from": "created",
+  "to": "active"
+}

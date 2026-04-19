@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>agent — manual test</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0; display: grid; grid-template-columns: 2fr 1fr; height: 100vh; }
+  header { grid-column: 1 / -1; padding: 8px 16px; border-bottom: 1px solid #8884;
+           display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  header .status { font-size: 12px; opacity: 0.6; }
+  main, aside { padding: 12px 16px; overflow: auto; }
+  main  { border-right: 1px solid #8884; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+             margin: 0 0 8px 0; opacity: 0.6; }
+  #graph { display: block; width: 100%; height: 360px;
+           border: 1px solid #8884; border-radius: 6px;
+           background: #0001; margin-bottom: 10px; }
+  #graph .node rect      { fill: #fff3; stroke: #888a; stroke-width: 1; cursor: pointer; }
+  #graph .node.sel rect  { stroke: #06c; stroke-width: 2; fill: #06c2; }
+  #graph .node text      { font: 11px ui-monospace, monospace; pointer-events: none; }
+  #graph .link           { stroke: #888a; stroke-width: 1.5; fill: none; }
+  .node-card { border: 1px solid #8884; border-radius: 6px; padding: 8px 12px;
+          margin-bottom: 10px; font-size: 13px; }
+  .node-card.sel { border-color: #06c; }
+  .node-card .path  { font-family: ui-monospace, monospace; font-weight: 600; }
+  .node-card .kind  { font-family: ui-monospace, monospace; opacity: 0.6; font-size: 11px; }
+  .node-card .toolbar { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+  .slots  { margin: 6px 0 0 0; padding: 0; list-style: none; }
+  .slot   { display: grid; grid-template-columns: 1fr 2fr auto; gap: 6px; margin: 2px 0;
+            font-size: 12px; align-items: center; }
+  .slot   .name  { font-family: ui-monospace, monospace; opacity: 0.75; }
+  .slot   .value { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+  .slot input   { font-family: ui-monospace, monospace; font-size: 12px;
+                  padding: 2px 4px; width: 100%; box-sizing: border-box; }
+  button  { font-size: 12px; padding: 2px 8px; cursor: pointer; }
+  select  { font-size: 12px; padding: 2px 4px; }
+  .row    { display: flex; gap: 6px; margin: 8px 0; align-items: center; flex-wrap: wrap; }
+  .row input { font-family: ui-monospace, monospace; font-size: 12px; padding: 2px 4px; }
+  .links-list { font-size: 12px; font-family: ui-monospace, monospace; margin: 0 0 10px 0;
+                padding: 0; list-style: none; }
+  .links-list li { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
+  pre#log { background: #0001; padding: 6px 8px; font-size: 11px; line-height: 1.3;
+            white-space: pre-wrap; word-break: break-word; margin: 0; }
+  .evt-SlotChanged         { color: #0a0; }
+  .evt-NodeCreated         { color: #06c; }
+  .evt-NodeRemoved         { color: #c00; }
+  .evt-LifecycleTransition { color: #960; }
+  .evt-LinkAdded           { color: #08a; }
+  .evt-LinkRemoved         { color: #a60; }
+  .evt-LinkBroken          { color: #c00; }
+</style>
+</head>
+<body>
+<header>
+  <h1>agent</h1>
+  <span class="status" id="status">connecting…</span>
+  <span class="status" id="nodeCount"></span>
+  <span class="status">seed:</span>
+  <button data-preset="count_chain">count_chain</button>
+  <button data-preset="trigger_demo">trigger_demo</button>
+  <span class="status" id="versions" style="margin-left:auto"></span>
+</header>
+
+<main>
+  <svg id="graph"></svg>
+
+  <div class="row">
+    <button id="refresh">refresh</button>
+    <span style="opacity:0.5">create:</span>
+    <input id="cParent" value="/" placeholder="parent path" />
+    <input id="cKind"   placeholder="kind id" />
+    <input id="cName"   placeholder="name" />
+    <button id="cBtn">create</button>
+  </div>
+
+  <div class="row">
+    <span style="opacity:0.5">link:</span>
+    <input id="lSrcPath" placeholder="source path" />
+    <input id="lSrcSlot" placeholder="slot" />
+    <span style="opacity:0.5">→</span>
+    <input id="lTgtPath" placeholder="target path" />
+    <input id="lTgtSlot" placeholder="slot" />
+    <button id="lBtn">link</button>
+  </div>
+
+  <h2 style="font-size:11px;opacity:.6;margin:8px 0 4px 0;text-transform:uppercase">links</h2>
+  <ul id="links" class="links-list"></ul>
+
+  <div id="nodes"></div>
+</main>
+
+<aside>
+  <h2>events</h2>
+  <pre id="log"></pre>
+</aside>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status"), nodesEl = $("nodes"), logEl = $("log"),
+      countEl = $("nodeCount"), linksEl = $("links"), graphEl = $("graph");
+
+let state = { nodes: [], links: [], selected: null };
+
+async function refresh() {
+  try {
+    const [nodes, links] = await Promise.all([
+      fetch("/api/v1/nodes").then(r => r.json()),
+      fetch("/api/v1/links").then(r => r.json()),
+    ]);
+    state.nodes = nodes;
+    state.links = links;
+    countEl.textContent = nodes.length + " node" + (nodes.length === 1 ? "" : "s") +
+                          " · " + links.length + " link" + (links.length === 1 ? "" : "s");
+    renderGraph();
+    renderLinks();
+    renderNodes();
+  } catch (e) {
+    statusEl.textContent = "error: " + e.message;
+  }
+}
+
+function renderGraph() {
+  // Simple layered layout: depth by path-slash count, spread siblings horizontally.
+  const W = graphEl.clientWidth || 600, H = 360;
+  const byDepth = new Map();
+  for (const n of state.nodes) {
+    const d = n.path === "/" ? 0 : n.path.split("/").length - 1;
+    if (!byDepth.has(d)) byDepth.set(d, []);
+    byDepth.get(d).push(n);
+  }
+  const depths = [...byDepth.keys()].sort((a, b) => a - b);
+  const pos = new Map(); // node_id -> {x, y, w, h}
+  const nodeW = 140, nodeH = 32;
+  depths.forEach((d, i) => {
+    const row = byDepth.get(d);
+    const y = 20 + i * (nodeH + 28);
+    row.forEach((n, j) => {
+      const x = 20 + j * (nodeW + 16);
+      pos.set(n.id, { x, y, w: nodeW, h: nodeH, n });
+    });
+  });
+
+  // Build SVG.
+  const parts = [];
+  // Links first so they sit under nodes.
+  for (const l of state.links) {
+    const s = pos.get(l.source.node_id), t = pos.get(l.target.node_id);
+    if (!s || !t) continue;
+    const x1 = s.x + s.w / 2, y1 = s.y + s.h;
+    const x2 = t.x + t.w / 2, y2 = t.y;
+    const my = (y1 + y2) / 2;
+    parts.push(
+      `<path class="link" d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}" />` +
+      `<title>${escapeAttr(l.source.slot)} → ${escapeAttr(l.target.slot)}</title>`
+    );
+  }
+  for (const [id, p] of pos) {
+    const sel = state.selected === p.n.path ? " sel" : "";
+    const name = p.n.path === "/" ? "/" : p.n.path.split("/").pop();
+    parts.push(
+      `<g class="node${sel}" data-path="${escapeAttr(p.n.path)}" transform="translate(${p.x},${p.y})">` +
+        `<rect width="${p.w}" height="${p.h}" rx="5"></rect>` +
+        `<text x="8" y="14">${escapeHtml(name)}</text>` +
+        `<text x="8" y="27" opacity="0.55">${escapeHtml(shortKind(p.n.kind))}</text>` +
+      `</g>`
+    );
+  }
+  graphEl.innerHTML = parts.join("");
+  for (const g of graphEl.querySelectorAll(".node")) {
+    g.addEventListener("click", () => selectPath(g.dataset.path));
+  }
+}
+
+function shortKind(k) {
+  const parts = k.split(".");
+  return parts.length <= 2 ? k : parts.slice(-2).join(".");
+}
+
+function renderLinks() {
+  linksEl.innerHTML = "";
+  for (const l of state.links) {
+    const li = document.createElement("li");
+    li.innerHTML =
+      `<span>${escapeHtml(l.source.path || l.source.node_id)}.${escapeHtml(l.source.slot)}</span>` +
+      `<span style="opacity:.5">→</span>` +
+      `<span>${escapeHtml(l.target.path || l.target.node_id)}.${escapeHtml(l.target.slot)}</span>` +
+      `<button data-id="${escapeAttr(l.id)}" title="unlink">×</button>`;
+    li.querySelector("button").onclick = async (ev) => {
+      const r = await fetch("/api/v1/links/" + encodeURIComponent(ev.target.dataset.id),
+                            { method: "DELETE" });
+      if (!r.ok) logLine("error", "unlink failed: " + (await r.text()));
+    };
+    linksEl.appendChild(li);
+  }
+}
+
+function renderNodes() {
+  nodesEl.innerHTML = "";
+  const ordered = [...state.nodes].sort((a, b) => a.path.localeCompare(b.path));
+  for (const n of ordered) nodesEl.appendChild(renderNode(n));
+}
+
+function selectPath(path) {
+  state.selected = state.selected === path ? null : path;
+  renderGraph();
+  for (const el of nodesEl.querySelectorAll(".node-card")) {
+    el.classList.toggle("sel", el.dataset.path === state.selected);
+  }
+}
+
+function renderNode(n) {
+  const el = document.createElement("div");
+  el.className = "node-card" + (state.selected === n.path ? " sel" : "");
+  el.dataset.path = n.path;
+  const lifecycleOptions = [
+    "active","disabled","stale","fault","removing","removed"
+  ].map(v => `<option value="${v}" ${v === n.lifecycle.toLowerCase() ? "selected" : ""}>${v}</option>`)
+   .join("");
+  el.innerHTML =
+    `<div class="path">${escapeHtml(n.path)}</div>
+     <div class="kind">${escapeHtml(n.kind)} · <span class="lc">${escapeHtml(n.lifecycle)}</span></div>
+     <div class="toolbar">
+       <select class="lcSel">${lifecycleOptions}</select>
+       <button class="lcBtn">transition</button>
+     </div>
+     <ul class="slots"></ul>`;
+  el.addEventListener("click", (e) => {
+    if (e.target.closest("input,button,select")) return;
+    selectPath(n.path);
+  });
+  el.querySelector(".lcBtn").onclick = async () => {
+    const to = el.querySelector(".lcSel").value;
+    const r = await fetch("/api/v1/lifecycle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: n.path, to }),
+    });
+    if (!r.ok) logLine("error", "lifecycle failed: " + (await r.text()));
+  };
+  const ul = el.querySelector(".slots");
+  for (const s of n.slots) ul.appendChild(renderSlot(n.path, s));
+  return el;
+}
+
+function renderSlot(path, s) {
+  const li = document.createElement("li");
+  li.className = "slot";
+  li.innerHTML =
+    `<span class="name">${escapeHtml(s.name)} <small style="opacity:.5">g${s.generation}</small></span>
+     <input value='${escapeAttr(JSON.stringify(s.value))}' />
+     <button>write</button>`;
+  const input = li.querySelector("input"), btn = li.querySelector("button");
+  btn.onclick = async () => {
+    let parsed;
+    try { parsed = JSON.parse(input.value); }
+    catch { parsed = input.value; }
+    const r = await fetch("/api/v1/slots", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, slot: s.name, value: parsed }),
+    });
+    if (!r.ok) logLine("error", "slot write failed: " + (await r.text()));
+  };
+  return li;
+}
+
+$("refresh").onclick = refresh;
+$("cBtn").onclick = async () => {
+  const body = { parent: $("cParent").value, kind: $("cKind").value, name: $("cName").value };
+  const r = await fetch("/api/v1/nodes", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) logLine("error", "create failed: " + (await r.text()));
+};
+$("lBtn").onclick = async () => {
+  const body = {
+    source: { path: $("lSrcPath").value, slot: $("lSrcSlot").value },
+    target: { path: $("lTgtPath").value, slot: $("lTgtSlot").value },
+  };
+  const r = await fetch("/api/v1/links", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) logLine("error", "link failed: " + (await r.text()));
+};
+for (const b of document.querySelectorAll("header button[data-preset]")) {
+  b.onclick = async () => {
+    const r = await fetch("/api/v1/seed", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ preset: b.dataset.preset }),
+    });
+    if (!r.ok) logLine("error", "seed failed: " + (await r.text()));
+  };
+}
+
+function logLine(kind, text) {
+  const stamp = new Date().toISOString().slice(11, 19);
+  const line = document.createElement("span");
+  line.className = "evt-" + kind;
+  line.textContent = `${stamp} ${kind} ${text}\n`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+const evt = new EventSource("/api/v1/events");
+evt.onopen    = () => { statusEl.textContent = "live"; };
+evt.onerror   = () => { statusEl.textContent = "disconnected"; };
+evt.onmessage = (m) => {
+  try {
+    const ev = JSON.parse(m.data);
+    const kind = ev.event || "event";
+    const summary = ev.slot
+      ? `${ev.path || ""}.${ev.slot} = ${JSON.stringify(ev.value)}`
+      : ev.path
+        ? ev.path + (ev.from ? ` ${ev.from}→${ev.to}` : "")
+        : JSON.stringify(ev);
+    logLine(camelCase(kind), summary);
+    if (kind === "node_created" || kind === "node_removed" ||
+        kind === "link_added" || kind === "link_removed" || kind === "link_broken" ||
+        kind === "lifecycle_transition") {
+      refresh();
+    } else if (kind === "slot_changed") {
+      refreshSlotInline(ev);
+    }
+  } catch { logLine("raw", m.data); }
+};
+
+function camelCase(snake) {
+  return snake.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+              .replace(/^([a-z])/, (_, c) => c.toUpperCase());
+}
+
+function refreshSlotInline(ev) {
+  const nodeEls = nodesEl.querySelectorAll(".node-card");
+  for (const n of nodeEls) {
+    if (n.dataset.path !== ev.path) continue;
+    const rows = n.querySelectorAll(".slot");
+    for (const row of rows) {
+      const name = row.querySelector(".name")?.firstChild?.textContent?.trim();
+      if (name === ev.slot) {
+        row.querySelector("input").value = JSON.stringify(ev.value);
+        const small = row.querySelector(".name small");
+        if (small) small.textContent = "g" + ev.generation;
+      }
+    }
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/'/g, "&#39;"); }
+
+async function loadVersions() {
+  try {
+    const c = await fetch("/api/v1/capabilities").then(r => r.json());
+    document.getElementById("versions").textContent =
+      `agent ${c.platform.version} · api v${c.api.rest} · ` +
+      `flow_schema=${c.platform.flow_schema} node_schema=${c.platform.node_schema}`;
+  } catch (e) {
+    document.getElementById("versions").textContent = "(versions unavailable)";
+  }
+}
+loadVersions();
+refresh();
+</script>
+</body>
+</html>

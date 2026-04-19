@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use spi::{KindId, NodeId};
+
 use crate::state::EngineState;
 
 #[derive(Debug, Error)]
@@ -18,4 +20,13 @@ pub enum EngineError {
 
     #[error("worker task panicked")]
     WorkerPanicked,
+
+    #[error("no behaviour registered for kind `{0}`")]
+    UnknownKind(KindId),
+
+    #[error("node `{0}` not found")]
+    UnknownNode(NodeId),
+
+    #[error("behaviour error: {0}")]
+    Behavior(String),
 }

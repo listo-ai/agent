@@ -512,6 +512,28 @@ impl GraphStore {
         Ok(id)
     }
 
+    /// Remove a link by id. Emits [`GraphEvent::LinkRemoved`]; no
+    /// `LinkBroken` follows, since `LinkBroken` is reserved for the
+    /// cascade-delete path where one endpoint ceased to exist.
+    pub fn remove_link(&self, id: LinkId) -> Result<(), GraphError> {
+        let mut g = self.write_inner();
+        let link = g
+            .links
+            .remove(&id)
+            .ok_or_else(|| GraphError::BadLink(format!("no link with id {}", id.0)))?;
+        // Repo next — if the DB refuses, put it back so memory + DB stay aligned.
+        if let Err(err) = self.repo_delete_links(&[id]) {
+            g.links.insert(id, link);
+            return Err(err);
+        }
+        let source = link.source.clone();
+        let target = link.target.clone();
+        drop(g);
+        self.sink
+            .emit(GraphEvent::LinkRemoved { id, source, target });
+        Ok(())
+    }
+
     /// All links whose source matches the given slot. Used by the engine's
     /// live-wire executor to propagate a `SlotChanged` event to every
     /// downstream target. Cheap enough today (linear over the link map);
@@ -547,6 +569,17 @@ impl GraphStore {
 
     pub fn len(&self) -> usize {
         self.read_inner().by_id.len()
+    }
+
+    /// Snapshot every node. Linear over the tree. Used by the REST
+    /// surface and debug tooling; production hot paths should go
+    /// through a subscription instead.
+    pub fn snapshots(&self) -> Vec<NodeSnapshot> {
+        self.read_inner()
+            .by_id
+            .values()
+            .map(NodeSnapshot::from_record)
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {

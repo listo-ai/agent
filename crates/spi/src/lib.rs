@@ -27,7 +27,7 @@ mod slot_schema;
 pub use containment::{Cardinality, CascadePolicy, ContainmentSchema, ParentMatcher};
 pub use facets::{Facet, FacetSet};
 pub use ids::{KindId, NodeId, NodePath};
-pub use manifest::KindManifest;
+pub use manifest::{KindManifest, TriggerPolicy};
 pub use msg::{MessageId, Msg};
 pub use slot_schema::{SlotRole, SlotSchema};
 

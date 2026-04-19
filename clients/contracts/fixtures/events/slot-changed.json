@@ -1,0 +1,8 @@
+{
+  "event": "slot_changed",
+  "id": "00000000-0000-0000-0000-000000000100",
+  "path": "/station/floor3/ahu-1/temp",
+  "slot": "out",
+  "value": { "temp_c": 21.5 },
+  "generation": 7
+}
