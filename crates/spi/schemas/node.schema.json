@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://us.example/schemas/node.schema.json",
+  "title": "NodeManifest",
+  "description": "A node-kind manifest. Every kind (native, wasm, or extension-contributed) is described by one of these. See docs/design/EVERYTHING-AS-NODE.md.",
+  "type": "object",
+  "required": ["schema_version", "kind_id", "facets", "containment"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "kind_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+      "description": "Reverse-DNS kind id, e.g. 'acme.driver.bacnet.point'."
+    },
+    "display_name": { "type": "string" },
+    "description": { "type": "string" },
+    "facets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Facet" },
+      "uniqueItems": true
+    },
+    "containment": {
+      "type": "object",
+      "description": "Placement rules. Free nodes leave 'allowed_parents' empty; bound nodes must list their legal parent kinds.",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["free", "bound"] },
+        "allowed_parents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Parent kind_ids under which instances of this kind may be created."
+        },
+        "cascade": {
+          "enum": ["strict", "deny", "orphan"],
+          "default": "strict",
+          "description": "Delete semantics: strict = cascade-delete children, deny = refuse if children exist, orphan = leave children orphaned."
+        }
+      }
+    },
+    "slots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Slot" }
+    },
+    "config_schema": {
+      "type": "object",
+      "description": "JSON Schema for kind-specific config. Validated on node create/update.",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "Facet": {
+      "type": "string",
+      "pattern": "^is[A-Z][A-Za-z0-9]*$",
+      "description": "Capability tag, e.g. 'isDriver', 'isDevice', 'isPoint', 'isWritable', 'isContainer', 'isProtocol'."
+    },
+    "Slot": {
+      "type": "object",
+      "required": ["name", "direction", "value_schema"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "direction": { "enum": ["input", "output", "bidirectional"] },
+        "value_schema": {
+          "type": "object",
+          "description": "JSON Schema for slot values.",
+          "additionalProperties": true
+        },
+        "writable": { "type": "boolean", "default": false },
+        "safe_state": {
+          "description": "Behavior on shutdown / loss-of-engine for writable slots.",
+          "enum": ["hold", "fail_safe", "release"]
+        }
+      }
+    }
+  }
+}

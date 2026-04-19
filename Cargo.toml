@@ -1,0 +1,86 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/spi",
+    "crates/query",
+    "crates/auth",
+    "crates/messaging",
+    "crates/audit",
+    "crates/observability",
+    "crates/config",
+    "crates/data-entities",
+    "crates/data-repos",
+    "crates/data-sqlite",
+    "crates/data-postgres",
+    "crates/data-tsdb",
+    "crates/domain-flows",
+    "crates/domain-devices",
+    "crates/domain-extensions",
+    "crates/domain-fleet",
+    "crates/transport-rest",
+    "crates/transport-grpc",
+    "crates/transport-nats",
+    "crates/transport-cli",
+    "crates/transport-mcp",
+    "crates/graph",
+    "crates/engine",
+    "crates/extensions-sdk",
+    "crates/extensions-host",
+    "crates/apps/agent",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# Shared internal crates — referenced via `workspace = true` in member manifests.
+spi = { path = "crates/spi" }
+query = { path = "crates/query" }
+auth = { path = "crates/auth" }
+messaging = { path = "crates/messaging" }
+audit = { path = "crates/audit" }
+observability = { path = "crates/observability" }
+config = { path = "crates/config" }
+data-entities = { path = "crates/data-entities" }
+data-repos = { path = "crates/data-repos" }
+data-sqlite = { path = "crates/data-sqlite" }
+data-postgres = { path = "crates/data-postgres" }
+data-tsdb = { path = "crates/data-tsdb" }
+domain-flows = { path = "crates/domain-flows" }
+domain-devices = { path = "crates/domain-devices" }
+domain-extensions = { path = "crates/domain-extensions" }
+domain-fleet = { path = "crates/domain-fleet" }
+transport-rest = { path = "crates/transport-rest" }
+transport-grpc = { path = "crates/transport-grpc" }
+transport-nats = { path = "crates/transport-nats" }
+transport-cli = { path = "crates/transport-cli" }
+transport-mcp = { path = "crates/transport-mcp" }
+graph = { path = "crates/graph" }
+engine = { path = "crates/engine" }
+extensions-sdk = { path = "crates/extensions-sdk" }
+extensions-host = { path = "crates/extensions-host" }
+
+# Third-party.
+async-trait = "0.1"
+thiserror = "1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+semver = { version = "1", features = ["serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+panic = "warn"
+todo = "warn"

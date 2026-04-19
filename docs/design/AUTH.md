@@ -1,0 +1,260 @@
+# Auth Overview
+
+## What it is
+
+Identity and access control for the whole platform, built on **Zitadel** as the external IdP, with JWT verification happening everywhere else. One auth system covers the cloud, the edge, the Studio (desktop + browser + mobile), the CLI, and the MCP server.
+
+We don't build auth. We integrate one well-chosen IdP and do the verification correctly.
+
+## The core idea
+
+**Zitadel is the source of truth for identity; everything else verifies tokens offline.**
+
+The edge agent doesn't call Zitadel on every request. It fetches Zitadel's public keys (JWKS) on startup, caches them, and verifies JWT signatures and claims locally. This means auth works through internet outages, adds zero latency to the hot path, and doesn't couple edge uptime to cloud uptime.
+
+## The identity hierarchy
+
+Zitadel's native model, mapped to our product:
+
+| Zitadel concept | What it means for us |
+|---|---|
+| **Instance** | One per deployment of our Control Plane |
+| **Organization** | One per customer / tenant — their users, their SSO, their policies |
+| **Project** | Our platform itself — all applications live here |
+| **Application** | Studio (desktop), Studio (browser), Studio (mobile), CLI, edge agents (as a group), MCP |
+| **User** | End users — humans who log in |
+| **Service account** | Machine identities — each edge agent has one |
+
+Multi-tenancy is native, not simulated. Every token carries the org it was issued for; we can't accidentally leak data across tenants because the tenant is enforced in the token itself.
+
+## Identity types
+
+| Type | Who | How they authenticate | Token lifetime |
+|---|---|---|---|
+| **Human user** | Admins, operators, developers | OIDC with PKCE via Zitadel login UI | Short access token (1h), refresh token (30d) |
+| **Edge agent** | Every deployed agent | Service account with rotating key, JWT-signed | Short access token (1h), refreshed automatically |
+| **CLI user** | Developers on their laptop | Device authorization flow, tokens cached in OS keystore | Same as human user |
+| **Extension author / publisher** | People publishing to the registry | OIDC + scoped API key | API key long-lived, per-action JWT short |
+| **MCP session** | LLM acting on behalf of a user | Inherits user's token; per-session capability limits | Scoped to the parent session |
+
+## The authentication flows
+
+### Human user — Studio (desktop or browser)
+
+OIDC Authorization Code Flow with PKCE:
+
+1. Studio opens Zitadel login in the system browser (desktop) or redirects (browser)
+2. User authenticates — password, MFA, social login, or SSO, whatever their org allows
+3. Zitadel redirects back with an authorization code
+4. Studio exchanges code + PKCE verifier for access + refresh tokens
+5. Tokens stored in OS keychain (desktop) or secure storage (browser)
+6. All API calls include `Authorization: Bearer <access_token>`
+7. Refresh happens silently before expiry
+
+### Human user — Mobile (future)
+
+Same OIDC flow, platform-native secure storage (Keychain on iOS, EncryptedSharedPreferences on Android). Biometric unlock optional.
+
+### CLI user
+
+OAuth 2.0 Device Authorization Grant:
+
+1. `yourapp login` prints a URL and a code
+2. User opens URL in browser, enters code, authenticates with Zitadel
+3. CLI polls Zitadel until authentication completes
+4. Tokens cached in OS keystore (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+5. Subsequent `yourapp ...` commands use cached tokens
+6. Tokens refreshed silently
+
+### Edge agent
+
+Client credentials flow with service account:
+
+1. Agent provisioned with a service account credential file (signed JWT key pair)
+2. On startup, agent exchanges credential for access token via Zitadel
+3. Tokens refreshed automatically before expiry
+4. Credential key rotatable via Control Plane without agent redeploy
+
+### Extension publisher
+
+API key for long-running automation (CI/CD pipelines publishing extensions), OIDC for interactive use. API keys are scoped — publish-only, not admin.
+
+## Token format
+
+JWT signed by Zitadel. Claims we rely on:
+
+| Claim | Purpose |
+|---|---|
+| `iss` | Zitadel instance URL — verified against allowlist |
+| `aud` | Must include our Control Plane audience |
+| `exp`, `iat`, `nbf` | Standard time validation |
+| `sub` | User or service account ID |
+| `org_id` | Tenant identifier — enforced on every query |
+| `roles` | User's RBAC roles in this org |
+| `scope` | OAuth scopes — what the token is allowed to do |
+| `urn:zitadel:iam:user:resourceowner:id` | Org/project metadata |
+
+## Verification flow (the hot path)
+
+Every request to the Control Plane or edge agent:
+
+1. Extract `Authorization: Bearer <jwt>` from header
+2. Decode JWT header to find `kid` (key ID)
+3. Look up public key in cached JWKS (refetch if key unknown or cache is stale)
+4. Verify signature
+5. Verify `iss`, `aud`, `exp`, `nbf`
+6. Extract claims into a typed `AuthContext` struct
+7. Attach `AuthContext` to the request; handlers receive it via extractor
+8. Handler checks required roles/scopes for the endpoint
+
+Entire verification happens in memory, no network call. Typical cost: < 1ms.
+
+## JWKS caching
+
+| Behavior | Details |
+|---|---|
+| Fetch on startup | Attempted. Agent starts if either (a) reach to Zitadel succeeds, or (b) an on-disk JWKS cache from a prior successful fetch exists. Not both required. |
+| Persistence | JWKS written to disk on every successful fetch so restarts during outages work |
+| Cache duration | 1 hour, or `Cache-Control` from Zitadel, whichever is shorter |
+| Refresh trigger | Periodic (cache duration) + on unknown-`kid` |
+| Stale cache window | Hard ceiling of **24 hours** past nominal expiry. Beyond that, verification fails closed. A 7-day stale window would silently defeat Zitadel key rotation on compromise; we don't offer that. |
+| Key rotation | Zitadel rotates keys; edge picks up the new one within the cache-duration window, or immediately on unknown-`kid` |
+
+Short staleness is the security/availability tradeoff we picked. Customers needing longer offline tolerance should configure Zitadel-side token lifetimes (see below), not stretch JWKS staleness.
+
+## Authorization — RBAC
+
+Separate from authentication. After we know *who* the caller is, we decide *what* they can do.
+
+### Roles (v1)
+
+| Role | Scope | Can do |
+|---|---|---|
+| **Platform admin** | Global | Everything — reserved for us |
+| **Org owner** | Within an org | All org resources, billing, user management |
+| **Org admin** | Within an org | All org resources, no billing |
+| **Flow editor** | Within an org | CRUD flows, deploy to dev environments |
+| **Flow operator** | Within an org | Pause/resume flows, view logs; cannot edit |
+| **Viewer** | Within an org | Read-only |
+| **Extension publisher** | Within an org | Publish extensions to private registry |
+| **Service account** | Limited | Only what its scopes allow |
+
+### Permission model
+
+Role-based for most things, capability-based for MCP and extensions:
+
+- **RBAC** — role → set of permitted actions, attached to every endpoint
+- **Capability tokens** — scoped tokens for narrow actions (e.g. "this MCP session can only read flows X, Y, Z")
+- **Resource ownership** — some actions require ownership (only flow owner or org admin can delete)
+
+All three checks run at the API layer. The query layer enforces `tenant_id = current_org` as a non-negotiable predicate — users can't accidentally or intentionally query across orgs.
+
+## Zitadel as the policy engine
+
+Zitadel handles what it's good at; we handle what it isn't:
+
+| Zitadel owns | We own |
+|---|---|
+| User accounts, passwords, MFA | Per-resource ownership checks |
+| SSO federation (SAML, OIDC) | Flow-specific permissions (who can deploy where) |
+| Social login | Extension registry permissions |
+| Password policies, lockout | MCP per-tool permissions |
+| User lifecycle (invite, suspend, delete) | Fine-grained audit of every action |
+| Organization structure | Quota enforcement |
+| Basic roles per project | Custom roles beyond basic |
+
+We don't try to replace Zitadel's IAM with our own. We do extend with product-specific permissions that don't belong in an IdP.
+
+## SSO / enterprise integration
+
+Zitadel handles this natively — SAML, OIDC federation, custom IdPs per organization. For an enterprise customer, their Azure AD or Okta becomes the real login; Zitadel federates. Our code doesn't need to know. JWTs look the same regardless of where the user originally authenticated.
+
+This is the reason Zitadel beats rolling our own — enterprise SSO is thousands of hours of work and infinite CVE risk.
+
+## Offline operation
+
+The edge agent must keep running when the cloud is unreachable. We honor JWT semantics — **no local extension of token lifetime past `exp`**. Offline tolerance comes from token lifetime, not from bending verification.
+
+| Scenario | Behavior |
+|---|---|
+| JWKS cached (fresh or within 24h stale ceiling), token unexpired | Full verification, all operations allowed |
+| Token expired, refresh endpoint unreachable | Session ends at `exp`. No fake extensions. User must re-authenticate when cloud returns. |
+| JWKS cache expired past 24h ceiling | Verification fails closed |
+| Cache completely empty | Agent refuses to authenticate new sessions; existing sessions continue on their current tokens until `exp` |
+
+**Edge agents use long-lived service-account tokens** (issued by Zitadel with multi-day `exp`) for their own identity — this is how the gateway keeps working across multi-day outages without our code having to lie about expiry. Human-user sessions on edge honor their short-lived token lifetimes; if a user is present on-site during an outage, they re-authenticate against the local Zitadel cache when it exists (standalone deployment), or wait for cloud reachability (pure edge deployment).
+
+## Revocation latency
+
+JWT revocation ≠ JWKS. Revoking a user or rotating their credential in Zitadel **does not** invalidate already-issued tokens until they expire. Mitigations:
+
+- Short access-token lifetime (1h) caps the revocation window for humans.
+- Control Plane maintains a short-lived **deny-list** of revoked token IDs (`jti`) and user IDs, pushed to edges via NATS. Edges consult the deny-list on verification when reachable.
+- During outages, the deny-list ages out after its TTL and revocation falls back to the token's natural expiry. This is the real offline security/latency tradeoff; document it to customers.
+
+## Tenancy on edge
+
+Per OVERVIEW: **edge agents are single-tenant in v1**. The `org_id` claim is still verified, but an edge agent is provisioned for one org — tokens for any other org are rejected outright, not merely partitioned. Cloud is multi-tenant; RLS and per-tenant NATS accounts enforce partitioning there.
+
+## Audit
+
+Every auth-relevant event to the audit stream:
+
+- Login attempts (success + failure), from Zitadel's event log
+- Token issue, refresh, revocation
+- Permission-denied events on API endpoints
+- Role changes
+- Service account credential rotation
+- MCP session start/end
+- Destructive actions (delete, restart)
+
+Stored durably, queryable by org admins, exportable for compliance.
+
+## Secrets and key management
+
+| Secret | Where stored |
+|---|---|
+| User access/refresh tokens (desktop) | OS keychain (macOS Keychain, Windows Cred Manager, Linux Secret Service) |
+| User tokens (browser) | HttpOnly secure cookies — not localStorage |
+| Edge agent service credential | Sealed file with OS permissions, or TPM if available |
+| Zitadel admin API credential | Control Plane secret store (sealed config / k8s secret) |
+| JWKS cache | In-memory, refreshed on startup |
+| Signing keys for extension registry | HSM in production, encrypted file in dev |
+
+## Failure modes and mitigations
+
+| Failure | What happens | Mitigation |
+|---|---|---|
+| Zitadel down | New logins fail; existing sessions continue until their real `exp` | JWKS cache + graceful UI messaging |
+| Edge can't reach Zitadel on boot | Agent starts from on-disk JWKS cache if present; refuses only if both cloud unreachable AND cache empty | Persist JWKS to disk on each successful fetch |
+| Token leaked | Revoke in Zitadel; Control Plane consults deny-list; edges consult pushed deny-list until TTL; in worst case, token is invalid at its natural expiry | Short token lifetimes (1h humans, Zitadel-tuned service accounts) limit blast radius; deny-list pushed over NATS for faster propagation |
+| Service account credential leaked | Rotate from Control Plane; agent picks up new credential on next sync | Regular automated rotation policy |
+| Zitadel compromised | Catastrophic — all trust rooted here | Zitadel self-hosted for high-security customers; regular security audits |
+
+## What's explicitly NOT in auth
+
+- **No custom password handling.** Zitadel owns passwords entirely.
+- **No custom MFA.** Zitadel.
+- **No custom SSO code.** Zitadel.
+- **No token introspection on the hot path.** Offline JWT verification only.
+- **No session stickiness requirements.** Tokens are self-contained; any instance can serve any request.
+- **No separate admin panel.** Zitadel's admin UI handles user management; we embed or deep-link from the Studio.
+
+## Stage in the coding plan
+
+Stage 7 — after persistence, deployment profiles, and messaging are stable. Early enough that every subsequent stage (API, CLI, MCP, extensions) is built on the final auth model. Building auth retroactively means touching every endpoint.
+
+## Stack recap
+
+- **IdP**: Zitadel, self-hosted or cloud
+- **Protocol**: OIDC + OAuth 2.0
+- **Token format**: JWT signed by Zitadel
+- **Flows**: Authorization Code + PKCE (Studio), Device Code (CLI), Client Credentials (agents)
+- **Verification**: Offline JWT verification with cached JWKS
+- **Authorization**: RBAC + capability tokens + resource ownership
+- **Audit**: Zitadel events + our own action log
+- **Secrets**: OS keychain (clients), sealed files / TPM / HSM (servers)
+
+## One-line summary
+
+**Zitadel owns identity; everything else verifies JWTs offline against cached public keys — one token model covers users, agents, CLI, and MCP across cloud, edge, desktop, browser, and mobile, with tenant isolation baked into every claim and every query.**

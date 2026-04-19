@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://us.example/schemas/flow.schema.json",
+  "title": "Flow",
+  "description": "A flow document. Loaded into an acme.core.flow container node. Stage 0: schema shape only; executor validation lands in Stage 2.",
+  "type": "object",
+  "required": ["schema_version", "id", "nodes", "links"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Breaking changes bump this."
+    },
+    "id": {
+      "type": "string",
+      "description": "Opaque flow identifier, unique within its containing graph node."
+    },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FlowNode" }
+    },
+    "links": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FlowLink" }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Free-form metadata; not interpreted by the engine.",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "FlowNode": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "description": "Reverse-DNS kind id, e.g. 'acme.compute.math.add'."
+        },
+        "config": {
+          "description": "Kind-specific config, validated against the kind's slot schema by the engine.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "FlowLink": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "$ref": "#/$defs/SlotRef" },
+        "to": { "$ref": "#/$defs/SlotRef" }
+      }
+    },
+    "SlotRef": {
+      "type": "object",
+      "required": ["node", "slot"],
+      "additionalProperties": false,
+      "properties": {
+        "node": { "type": "string", "description": "FlowNode.id" },
+        "slot": { "type": "string" }
+      }
+    }
+  }
+}
