@@ -24,8 +24,10 @@ use std::sync::Arc;
 use extensions_sdk::prelude::*;
 
 pub mod count;
+pub mod math_add;
 
 pub use count::{Count, CountConfig};
+pub use math_add::{Add, AddConfig};
 
 extensions_sdk::requires! {
     "spi.msg" => "1",
@@ -34,10 +36,16 @@ extensions_sdk::requires! {
 /// Register every kind manifest this crate contributes.
 pub fn register_kinds(kinds: &graph::KindRegistry) {
     kinds.register(<Count as NodeKind>::manifest());
+    kinds.register(<Add as NodeKind>::manifest());
 }
 
 /// Construct the dispatchable behaviour for [`Count`]. Cheap; behaviour
 /// structs hold no state.
 pub fn behavior() -> Arc<dyn DynBehavior> {
     Arc::new(TypedBehavior(Count))
+}
+
+/// Construct the dispatchable behaviour for [`Add`] — `sys.compute.math.add`.
+pub fn add_behavior() -> Arc<dyn DynBehavior> {
+    Arc::new(TypedBehavior(Add))
 }

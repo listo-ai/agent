@@ -76,6 +76,18 @@ pub enum UiCmd {
         auth_subject: Option<String>,
     },
 
+    /// Render a node's default SDUI view (`GET /api/v1/ui/render`).
+    Render {
+        /// Target node id (UUID).
+        #[arg(long)]
+        target: String,
+
+        /// Optional view id (defaults to highest-priority view on the
+        /// target's kind).
+        #[arg(long)]
+        view: Option<String>,
+    },
+
     /// Fetch a paginated table of nodes matching an RSQL query.
     Table {
         /// Base RSQL query string.
@@ -111,6 +123,7 @@ impl UiCmd {
             Self::Resolve { .. } => "ui resolve",
             Self::Action { .. } => "ui action",
             Self::Table { .. } => "ui table",
+            Self::Render { .. } => "ui render",
         }
     }
 }
@@ -228,6 +241,28 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
             };
             let resp = client.ui().action(&req).await?;
             output::ok(fmt, &resp)?;
+        }
+        UiCmd::Render { target, view } => {
+            let resp = client.ui().render(target, view.as_deref()).await?;
+            match (&resp, fmt) {
+                (_, OutputFormat::Json) => output::ok(fmt, &resp)?,
+                (UiResolveResponse::DryRun { errors }, OutputFormat::Table) => {
+                    output::ok_table(fmt, &["LOCATION", "MESSAGE"], errors, |e| {
+                        vec![e.location.clone(), e.message.clone()]
+                    })?;
+                }
+                (UiResolveResponse::Ok { render, meta, .. }, OutputFormat::Table) => {
+                    let mut rows: Vec<ComponentRow> = Vec::new();
+                    flatten_component(&render.root, 0, &mut rows);
+                    output::ok_table(fmt, &["DEPTH", "TYPE", "ID"], &rows, |r| {
+                        vec![r.depth.to_string(), r.component_type.clone(), r.id.clone()]
+                    })?;
+                    eprintln!( // NO_PRINTLN_LINT:allow
+                        "ir_version={}  cache_key={}  widgets={}",
+                        render.ir_version, meta.cache_key, meta.widget_count,
+                    );
+                }
+            }
         }
         UiCmd::Table {
             query,

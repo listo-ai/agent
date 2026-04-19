@@ -7,6 +7,7 @@ import { ExtensionsPage } from "@/pages/extensions/ExtensionsPage";
 import { PluginsPage } from "@/pages/plugins/PluginsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 import { SduiPage } from "@/sdui/SduiPage";
+import { SduiRenderPage } from "@/sdui/SduiRenderPage";
 
 const router = createBrowserRouter([
   {
@@ -24,6 +25,8 @@ const router = createBrowserRouter([
       { path: "dashboard", element: <DashboardPage /> },
       // SDUI renderer — any ui.page node can be navigated to directly.
       { path: "ui/:pageRef", element: <SduiPage /> },
+      // SDUI render — pick the target kind's default view (S5).
+      { path: "render/:targetId", element: <SduiRenderPage /> },
       { path: "extensions", element: <ExtensionsPage /> },
       { path: "plugins", element: <PluginsPage /> },
       { path: "settings", element: <SettingsPage /> },

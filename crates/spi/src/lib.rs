@@ -38,7 +38,7 @@ pub use fleet::{
     NullTransport, Payload, Server, ServerHandle, SubscriptionStream,
 };
 pub use ids::{KindId, NodeId, NodePath};
-pub use manifest::{KindManifest, TriggerPolicy};
+pub use manifest::{KindManifest, KindView, TriggerPolicy};
 pub use msg::{MessageId, Msg};
 pub use slot_schema::{SlotRole, SlotSchema, SlotValueKind};
 pub use subject::{Subject, SubjectBuilder, SubjectToken};

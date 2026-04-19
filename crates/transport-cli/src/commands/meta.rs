@@ -148,6 +148,7 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &UI_RESOLVE,
         &UI_ACTION,
         &UI_TABLE,
+        &UI_RENDER,
         &FLOWS_LIST,
         &FLOWS_GET,
         &FLOWS_CREATE,
@@ -1209,6 +1210,60 @@ static UI_TABLE: CommandMeta = CommandMeta {
     errors: &[
         ErrorInfo {
             code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static UI_RENDER: CommandMeta = CommandMeta {
+    name: "ui render",
+    summary: "Render a node using its kind's default SDUI view.",
+    args: &[
+        ArgInfo {
+            name: "--target",
+            required: true,
+            type_name: "uuid",
+            description: "Target node id",
+        },
+        ArgInfo {
+            name: "--view",
+            required: false,
+            type_name: "string",
+            description: "View id (defaults to highest-priority view on the kind)",
+        },
+    ],
+    examples: &[
+        "agent ui render --target <node-id>",
+        "agent ui render --target <node-id> --view settings",
+    ],
+    related: &["ui resolve", "ui nav"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["target"],
+            "properties": {
+                "target": { "type": "string", "format": "uuid" },
+                "view":   { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::UiResolveResponse>,
+    errors: &[
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "unprocessable_entity",
             exit_code: 1,
         },
         ErrorInfo {

@@ -159,22 +159,46 @@ impl BehaviorRegistry {
             .map_err(|e| EngineError::Behavior(e.to_string()))
     }
 
-    /// Process a graph event. Only `SlotChanged` for trigger inputs
-    /// drives behaviour dispatch — everything else is a live-wire /
-    /// lifecycle concern.
+    /// Process a graph event. Two triggers drive dispatch:
+    ///
+    ///   1. `NodeCreated` for any kind with a registered behaviour —
+    ///      auto-runs `on_init` so source nodes (heartbeat, timer
+    ///      generators, …) start producing without requiring the
+    ///      caller to poke settings first. Fires exactly once per
+    ///      create event; idempotent for sink-only kinds.
+    ///   2. `SlotChanged` for trigger inputs or the synthesised
+    ///      `settings` slot — per [`EVERYTHING-AS-NODE.md`] and
+    ///      [`NODE-SCOPE.md`].
+    ///
+    /// Everything else is a live-wire / lifecycle concern handled elsewhere.
     pub fn handle(&self, event: &GraphEvent) {
-        let GraphEvent::SlotChanged {
-            id,
-            path,
-            slot,
-            value,
-            ..
-        } = event
-        else {
-            return;
-        };
-        if let Err(err) = self.try_dispatch(*id, path, slot, value) {
-            tracing::warn!(node = %id, slot, error = %err, "behaviour dispatch error");
+        match event {
+            GraphEvent::NodeCreated { id, kind, .. } => {
+                // Only init when this crate has a behaviour for the kind —
+                // pure data kinds (folders, stations, user-contributed
+                // manifest-only kinds) are no-ops.
+                if self.lookup(kind).is_none() {
+                    return;
+                }
+                if let Err(err) = self.dispatch_init(*id) {
+                    tracing::warn!(
+                        node = %id, kind = %kind, error = %err,
+                        "on_init on NodeCreated failed",
+                    );
+                }
+            }
+            GraphEvent::SlotChanged {
+                id,
+                path,
+                slot,
+                value,
+                ..
+            } => {
+                if let Err(err) = self.try_dispatch(*id, path, slot, value) {
+                    tracing::warn!(node = %id, slot, error = %err, "behaviour dispatch error");
+                }
+            }
+            _ => {}
         }
     }
 

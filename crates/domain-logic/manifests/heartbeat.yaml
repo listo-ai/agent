@@ -62,3 +62,32 @@ settings_schema:
       description: If false, the heartbeat pauses (no timer armed). Counter preserved.
       default: true
   additionalProperties: false
+views:
+  - id: overview
+    title: Heartbeat overview
+    priority: 100
+    template:
+      ir_version: 1
+      root:
+        type: page
+        id: hb-overview
+        title: "{{$target.name}}"
+        children:
+          - type: row
+            id: hdr
+            children:
+              - type: heading
+                id: h
+                content: "{{$target.path}}"
+                level: 2
+              - type: badge
+                id: state
+                label: "{{$target.current_state}}"
+                intent: info
+          - type: row
+            id: kpis
+            children:
+              - type: badge
+                id: count
+                label: "count: {{$target.current_count}}"
+                intent: info

@@ -39,6 +39,16 @@ export interface UiApi {
    * `source.query`.
    */
   table(params: UiTableParams): Promise<UiTableResponse>;
+
+  /**
+   * Render a node's default SDUI view
+   * (`GET /api/v1/ui/render?target=<id>[&view=<id>]`).
+   *
+   * Looks up the target's kind, picks the highest-priority view (or the
+   * view with the given id), substitutes `$target` bindings in the view
+   * template, and returns the same response shape as `resolve`.
+   */
+  render(target: string, view?: string): Promise<UiResolveResponse>;
 }
 
 export function createUiApi(http: RequestTransport, apiVersion: number): UiApi {
@@ -73,6 +83,13 @@ export function createUiApi(http: RequestTransport, apiVersion: number): UiApi {
         `${base}/table${qs.size > 0 ? `?${qs.toString()}` : ""}`,
       );
       return UiTableResponseSchema.parse(raw);
+    },
+
+    async render(target: string, view?: string): Promise<UiResolveResponse> {
+      const qs = new URLSearchParams({ target });
+      if (view) qs.set("view", view);
+      const raw = await http.get<unknown>(`${base}/render?${qs.toString()}`);
+      return UiResolveResponseSchema.parse(raw);
     },
   };
 }

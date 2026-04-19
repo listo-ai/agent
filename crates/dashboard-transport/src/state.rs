@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use dashboard_runtime::NodeReader;
+use graph::KindRegistry;
 
 use crate::acl::{AclCheck, AllowAll};
 use crate::audit::{AuditSink, TracingAudit};
@@ -24,6 +25,10 @@ pub struct DashboardState {
     pub acl: Arc<dyn AclCheck>,
     pub audit: Arc<dyn AuditSink>,
     pub invalidate: Arc<dyn InvalidateSink>,
+    /// Kind registry used by `/api/v1/ui/render` to resolve a node's
+    /// `KindManifest.views`. `None` while the agent bootstrap has not
+    /// wired it in — render requests degrade to 503 in that case.
+    pub kinds: Option<Arc<KindRegistry>>,
 }
 
 impl DashboardState {
@@ -35,7 +40,13 @@ impl DashboardState {
             acl: Arc::new(AllowAll),
             audit: Arc::new(TracingAudit),
             invalidate: Arc::new(TracingInvalidate),
+            kinds: None,
         }
+    }
+
+    pub fn with_kinds(mut self, kinds: Arc<KindRegistry>) -> Self {
+        self.kinds = Some(kinds);
+        self
     }
 
     pub fn with_widgets(mut self, widgets: Arc<WidgetRegistry>) -> Self {

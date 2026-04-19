@@ -8,6 +8,7 @@
 
 use axum::routing::{get, post};
 use axum::Router;
+use tower_http::cors::CorsLayer;
 
 pub mod acl;
 pub mod action;
@@ -18,6 +19,7 @@ pub mod invalidate;
 pub mod limits;
 pub mod nav;
 pub mod reader;
+pub mod render;
 pub mod resolve;
 pub mod state;
 pub mod table;
@@ -47,5 +49,7 @@ pub fn router(state: DashboardState) -> Router {
         .route("/api/v1/ui/resolve", post(resolve::handler))
         .route("/api/v1/ui/action", post(action::handler))
         .route("/api/v1/ui/table", get(table::handler))
+        .route("/api/v1/ui/render", get(render::handler))
+        .layer(CorsLayer::permissive())
         .with_state(state)
 }

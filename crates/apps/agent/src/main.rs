@@ -351,8 +351,9 @@ async fn run_daemon(
 
     let dashboard_reader: Arc<dyn dashboard_runtime::NodeReader + Send + Sync> =
         Arc::new(dashboard_transport::GraphReader::new(graph.clone()));
+    let dashboard_kinds = Arc::new(graph.kinds().clone());
     let router = transport_rest::router(app_state).merge(dashboard_transport::router(
-        dashboard_transport::DashboardState::new(dashboard_reader),
+        dashboard_transport::DashboardState::new(dashboard_reader).with_kinds(dashboard_kinds),
     ));
     let listener = tokio::net::TcpListener::bind(http).await?;
     info!(addr = %http, "http surface listening");

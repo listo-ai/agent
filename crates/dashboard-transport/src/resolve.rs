@@ -138,7 +138,7 @@ pub async fn handler(
     // ComponentTree and return it, bypassing the legacy widget resolver.
     if let Some(layout_val) = page.slots.get("layout") {
         if !layout_val.is_null() {
-            return sdui_layout_path(layout_val.clone(), &req, &page);
+            return sdui_layout_path(layout_val.clone(), &req, &page, &*state.reader);
         }
     }
 
@@ -220,8 +220,9 @@ fn sdui_layout_path(
     layout_val: serde_json::Value,
     req: &ResolveRequest,
     page: &NodeSnapshot,
+    reader: &(dyn NodeReader + Send + Sync),
 ) -> Result<Json<ResolveResponse>, TransportError> {
-    let render: ComponentTree = serde_json::from_value(layout_val).map_err(|e| {
+    let render: ComponentTree = serde_json::from_value(layout_val.clone()).map_err(|e| {
         TransportError::MalformedPage(page.id.clone(), format!("layout is not a valid ComponentTree: {e}"))
     })?;
 
@@ -230,6 +231,8 @@ fn sdui_layout_path(
     }
 
     enforce_render_tree_size(&render)?;
+
+    let subscriptions = crate::render::derive_subscriptions_for_layout(&layout_val, reader);
 
     let meta = ResolveMeta {
         cache_key: page.version,
@@ -241,7 +244,7 @@ fn sdui_layout_path(
 
     Ok(Json(ResolveResponse::Ok {
         render,
-        subscriptions: vec![],
+        subscriptions,
         meta,
     }))
 }

@@ -127,10 +127,11 @@ where
         ring,
         PluginRegistry::new(),
     );
+    let dashboard_kinds = Arc::new(graph.kinds().clone());
     let dashboard_reader: Arc<dyn dashboard_runtime::NodeReader + Send + Sync> =
         Arc::new(dashboard_transport::GraphReader::new(graph));
     let router = transport_rest::router(app_state).merge(dashboard_transport::router(
-        dashboard_transport::DashboardState::new(dashboard_reader),
+        dashboard_transport::DashboardState::new(dashboard_reader).with_kinds(dashboard_kinds),
     ));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -572,6 +573,50 @@ async fn ui_resolve_dry_run() {
     assert_shape_match(&actual, &fixture, "$");
 }
 
+async fn server_with_heartbeat_kind() -> (SocketAddr, tokio::task::JoinHandle<()>, spi::NodeId) {
+    // Register the sys.logic.heartbeat kind (which carries a default
+    // `overview` view via its YAML manifest) and create a node of that
+    // kind so `/ui/render?target=<id>` can resolve it.
+    let id_cell: Arc<std::sync::Mutex<Option<spi::NodeId>>> = Arc::new(Default::default());
+    let set = id_cell.clone();
+    let (addr, handle) = start_with_graph(move |g| {
+        // register heartbeat kind
+        g.kinds()
+            .register(<domain_logic::Heartbeat as extensions_sdk::NodeKind>::manifest());
+        let root = spi::NodePath::root();
+        let hb = g
+            .create_child(&root, KindId::new("sys.logic.heartbeat"), "hb1")
+            .unwrap();
+        *set.lock().unwrap() = Some(hb);
+    })
+    .await;
+    let hb = id_cell.lock().unwrap().unwrap();
+    (addr, handle, hb)
+}
+
+#[tokio::test]
+async fn ui_render_ok() {
+    let (addr, _srv, hb) = server_with_heartbeat_kind().await;
+    let c = client(addr);
+    let resp = c.ui().render(&hb.0.to_string(), None).await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
+    let fixture = load_fixture("ui-render/ok.json");
+    assert_shape_match(&actual, &fixture, "$");
+}
+
+#[tokio::test]
+async fn ui_render_target_not_found() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let missing = uuid::Uuid::new_v4().to_string();
+    let err = c.ui().render(&missing, None).await.unwrap_err();
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("ui-render/not-found.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "not_found");
+}
+
 #[tokio::test]
 async fn ui_resolve_page_not_found() {
     let (addr, _srv) = start_test_server().await;
@@ -953,6 +998,7 @@ fn every_variant_has_a_fixture() {
         "ui-nav",
         "ui-resolve",
         "ui-action",
+        "ui-render",
     ];
     let dir = fixtures_dir();
     for cmd in required {

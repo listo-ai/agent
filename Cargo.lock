@@ -831,6 +831,7 @@ dependencies = [
  "spi",
  "thiserror 1.0.69",
  "tokio",
+ "tower-http",
  "tracing",
  "ui-ir",
  "uuid",

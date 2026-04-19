@@ -1,12 +1,14 @@
 /**
- * Route: `/ui/:pageRef`
+ * Route: `/render/:targetId` (optional `?view=<id>`)
  *
- * Resolves a `ui.page` via `POST /api/v1/ui/resolve`, wraps the result
- * in SduiProvider, and hands the tree to the Renderer.  The `pageRef`
- * param is the node id or path of the page to render.
+ * Thin wrapper around `GET /api/v1/ui/render` — looks up the target
+ * node's kind, picks the matching `views` entry on the kind manifest,
+ * and hands the resolved tree to the renderer. This is the S5 shipping
+ * surface: clicking any node in Studio shows its default view without
+ * any authored `ui.page`.
  */
 import { useState, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { agentPromise } from "@/lib/agent";
 import { SduiProvider, type CustomRegistry } from "./context";
@@ -14,10 +16,9 @@ import { Renderer } from "./Renderer";
 import { useSubscriptions } from "./useSubscriptions";
 import type { UiActionResponse, UiResolveResponse } from "@sys/agent-client";
 
-// The global custom-renderer registry.  Plugins populate this at load time.
 export const globalCustomRegistry: CustomRegistry = new Map();
 
-function formatSduiError(e: unknown): string {
+function formatError(e: unknown): string {
   if (!e) return "unknown error";
   if (e instanceof Error) return e.message;
   if (typeof e === "string") return e;
@@ -28,29 +29,23 @@ function formatSduiError(e: unknown): string {
   }
 }
 
-export function SduiPage() {
-  const { pageRef } = useParams<{ pageRef: string }>();
+export function SduiRenderPage() {
+  const { targetId } = useParams<{ targetId: string }>();
+  const [search] = useSearchParams();
+  const view = search.get("view") ?? undefined;
   const [pageState, setPageState] = useState<Record<string, unknown>>({});
 
-  const queryKey = ["sdui-resolve", pageRef, pageState] as const;
+  const queryKey = ["sdui-render", targetId, view] as const;
   const { data, isLoading, isError, error } = useQuery<UiResolveResponse>({
     queryKey,
     queryFn: async () => {
       const client = await agentPromise;
-      return client.ui.resolve({
-        page_ref: decodeURIComponent(pageRef ?? ""),
-        stack: [],
-        page_state: pageState,
-        dry_run: false,
-        user_claims: {},
-      });
+      return client.ui.render(decodeURIComponent(targetId ?? ""), view);
     },
     staleTime: 0,
-    enabled: !!pageRef,
+    enabled: !!targetId,
   });
 
-  // Live-update on every subscribed slot. `data` is a discriminated
-  // union — only the Ok variant carries subscriptions.
   const subscriptions =
     data && "subscriptions" in data ? data.subscriptions : undefined;
   useSubscriptions(queryKey, subscriptions);
@@ -61,10 +56,10 @@ export function SduiPage() {
       return client.ui.action({
         handler,
         args: args ?? null,
-        context: { stack: [], page_state: pageState },
+        context: { target: targetId, stack: [], page_state: pageState },
       });
     },
-    [pageState],
+    [pageState, targetId],
   );
 
   const mergePageState = useMemo(
@@ -73,14 +68,18 @@ export function SduiPage() {
     [],
   );
 
-  if (!pageRef) {
-    return <div className="p-6 text-sm text-muted-foreground">No page ref provided.</div>;
+  if (!targetId) {
+    return (
+      <div className="p-6 text-sm text-muted-foreground">
+        No target id provided.
+      </div>
+    );
   }
 
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <span className="text-sm text-muted-foreground">Resolving…</span>
+        <span className="text-sm text-muted-foreground">Rendering…</span>
       </div>
     );
   }
@@ -89,7 +88,7 @@ export function SduiPage() {
     return (
       <div className="p-6">
         <p className="text-sm text-destructive">
-          Failed to resolve page: {formatSduiError(error)}
+          Failed to render node: {formatError(error)}
         </p>
       </div>
     );
@@ -98,7 +97,7 @@ export function SduiPage() {
   if ("errors" in data) {
     return (
       <div className="p-6">
-        <p className="mb-2 text-sm font-semibold">Dry-run issues:</p>
+        <p className="mb-2 text-sm font-semibold">Render issues:</p>
         <ul className="flex flex-col gap-1">
           {data.errors.map((e, i) => (
             <li key={i} className="text-sm text-destructive">

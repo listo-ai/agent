@@ -43,19 +43,31 @@ pub enum TransportError {
     MalformedPage(NodeId, String),
     #[error("malformed widget node `{0}`: {1}")]
     MalformedWidget(NodeId, String),
+    #[error("bad request: {0}")]
+    BadRequest(String),
+    #[error("kind registry unavailable: {0}")]
+    Unavailable(String),
+    #[error("no view declared for kind `{kind}` on node `{node}`")]
+    NoViewForKind { node: NodeId, kind: String },
+    #[error("malformed view template on kind `{kind}`: {reason}")]
+    MalformedView { kind: String, reason: String },
 }
 
 impl TransportError {
     fn status(&self) -> StatusCode {
         match self {
-            Self::NotFound(_) | Self::PageNotFound(_) => StatusCode::NOT_FOUND,
-            Self::KindMismatch { .. } => StatusCode::BAD_REQUEST,
+            Self::NotFound(_) | Self::PageNotFound(_) | Self::NoViewForKind { .. } => {
+                StatusCode::NOT_FOUND
+            }
+            Self::KindMismatch { .. } | Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::LimitExceeded { .. } => StatusCode::PAYLOAD_TOO_LARGE,
+            Self::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Stack(_)
             | Self::Binding { .. }
             | Self::Contract(_)
             | Self::MalformedPage(_, _)
-            | Self::MalformedWidget(_, _) => StatusCode::UNPROCESSABLE_ENTITY,
+            | Self::MalformedWidget(_, _)
+            | Self::MalformedView { .. } => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }

@@ -1,0 +1,19 @@
+{
+  "render": {
+    "ir_version": 1,
+    "root": {
+      "type": "page",
+      "id": "hb-overview",
+      "title": "hb1",
+      "children": "VARIES"
+    }
+  },
+  "subscriptions": "VARIES",
+  "meta": {
+    "cache_key": null,
+    "widget_count": 1,
+    "forbidden_count": 0,
+    "dangling_count": 0,
+    "stack_shadowed": []
+  }
+}

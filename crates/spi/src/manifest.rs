@@ -58,6 +58,31 @@ pub struct KindManifest {
     /// Manifest schema version — bumps per VERSIONING.md.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
+    /// SDUI default views for this kind. Each view is a reusable
+    /// component tree that `GET /api/v1/ui/render?target=<id>` resolves
+    /// with `$target` pointing at the node being rendered. Empty by
+    /// default — kinds without any view fall through to whatever UI the
+    /// caller authors explicitly.
+    #[serde(default)]
+    pub views: Vec<KindView>,
+}
+
+/// A default SDUI view for a kind. See SDUI.md § S5.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KindView {
+    /// Stable view identifier within the kind's manifest
+    /// (e.g. `"overview"`, `"settings"`).
+    pub id: String,
+    /// Human-readable title shown in pickers / Studio view menus.
+    pub title: String,
+    /// Component-tree template. Wire shape matches `ui_ir::ComponentTree`
+    /// but is stored here as opaque JSON so `spi` stays free of
+    /// `ui-ir` as a dependency.
+    pub template: JsonValue,
+    /// Higher priority wins when no `view` query param is supplied.
+    /// Ties break by array order.
+    #[serde(default)]
+    pub priority: i32,
 }
 
 fn default_schema_version() -> u32 {
@@ -76,6 +101,7 @@ impl KindManifest {
             msg_overrides: BTreeMap::new(),
             trigger_policy: TriggerPolicy::default(),
             schema_version: 1,
+            views: Vec::new(),
         }
     }
 

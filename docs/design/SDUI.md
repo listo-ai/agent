@@ -4,14 +4,57 @@ A typed component IR emitted by the backend and rendered by a tiny React runtime
 
 ## Current status
 
-**S1–S4 complete.**
+**S1–S5 complete. S6 and S7 pending.**
 
-- S1: `crates/ui-ir` (16 component variants), JSON Schema, versioning scaffolding, `agent ui vocabulary`.
-- S2: `POST /api/v1/ui/action` + HandlerRegistry.
-- S3: `GET /api/v1/ui/table` + `custom` IR variant.
-- S4: SDUI renderer lives in `frontend/src/sdui/` — `Renderer`, `ActionClient`, 16 component implementations, `SduiPage` route at `/ui/:pageRef`. Dashboard page replaced with a live `ui.page` browser. Navigate to `/dashboard` → click any `ui.page` node → see it rendered.
+- **S1**: `crates/ui-ir` (16 component variants), JSON Schema, versioning scaffolding, `agent ui vocabulary`.
+- **S2**: `POST /api/v1/ui/action` + HandlerRegistry with `toast` / `navigate` / `none` / `full_render` / `form_errors` / `download` / `stream` response variants.
+- **S3**: `GET /api/v1/ui/table` paginated endpoint + `custom` IR variant + client/TS/Rust client parity.
+- **S4**: SDUI renderer at `frontend/src/sdui/` — `SduiProvider`, `Renderer`, `useActionResponse`, 16 component implementations. Route `/ui/:pageRef` renders any authored page. Dashboard page (`/dashboard`) replaced with a live `ui.page` node browser — shows a card per page, clicking navigates to `/ui/<id>`.
+- **S5**: `GET /api/v1/ui/render?target=<id>[&view=<id>]` endpoint. `spi::KindManifest` gained `views: Vec<KindView>` (each view is `{id, title, template: JsonValue, priority}`). DashboardState threaded with an `Arc<KindRegistry>` so the endpoint can look up a target's kind, pick the matching view, substitute `{{$target.*}}` bindings in the template, and return the same `ResolveResponse` shape `/ui/resolve` emits. `sys.logic.heartbeat` now declares an inline `overview` view (heading + badges bound to `current_state` / `current_count`). Full NEW-API parity landed in the same PR: Rust client (`client.ui().render(target, view)`), CLI (`agent ui render --target <id> [--view <id>]`) + CommandMeta, TS client (`client.ui.render(...)`), fixtures (`ui-render/{ok,not-found}.json`) + `fixture_gate` tests, plus a new React route `/render/:targetId` backed by `SduiRenderPage.tsx`. SSE subscription consumer wired via `frontend/src/sdui/useSubscriptions.ts` — opens `client.events.subscribe()`, matches incoming `slot_changed` events against the resolve/render response's `subscriptions` subjects, and invalidates the matching React Query cache entry (no polling).
 
-**Next: S5** — `GET /api/v1/ui/render?target=<id>` + `KindManifest.views`.
+### Implementation notes / divergences from design
+
+- **Package location**: the renderer ships as `frontend/src/sdui/` (co-located with the app), not as a separate `@acme/sdui-react` package. Extraction is a later step.
+- **Resolver fast-path** (`crates/dashboard-transport/src/resolve.rs`): `POST /api/v1/ui/resolve` checks whether the `ui.page` node's `layout` slot is non-null *before* running the legacy widget resolver. If present, it parses the slot directly as a `ComponentTree` and returns it, bypassing the M4-era `ui.widget` child-node resolver entirely. This enables hand-authored (or AI-authored) SDUI trees written via `agent slots write … layout '<json>'` to render without any widget nodes.
+- **`UiComponent` type narrowing**: the TypeScript `UiComponent` interface uses an index signature (`{ type: string; [key: string]: unknown }`), which means `Extract<UiComponent, { type: "page" }>` resolves to `never`. Work-around: `types.ts` in `frontend/src/sdui/` defines 16 explicit node shapes (`PageNode`, `TableNode`, …) and the renderer casts with `node as unknown as PageNode`.
+- **In-memory graph**: all nodes (including authored `ui.page` nodes) live only in the running server process. Every server restart wipes them. Re-create the demo page after each restart with `agent nodes create` + `agent slots write`.
+
+### Demo page — heartbeat monitor
+
+A concrete example page is provided at `/dashboards/heartbeat-demo` (must be re-created after each restart):
+
+```bash
+# Create page
+agent nodes create /dashboards ui.page heartbeat-demo   # if /dashboards doesn't exist: create / sys.core.folder dashboards first
+
+# Write layout
+agent slots write /dashboards/heartbeat-demo layout '{
+  "type":"page","ir_version":1,"title":"Heartbeat Monitor","id":"root",
+  "children":[
+    {"type":"row","id":"r1","children":[
+      {"type":"heading","id":"h","content":"flow-1 / heartbeat","level":2},
+      {"type":"badge","id":"b","label":"live","intent":"ok"}
+    ]},
+    {"type":"table","id":"t","source":{"query":"path==\"/flow-1/heartbeat\"","subscribe":false},
+     "columns":[
+       {"title":"Node","field":"path"},
+       {"title":"current_count","field":"slots.current_count"},
+       {"title":"current_state","field":"slots.current_state"}
+     ],"page_size":10}
+  ]
+}'
+
+# Verify resolver returns the tree (not empty children)
+agent ui resolve --page <id> -o json
+```
+
+### S5 divergences / notes
+
+- Binding evaluation in `/ui/render` is a pragmatic walker (`crates/dashboard-transport/src/render.rs` — `substitute_bindings`) that handles `$target.id`, `$target.path`, `$target.name`, `$target.kind`, and `$target.<slot>` — enough for the POC spine. The full `/` child-traversal grammar from DASHBOARD.md still routes through the dashboard-runtime `Binding::parse`/`EvalContext` path; unifying the two is tractable work but not required for S5's acceptance (heartbeat view renders end-to-end without it). When we need `$target/outdoor-temp.value` we'll swap the walker for a recursive resolver over `EvalContext`.
+- Subscription plan on `/render` is coarse: every `{{$target.<slot>}}` reference in the template contributes one subject scoped to the target. The React renderer's `useSubscriptions` hook then invalidates on any matching `slot_changed` event. Fine-grained per-widget subscription plans (one plan per component id) are an S6 refinement.
+- "Persist graph to disk" from the milestones table is orthogonal to the render spine and remains open — authored pages + plugin views still vanish across server restart.
+
+**Next: S6** — remaining components (chart, sparkline, wizard, tree, timeline, drawer, ref_picker, markdown streaming) plus `$page`-state round-trip for chart zoom. Then **S7** — optimistic action hints, capability-handshake enforcement, DoS limit tests, and the three falsification tests (BACnet discovery, PR review card, scope-plan board).
 
 ## Build discipline — POC-first, full-core, hard-delete
 
@@ -599,11 +642,11 @@ Grounded in the three use cases in [USE-CASES.md](../usecase/USE-CASES.md):
 |---|---|
 | ~~S1~~ ✅ | `crates/ui-ir` lands with ~15 components (layout + display + `button` + `form` + `table` + `diff` + `rich_text`); JSON Schema emitted; versioning scaffolding. New CLI `agent ui vocabulary` dumps the IR schema for AI authoring. First demo: a locally-running Claude Code / OpenCode session authors a working dashboard end-to-end via `agent nodes create` + `agent slots write` + `agent ui resolve --dry-run`, shelling out only — zero new endpoints. |
 | ~~S2~~ ✅ | `/api/v1/ui/action` + handler registry + `auth`-gated dispatch. `toast` / `navigate` / `full_render` / `form_errors` / `download` / `stream` / `none` response variants. |
-| ~~S3~~ ✅ | `/api/v1/ui/table` paginated endpoint backed by the query engine. Subscription-driven live updates. **`custom` escape hatch ships here** — client-side renderer registry + the `{type:"custom"}` IR variant + fallback stub. Unblocks UC1 floor-plan, UC2 flow canvas embedding, UC3 state-diagram screens before the acceptance demo in S4. |
-| ~~S4~~ ✅ | `frontend/src/sdui/` — Renderer, ActionClient, 16 component implementations incl. `custom` registry. Dashboard page replaced with live `ui.page` browser. Route `/ui/:pageRef` renders any authored page. |
-| S5 | `/api/v1/ui/render?target=<id>` + `KindManifest.views` extension; clicking any node in Studio shows its default view. Zero authored pages for the 90% case. |
-| S6 | Remaining components (chart, sparkline, wizard, tree, timeline, drawer, ref_picker, markdown streaming). Streaming-subscription wiring on `text` / `markdown` / `code` / `timeline`. `$page`-state round-trip for chart zoom/range. |
-| S7 | Optimistic action hints end-to-end. Capability-handshake enforcement. Size/DoS limits tested. Full acceptance suite green across all three use cases. |
+| ~~S3~~ ✅ | `/api/v1/ui/table` paginated endpoint backed by the query engine. **`custom` escape hatch ships here** — client-side renderer registry + the `{type:"custom"}` IR variant + fallback stub. TypeScript + Rust client parity. |
+| ~~S4~~ ✅ | `frontend/src/sdui/` — `SduiProvider`, `Renderer`, `useActionResponse`, 16 component implementations incl. `custom` registry. Dashboard page replaced with live `ui.page` browser. Route `/ui/:pageRef` renders any authored page. Resolver fast-path in `crates/dashboard-transport` so `layout`-slot trees bypass the M4 widget resolver. |
+| **S5** | `/api/v1/ui/render?target=<id>` + `KindManifest.views` extension; clicking any node in Studio shows its default view. Zero authored pages for the 90% case. Also: **persist graph to disk** so authored pages survive server restart (currently all nodes are in-memory only). |
+| S6 | Remaining components (chart, sparkline, wizard, tree, timeline, drawer, ref_picker, rich-text editor via tiptap, markdown streaming). Streaming-subscription wiring on `text` / `markdown` / `code` / `timeline`. `$page`-state round-trip for chart zoom/range. |
+| S7 | Optimistic action hints end-to-end. Capability-handshake enforcement (`ir_version`). Size/DoS limits tested. Full acceptance suite green across all three use cases. |
 
 ## One-line summary
 

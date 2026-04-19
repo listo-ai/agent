@@ -138,6 +138,7 @@ mod tests {
             msg_overrides: Default::default(),
             trigger_policy: Default::default(),
             schema_version: 1,
+            views: Vec::new(),
         }
     }
 

@@ -71,6 +71,24 @@ impl<'c> Ui<'c> {
         self.http.post(&format!("{}/action", self.base), req).await
     }
 
+    /// Render a node's default SDUI view.
+    ///
+    /// Looks up the target node, picks a view from its kind manifest
+    /// (highest priority when `view` is `None`, named otherwise), and
+    /// returns a resolved component tree in the same shape as
+    /// [`resolve`](Self::resolve).
+    pub async fn render(
+        &self,
+        target: &str,
+        view: Option<&str>,
+    ) -> Result<UiResolveResponse, ClientError> {
+        let mut qp: Vec<(&str, String)> = vec![("target", target.to_string())];
+        if let Some(v) = view {
+            qp.push(("view", v.to_string()));
+        }
+        self.http.get_query(&format!("{}/render", self.base), &qp).await
+    }
+
     /// Fetch a paginated table of nodes matching `params.query`.
     ///
     /// The `query` field is the RSQL string from a `Table` component's
