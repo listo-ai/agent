@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use engine::BehaviorRegistry;
+use extensions_host::PluginRegistry;
 use graph::{GraphEvent, GraphStore};
 use tokio::sync::broadcast;
 
@@ -11,6 +12,7 @@ pub struct AppState {
     pub graph: Arc<GraphStore>,
     pub behaviors: BehaviorRegistry,
     pub events: broadcast::Sender<GraphEvent>,
+    pub plugins: PluginRegistry,
 }
 
 impl AppState {
@@ -18,11 +20,13 @@ impl AppState {
         graph: Arc<GraphStore>,
         behaviors: BehaviorRegistry,
         events: broadcast::Sender<GraphEvent>,
+        plugins: PluginRegistry,
     ) -> Self {
         Self {
             graph,
             behaviors,
             events,
+            plugins,
         }
     }
 }

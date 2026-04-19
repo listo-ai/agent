@@ -66,6 +66,13 @@ impl HttpClient {
         handle_empty(res).await
     }
 
+    /// POST with no request body — for action endpoints that take no payload.
+    pub async fn post_no_body(&self, path: &str) -> Result<(), ClientError> {
+        let req = self.apply_auth(self.client.post(self.url(path)));
+        let res = req.send().await?;
+        handle_empty(res).await
+    }
+
     pub async fn delete(&self, path: &str) -> Result<(), ClientError> {
         let req = self.apply_auth(self.client.delete(self.url(path)));
         let res = req.send().await?;
@@ -107,12 +114,22 @@ async fn handle_empty(res: Response) -> Result<(), ClientError> {
 async fn to_http_error(res: Response) -> ClientError {
     let status = res.status();
     let body = res.text().await.unwrap_or_default();
+
+    // The REST surface returns `{"error": "..."}` for error responses.
+    // Extract the human-readable message so callers don't see raw JSON.
+    let message = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from))
+        .unwrap_or_else(|| {
+            if body.is_empty() {
+                status.canonical_reason().unwrap_or("unknown").to_string()
+            } else {
+                body
+            }
+        });
+
     ClientError::Http {
         status: status.as_u16(),
-        message: if body.is_empty() {
-            status.canonical_reason().unwrap_or("unknown").to_string()
-        } else {
-            body
-        },
+        message,
     }
 }

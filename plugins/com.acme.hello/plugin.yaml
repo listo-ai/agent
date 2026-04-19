@@ -1,0 +1,17 @@
+id: com.acme.hello
+version: 0.1.0
+display_name: "Hello plugin"
+description: "Reference plugin — UI panel only, demonstrates MF remoteEntry + property-panel slot."
+
+contributes:
+  ui:
+    entry: ui/remoteEntry.js
+    exposes:
+      - name: Panel
+        module: "./Panel"
+        contributes_to: sidebar
+  kinds: []
+
+requires:
+  - id: spi.msg
+    version: "^1"

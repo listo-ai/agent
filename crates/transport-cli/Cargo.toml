@@ -12,6 +12,20 @@ workspace = true
 [dependencies]
 agent-client = { workspace = true }
 clap = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
+schemars = { workspace = true }
+
+[dev-dependencies]
+transport-rest = { workspace = true }
+graph = { workspace = true }
+engine = { workspace = true }
+domain-compute = { workspace = true }
+domain-logic = { workspace = true }
+extensions-sdk = { workspace = true }
+extensions-host = { workspace = true }
+spi = { workspace = true }
+axum = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

@@ -53,6 +53,14 @@ impl<'c> Nodes<'c> {
             .post(&format!("{}/nodes", self.base), &CreateNodeReq { parent, kind, name })
             .await
     }
+
+    /// Delete a node by path. Cascading behaviour depends on the node's kind.
+    pub async fn delete(&self, path: &str) -> Result<(), ClientError> {
+        let encoded = urlencoding_path(path);
+        self.http
+            .delete(&format!("{}/node?path={encoded}", self.base))
+            .await
+    }
 }
 
 /// Percent-encode only the characters that matter for a query-string

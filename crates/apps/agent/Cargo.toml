@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true }
+serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
@@ -28,9 +29,12 @@ data-sqlite = { workspace = true }
 config = { workspace = true }
 clap = { workspace = true }
 transport-rest = { workspace = true }
+transport-cli = { workspace = true }
 domain-compute = { workspace = true }
 domain-logic = { workspace = true }
+domain-extensions = { workspace = true }
 extensions-sdk = { workspace = true }
+extensions-host = { workspace = true }
 axum = { workspace = true }
 
 [features]

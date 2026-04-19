@@ -29,6 +29,8 @@ use graph::{EventSink, GraphEvent};
 use tokio::sync::{broadcast, mpsc};
 
 pub mod capabilities;
+pub mod kinds;
+pub mod plugins;
 pub mod routes;
 pub mod seed;
 pub mod sink;

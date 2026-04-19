@@ -1,0 +1,33 @@
+id: acme.agent.plugin
+display_name: Plugin
+# `isContainer` lets plugin nodes live under `acme.core.folder` / station
+# without amending those manifests, and accommodates the Stage 3b/3c
+# evolution (plugins holding `.process` / `.wasm` / `.native` children).
+facets:
+  - isSystem
+  - isContainer
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: lifecycle
+    role: status
+    value_schema:
+      type: string
+      enum: ["discovered", "validated", "enabled", "disabled", "failed"]
+  - name: version
+    role: status
+    value_schema:
+      type: string
+  - name: last_error
+    role: status
+    value_schema:
+      type: string
+  - name: enabled
+    role: config
+    writable: true
+    value_schema:
+      type: boolean
+      default: true

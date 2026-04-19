@@ -14,7 +14,8 @@ impl<'c> Health<'c> {
 
     /// Returns `true` if the agent is reachable and healthy.
     pub async fn check(&self) -> Result<bool, ClientError> {
-        let body: String = self.http.get("/healthz").await?;
-        Ok(body == "ok")
+        let resp = self.http.get_raw("/healthz").await?;
+        let body = resp.text().await.map_err(|e| ClientError::Parse(e.to_string()))?;
+        Ok(body.trim() == "ok")
     }
 }

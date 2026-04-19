@@ -36,9 +36,11 @@ mod config;
 mod error;
 mod health;
 mod http;
+mod kinds;
 mod lifecycle;
 mod links;
 mod nodes;
+mod plugins;
 mod seed;
 mod slots;
 pub mod types;
@@ -122,5 +124,13 @@ impl AgentClient {
 
     pub fn health(&self) -> health::Health<'_> {
         health::Health::new(&self.http)
+    }
+
+    pub fn kinds(&self) -> kinds::Kinds<'_> {
+        kinds::Kinds::new(&self.http, API_VERSION)
+    }
+
+    pub fn plugins(&self) -> plugins::Plugins<'_> {
+        plugins::Plugins::new(&self.http, API_VERSION)
     }
 }

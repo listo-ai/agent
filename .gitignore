@@ -13,6 +13,8 @@ Cargo.lock.bak
 # JS tooling (for when pnpm/Tauri land)
 node_modules/
 dist/
+frontend/dist/
+frontend/dist-web/
 .pnpm-store/
 agent.db
 

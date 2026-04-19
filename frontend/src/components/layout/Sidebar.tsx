@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   GitBranch,
   LayoutDashboard,
+  Package,
   Puzzle,
   Settings,
   PanelLeftClose,
@@ -20,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Flows",      to: "/flows",      icon: GitBranch },
   { label: "Dashboard",  to: "/dashboard",  icon: LayoutDashboard },
   { label: "Extensions", to: "/extensions", icon: Puzzle },
+  { label: "Plugins",    to: "/plugins",    icon: Package },
   { label: "Settings",   to: "/settings",   icon: Settings },
 ];
 

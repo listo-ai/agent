@@ -51,4 +51,14 @@ impl KindRegistry {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Snapshot of every registered manifest. Used by the REST palette
+    /// endpoint and the CLI. Order is unspecified — callers sort for
+    /// display.
+    pub fn all(&self) -> Vec<KindManifest> {
+        self.inner
+            .read()
+            .map(|m| m.values().cloned().collect())
+            .unwrap_or_default()
+    }
 }

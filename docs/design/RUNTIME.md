@@ -109,7 +109,7 @@ It's not a game engine in use; Bevy is just the execution substrate. From your c
 | **Session** | A single execution of a workflow. Each `request()` spawns a new session. Sessions run independently and in parallel. |
 | **Request / Outcome** | `commands.request(input, service).outcome()` — non-blocking call that returns a receiver. Can be awaited in async contexts. |
 | **Message** | Typed data flowing between services. Serializable via serde. What nodes pass to each other. Shape is Node-RED compatible (`payload`, `topic`, metadata, custom fields) but messages are immutable Rust values on the wire. Settings on a node can be overridden per-message via declared `msg_overrides` (e.g. `msg.url` → HTTP client URL, Node-RED style) — see [NODE-AUTHORING.md](NODE-AUTHORING.md) for the full pattern including a worked HTTP-client example. Underlying envelope spec: [EVERYTHING-AS-NODE.md § "Wires, ports, and messages"](EVERYTHING-AS-NODE.md). |
-| **Diagram** | A serializable JSON/YAML representation of a workflow. Loadable at runtime. This is what the Studio saves and the engine executes. |
+| **Diagram** | A serializable representation of a workflow. Authored as YAML (hand-edited flow files) and stored/transmitted as JSON (DB, NATS, API) — the loader normalises at the boundary. See [NODE-AUTHORING.md § "File formats"](NODE-AUTHORING.md#file-formats--you-always-author-yaml). This is what the Studio saves and the engine executes. |
 
 ## Why it fits our product
 
@@ -138,7 +138,7 @@ It's not a game engine in use; Bevy is just the execution substrate. From your c
 
 ## Request lifecycle
 
-1. **Studio saves a flow** → JSON diagram stored in Postgres/SQLite via SeaORM
+1. **Studio saves a flow** → diagram stored as JSON in Postgres/SQLite via SeaORM (authored form is YAML — see [NODE-AUTHORING.md § "File formats"](NODE-AUTHORING.md#file-formats--you-always-author-yaml); storage is always JSON)
 2. **Control Plane deploys** → diagram pushed to the target engine over NATS
 3. **Engine loads diagram** → crossflow parses JSON, instantiates services, wires the graph
 4. **External event arrives** → e.g. BACnet value change, MQTT message, HTTP request, scheduled trigger

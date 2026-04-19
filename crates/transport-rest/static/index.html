@@ -93,6 +93,9 @@
 </main>
 
 <aside>
+  <h2>plugins</h2>
+  <div id="plugins" style="font-size:12px; margin-bottom:14px;">loading…</div>
+
   <h2>events</h2>
   <pre id="log"></pre>
 </aside>
@@ -368,6 +371,101 @@ async function loadVersions() {
 }
 loadVersions();
 refresh();
+
+// --- plugins ------------------------------------------------------------
+// Proves the wire from `PluginRegistry::scan` → REST → ServeDir.
+// Mounting MF-exposed React modules is Studio's job (Stage 4); this
+// host just lists each plugin, exposes enable/disable, and loads
+// `remoteEntry.js` as a script tag to confirm the bundle path serves.
+const loadedRemotes = new Set();
+
+async function refreshPlugins() {
+  const el = $("plugins");
+  try {
+    const plugins = await fetch("/api/v1/plugins").then(r => r.json());
+    if (!plugins.length) {
+      el.innerHTML = '<div style="opacity:.6">no plugins found</div>';
+      return;
+    }
+    el.innerHTML = "";
+    for (const p of plugins) {
+      const row = document.createElement("div");
+      row.style.cssText = "border:1px solid #8884;border-radius:4px;padding:6px 8px;margin-bottom:6px;";
+      const color = { enabled: "#0a0", disabled: "#888", failed: "#c00",
+                      discovered: "#06c", validated: "#06c" }[p.lifecycle] || "#888";
+      const errors = (p.load_errors || []).length
+        ? `<div style="color:#c00;margin-top:4px">${escapeHtml(p.load_errors.join("; "))}</div>` : "";
+      row.innerHTML = `
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <strong style="font-family:ui-monospace,monospace">${escapeHtml(p.id)}</strong>
+          <span style="opacity:.6">${escapeHtml(p.version)}</span>
+          <span style="color:${color};font-weight:600">${escapeHtml(p.lifecycle)}</span>
+          <span style="flex:1"></span>
+          <button data-pid="${escapeHtml(p.id)}" data-act="enable">enable</button>
+          <button data-pid="${escapeHtml(p.id)}" data-act="disable">disable</button>
+          ${p.has_ui ? `<button data-pid="${escapeHtml(p.id)}" data-act="load" data-entry="${escapeHtml(p.ui_entry || "remoteEntry.js")}">load ui</button>` : ""}
+        </div>
+        ${errors}
+        <div class="plugin-ui-status" data-pid="${escapeHtml(p.id)}" style="font-size:11px;opacity:.7;margin-top:4px"></div>
+      `;
+      el.appendChild(row);
+    }
+  } catch (e) {
+    el.innerHTML = `<div style="color:#c00">failed to load plugins: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function pluginUiStatus(id, text, color) {
+  const el = document.querySelector(`.plugin-ui-status[data-pid="${CSS.escape(id)}"]`);
+  if (el) { el.textContent = text; el.style.color = color || ""; }
+}
+
+function loadRemoteEntry(id, entry) {
+  // `entry` from plugin.yaml is rooted in the plugin dir ("ui/remoteEntry.js");
+  // the `/plugins/:id/*` route serves from the plugin's ui/ subdir, so strip
+  // the leading "ui/" segment when present.
+  const tail = (entry || "remoteEntry.js").replace(/^ui\//, "");
+  const url = `/plugins/${encodeURIComponent(id)}/${tail}`;
+  if (loadedRemotes.has(url)) {
+    pluginUiStatus(id, `already loaded: ${url}`, "#0a0");
+    return;
+  }
+  const s = document.createElement("script");
+  s.src = url;
+  s.async = true;
+  s.onload = () => {
+    loadedRemotes.add(url);
+    pluginUiStatus(id, `loaded: ${url} — MF container registered; mounting is Studio's job`, "#0a0");
+  };
+  s.onerror = () => pluginUiStatus(id, `failed to load: ${url}`, "#c00");
+  document.head.appendChild(s);
+  pluginUiStatus(id, `fetching ${url}…`, "");
+}
+
+$("plugins").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("button[data-pid]");
+  if (!btn) return;
+  const id = btn.dataset.pid, act = btn.dataset.act;
+  try {
+    if (act === "enable" || act === "disable") {
+      const r = await fetch(`/api/v1/plugins/${encodeURIComponent(id)}/${act}`, { method: "POST" });
+      if (!r.ok) throw new Error(`${act} → ${r.status}`);
+      refreshPlugins();
+    } else if (act === "load") {
+      loadRemoteEntry(id, btn.dataset.entry);
+    }
+  } catch (e) {
+    pluginUiStatus(id, e.message, "#c00");
+  }
+});
+
+refreshPlugins();
 </script>
 </body>
 </html>

@@ -1,0 +1,7 @@
+{
+  "code": "bad_path",
+  "message": "VARIES",
+  "details": {
+    "http_status": 400
+  }
+}

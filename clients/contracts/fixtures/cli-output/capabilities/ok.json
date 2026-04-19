@@ -1,0 +1,42 @@
+{
+  "platform": {
+    "version": "0.0.1",
+    "flow_schema": 1,
+    "node_schema": 1
+  },
+  "api": {
+    "rest": "1"
+  },
+  "capabilities": [
+    {
+      "id": "spi.extension.proto",
+      "version": "1.0.0",
+      "deprecated_since": null,
+      "removal_planned": null
+    },
+    {
+      "id": "spi.msg",
+      "version": "1.0.0",
+      "deprecated_since": null,
+      "removal_planned": null
+    },
+    {
+      "id": "spi.node.schema",
+      "version": "1.0.0",
+      "deprecated_since": null,
+      "removal_planned": null
+    },
+    {
+      "id": "spi.flow.schema",
+      "version": "1.0.0",
+      "deprecated_since": null,
+      "removal_planned": null
+    },
+    {
+      "id": "data.sqlite",
+      "version": "3.45.0",
+      "deprecated_since": null,
+      "removal_planned": null
+    }
+  ]
+}

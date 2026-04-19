@@ -14,12 +14,10 @@ const MF_SHARED_SINGLETONS = {
   react: {
     singleton: true,
     requiredVersion: "^19.0.0",
-    eager: true,
   },
   "react-dom": {
     singleton: true,
     requiredVersion: "^19.0.0",
-    eager: true,
   },
   "react-router-dom": {
     singleton: true,

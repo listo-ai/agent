@@ -16,7 +16,8 @@ mod role;
 pub use error::ConfigError;
 pub use loader::{from_env, from_file};
 pub use model::{
-    AgentConfig, AgentConfigOverlay, DatabaseConfig, DatabaseOverlay, LogConfig, LogOverlay,
+    AgentConfig, AgentConfigOverlay, DatabaseConfig, DatabaseOverlay, Defaults, LogConfig,
+    LogOverlay, PluginsConfig, PluginsOverlay,
 };
 pub use role::{Role, UnknownRole};
 
@@ -29,4 +30,31 @@ pub fn default_db_path(role: Role) -> Option<PathBuf> {
         Role::Standalone | Role::Edge => Some(PathBuf::from("./agent.db")),
         Role::Cloud => None,
     }
+}
+
+/// Role-aware default plugins dir. See `docs/design/PLUGINS.md`
+/// § "Where plugins live".
+///
+/// `standalone` points at a config-dir-relative path rather than `./`
+/// so launching the agent from a different shell doesn't silently
+/// change what loads. Pass `--plugins-dir .` for in-tree dev.
+pub fn default_plugins_dir(role: Role) -> PathBuf {
+    match role {
+        Role::Standalone => dirs_config_home()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("plugins"),
+        Role::Edge => PathBuf::from("/var/lib/agent/plugins"),
+        Role::Cloud => PathBuf::from("/opt/agent/plugins"),
+    }
+}
+
+/// Minimal XDG / platform-native config home resolver. Stays in-crate
+/// to avoid adding `dirs` as a dependency for one lookup.
+fn dirs_config_home() -> Option<PathBuf> {
+    if let Some(x) = std::env::var_os("XDG_CONFIG_HOME") {
+        if !x.is_empty() {
+            return Some(PathBuf::from(x).join("agent"));
+        }
+    }
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config").join("agent"))
 }

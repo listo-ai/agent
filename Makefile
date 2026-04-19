@@ -53,7 +53,7 @@ build: ## Build agent (debug by default; RELEASE=1 for release)
 
 .PHONY: run
 run: ## Run agent in standalone mode (RELEASE=1 for release build)
-	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- --role standalone
+	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --role standalone --plugins-dir ./plugins
 
 .PHONY: frontend
 frontend: build-client ## Start the Rsbuild dev server (builds client first)

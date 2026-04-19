@@ -38,7 +38,7 @@ pub fn mount(state: AppState) -> Router {
         // Versioned API.
         .route("/api/v1/capabilities", get(capabilities))
         .route("/api/v1/nodes", get(list_nodes).post(create_node))
-        .route("/api/v1/node", get(get_node))
+        .route("/api/v1/node", get(get_node).delete(delete_node))
         .route("/api/v1/slots", post(write_slot))
         .route("/api/v1/config", post(set_config))
         .route("/api/v1/events", get(stream_events))
@@ -48,6 +48,10 @@ pub fn mount(state: AppState) -> Router {
         .route("/api/v1/seed", post(seed_preset))
         // UI is unversioned — it's a tool, not a contract.
         .route("/", get(ui::index))
+        // Plugin REST + MF bundle serving — contributed by the plugins
+        // module, merged in so the tower layers below apply uniformly.
+        .merge(crate::plugins::routes())
+        .merge(crate::kinds::routes())
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -119,6 +123,15 @@ async fn get_node(
         .get(&path)
         .ok_or_else(|| ApiError::not_found(format!("no node at `{path}`")))?;
     Ok(Json(NodeDto::from(snap)))
+}
+
+async fn delete_node(
+    State(s): State<AppState>,
+    Query(q): Query<PathQuery>,
+) -> Result<StatusCode, ApiError> {
+    let path = parse_path(&q.path)?;
+    s.graph.delete(&path).map_err(ApiError::from_graph)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -211,7 +224,7 @@ async fn stream_events(
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 
-fn parse_path(s: &str) -> Result<NodePath, ApiError> {
+pub(crate) fn parse_path(s: &str) -> Result<NodePath, ApiError> {
     NodePath::from_str(s).map_err(|e| ApiError::bad_request(format!("bad path `{s}`: {e}")))
 }
 

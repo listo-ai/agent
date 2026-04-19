@@ -87,8 +87,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 axum = { version = "0.7" }
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures-util = "0.3"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+schemars = { version = "0.8", features = ["derive"] }
 semver = { version = "1", features = ["serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 syn = { version = "2", features = ["full"] }

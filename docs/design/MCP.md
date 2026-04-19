@@ -64,7 +64,9 @@ All three must work independently. Disabling at runtime must not rely on rebuild
 | Destructive tools | Opt-in — `deploy`, `delete`, `restart` require an additional config flag |
 | Prompt injection via tool *descriptions* | Descriptions are static, reviewed, never include live data |
 | Prompt injection via tool *results* | **The real risk.** Device names, flow descriptions, log lines, audit messages contain user-authored text that may carry injected instructions. We do not sanitize content flowing to the LLM — that's the client's responsibility. What we do: (a) return **structured** results where possible (JSON fields, not prose), (b) clearly demarcate user-authored content in results with stable markers, (c) never echo tool results back into a follow-up tool description. Document for integrators that tool *results* are attacker-influenced input. |
-| Idempotency | Opt-in per tool via explicit `Idempotency-Key` input field backed by server-side dedupe. Not implicit — "same args = same outcome" is only true when the key is provided. |
+| Idempotency | Opt-in per tool via explicit `Idempotency-Key` input field backed by server-side dedupe. Not implicit — "same args = same outcome" is only true when the key is provided. See [Tool design principles § 3](#tool-design-principles) — that row explicitly defers to this one. |
+| Tool-name collisions | Core tools reserve the unprefixed namespace (`list_flows`, `deploy_flow`, …). Plugin-contributed tools are auto-prefixed by the plugin id's last segment (`bacnet.discover_v1`). Two plugins colliding on the same last segment is a scan-time `Failed` for the second one — first-writer-wins, but collisions surface at load, never silently at call time. See [§ Plugin- and node-contributed tools](#plugin--and-node-contributed-tools). |
+| Resource cache invalidation | Every cached resource carries a TTL and an invalidation subject — `flow://<id>` invalidates on `graph.<tenant>.<flow-path>.slot.*.changed`; `device://<id>` likewise. TTL is the safety net (default 30s); the graph-event subscription is the freshness mechanism. Resources backed by immutable data (`schema://flow`, `docs://api`) have no TTL. |
 
 ## Tool design principles
 
@@ -72,7 +74,7 @@ Tools are where most MCP implementations go wrong. Rules for ours:
 
 1. **One tool, one verb.** `list_flows`, `deploy_flow`, `get_flow_logs` — not a single `flow_tool` with a `subcommand` parameter.
 2. **Version in the name.** `deploy_flow_v1`. When we change the schema, it's a new tool; old clients keep working.
-3. **Idempotency where possible.** `deploy_flow` with the same args twice = same outcome.
+3. **Idempotency is explicit, not implicit.** `deploy_flow` with the same args twice = same outcome **only** when the caller provides an `Idempotency-Key` input field; the server dedupes against it. Never assume "same args ⇒ same effect" at the protocol level — see the idempotency row in [Security defaults](#security-defaults).
 4. **Structured errors.** LLM can recover from a typed error like `{ "code": "flow_not_found", "id": "..." }`. It cannot recover from a stringified Rust panic.
 5. **Small, focused schemas.** Every tool input and output documented via JSON Schema. No "arbitrary object" parameters.
 6. **Safe by default.** Read tools are always available. Write tools are opt-in via config.
@@ -113,6 +115,101 @@ Tools are where most MCP implementations go wrong. Rules for ours:
 | `uninstall_extension` | Remove an extension |
 | `restart_agent` | Restart an edge agent |
 
+## Plugin- and node-contributed tools
+
+Core tools above are hand-curated. Plugins and node kinds contribute additional tools through their manifests — the MCP surface grows with the platform without the core team curating every new verb.
+
+**The parity rule holds.** The MCP server never gains a code path that bypasses the REST router. Plugin-contributed tools dispatch via one of exactly two mechanisms:
+
+| Dispatch kind | What it is | Who uses it |
+|---|---|---|
+| `rest_proxy` | MCP handler re-issues the call through the in-process REST router. Declared in `plugin.yaml` with `{method, path}`. | Plugins that already expose a `/api/v1/plugins/<id>/rpc/<action>` REST route. |
+| `node_action` | MCP handler dispatches to a node's declared action via `POST /api/v1/nodes/:id/actions/:action` — a uniform REST surface every kind with an `mcp.actions` manifest block gets for free. | Node kinds contributing actions through their kind manifest (e.g. `bacnet.device.read_point.v1`). |
+
+Nothing else. No direct Wasm/process/native hooks into the MCP server.
+
+### Plugin manifest — `contributes.mcp`
+
+Full shape in [PLUGINS.md § MCP contributions](PLUGINS.md). Summary:
+
+```yaml
+contributes:
+  mcp:
+    tools:
+      - id: discover_v1                        # registered as "<plugin-last-segment>.discover_v1"
+        title: "Discover BACnet devices"
+        description_md: "docs/mcp/discover.md" # static, shipped in the signed bundle
+        input_schema:  schemas/discover_in.json
+        output_schema: schemas/discover_out.json
+        tier: read                              # read | write | destructive
+        dispatch:
+          kind: rest_proxy
+          method: POST
+          path: /api/v1/plugins/com.acme.bacnet/rpc/discover
+    resources:
+      - uri_pattern: "bacnet://{device_id}"
+        backing: node
+        kind_filter: acme.driver.bacnet.device
+    prompts:
+      - id: investigate_bacnet_fault
+        template: prompts/investigate.md
+```
+
+### Node-kind manifest — automatic tool contribution
+
+Kind manifests can declare invokable actions; each one becomes a tool named `<kind-last-segment>.<action>.v1`:
+
+```yaml
+# kinds/bacnet_device.yaml
+id: acme.driver.bacnet.device
+mcp:
+  actions:
+    - id: read_point
+      input_schema:  { $ref: "#/settings" }
+      output_schema: { $ref: "#/slots/value" }
+      tier: read
+    - id: write_point
+      tier: write
+```
+
+### Invariants preserved
+
+| Invariant | How |
+|---|---|
+| **REST ≡ MCP parity** | Only `rest_proxy` and `node_action` dispatch. A plugin tool whose declared REST path doesn't exist at load is a manifest parse error. |
+| **Static descriptions, no live data** | `description_md` is a file in the signed plugin bundle. Author-controlled but signature-bound — same trust model as the plugin's code. Never interpolated with runtime data. |
+| **RBAC** | Plugin tool calls use the same `AuthContext` + RBAC middleware as REST. `required_capabilities` (matched via the [VERSIONING.md](VERSIONING.md) capability matcher) filter tool visibility at `tools/list` time — callers never see tools they can't invoke. |
+| **Write/destructive gating** | `tier: write` tools register only if `mcp.allow_writes`. `tier: destructive` likewise. Plugin authors can't self-promote. |
+| **Audit** | Every call logs `{mcp_session, user, plugin_id, tool_id, args_hash, dispatch_kind}`. Plugin provenance is a first-class audit field. |
+| **Prompt-injection via results** | Plugin tool responses must validate against their declared `output_schema`. Free-form prose is rejected at the response boundary — plugins can't smuggle instructions in unexpected fields. |
+| **Name-collision safety** | Plugin tools auto-prefixed by plugin id last segment; two plugins colliding on the same last segment fail the scan — see [Security defaults](#security-defaults). |
+
+### Fourth off-switch layer
+
+The three global layers (`--features mcp`, config `mcp.enabled`, runtime `yourapp mcp disable`) remain. A fourth, complementary knob covers the plugin surface only:
+
+```yaml
+mcp:
+  enabled: true
+  plugin_tools_enabled: false   # kills plugin-contributed tools only; core tools unaffected
+```
+
+Useful when an operator wants MCP for their team but doesn't yet trust third-party plugin-contributed tools. Default: `true` (follow the plugin lifecycle — if a plugin is `Enabled`, its tools are live). Setting to `false` hides every plugin- and node-contributed tool from `tools/list` without touching the plugin's REST routes or UI bundle.
+
+### Not in scope
+
+- **Plugin-supplied dispatch kinds** beyond `rest_proxy` and `node_action`. Avoids a second, shadow API surface that escapes audit/RBAC.
+- **Plugins contributing new MCP *primitives*.** MCP has three (resources, tools, prompts); plugins fill those slots but can't define a fourth.
+- **Dynamic tool descriptions** (e.g. embedding a node's current slot value). Static only — that's exactly the injection hole the [Security defaults](#security-defaults) prompt-injection row warns about.
+
+### When it lands
+
+| Stage | What |
+|---|---|
+| **Stage 10 (Extension lifecycle)** | `plugin.yaml` `contributes.mcp` parsed; `required_capabilities` enforced; signed descriptions required. |
+| **Stage 14 (MCP server)** | Core tool inventory + runtime registration of plugin- and node-contributed tools + `plugin_tools_enabled` kill switch. Resource/prompt contributions parsed; resources ship. |
+| **Post-v1** | Plugin-contributed prompts; per-plugin rate limits; richer resource backings. |
+
 ## Resources
 
 Resources are read-only URIs the LLM can subscribe to or reference. They're useful for giving the LLM context without burning tool calls.
@@ -126,6 +223,14 @@ Resources are read-only URIs the LLM can subscribe to or reference. They're usef
 | `schema://flow` | Current flow JSON Schema |
 | `schema://extension` | Extension manifest schema |
 | `docs://api` | OpenAPI spec |
+
+### Subscriptions
+
+MCP resource subscriptions map to the graph event bus — the same `graph.<tenant>.<path>.slot.*.changed` wildcard subjects the Studio uses. A client that subscribes to `flow://<id>` receives an update on every persistent slot change under that flow's subtree; `device://<id>` likewise.
+
+Subscription fan-out reuses [`transport-rest`'s broadcast sink](../../crates/transport-rest/src/sink.rs) — no second event pipeline. Slow MCP consumers lag (same bounded-broadcast semantics as SSE); they never block the engine.
+
+Cache invalidation rides the same subjects — see the "Resource cache invalidation" row in [Security defaults](#security-defaults).
 
 ## Prompts
 

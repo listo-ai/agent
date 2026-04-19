@@ -1,0 +1,7 @@
+{
+  "code": "illegal_transition",
+  "message": "VARIES",
+  "details": {
+    "http_status": 400
+  }
+}
