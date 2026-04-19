@@ -538,8 +538,8 @@ async fn seed_preset(
 #[derive(Debug, Serialize)]
 pub(crate) struct ApiError {
     #[serde(skip)]
-    status: StatusCode,
-    error: String,
+    pub(crate) status: StatusCode,
+    pub(crate) error: String,
 }
 
 impl ApiError {

@@ -78,6 +78,8 @@ export type {
 } from "./schemas/ui.js";
 export type { WriteSlotResponse } from "./schemas/slot.js";
 export type { SeedResult, SeededNode } from "./schemas/seed.js";
+export type { HistoryRecord, ScalarRecord, RecordResult } from "./schemas/history.js";
+export type { HistoryApi, HistoryQueryOptions } from "./domain/history.js";
 
 // Domain request shapes.
 export type { LinkEndpointRef } from "./domain/links.js";

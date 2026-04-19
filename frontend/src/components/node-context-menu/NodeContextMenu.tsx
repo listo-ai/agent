@@ -1,26 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, PlusCircle, Settings, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-export interface NodeContextMenuItem {
-  label: string;
-  icon?: React.ReactNode;
-  onClick: () => void;
-  variant?: "default" | "destructive";
-  disabled?: boolean;
-}
-
-export interface NodeContextMenuProps {
-  /** Viewport X position (from mouseEvent.clientX). */
-  x: number;
-  /** Viewport Y position (from mouseEvent.clientY). */
-  y: number;
-  /** Human-readable name shown at the top of the menu. */
-  nodeLabel: string;
-  items: NodeContextMenuItem[];
-  onClose: () => void;
-}
+import type { NodeContextMenuProps } from "./types";
 
 /**
  * Reusable right-click context menu for a node.
@@ -97,31 +78,4 @@ export function NodeContextMenu({
     </div>,
     document.body,
   );
-}
-
-// ─── Convenience factory for the standard node items ──────────────────────
-
-export function buildNodeContextItems({
-  onOpen,
-  onAddChild,
-  onSettings,
-  onDelete,
-}: {
-  /** Navigate into this node so its children are shown on the canvas. */
-  onOpen?: () => void;
-  /** Open the Add-child-node dialog for this node. */
-  onAddChild?: () => void;
-  onSettings: () => void;
-  onDelete: () => void;
-}): NodeContextMenuItem[] {
-  const items: NodeContextMenuItem[] = [];
-  if (onOpen) {
-    items.push({ label: "Open", icon: <FolderOpen size={14} />, onClick: onOpen });
-  }
-  if (onAddChild) {
-    items.push({ label: "Add child node", icon: <PlusCircle size={14} />, onClick: onAddChild });
-  }
-  items.push({ label: "Settings", icon: <Settings size={14} />, onClick: onSettings });
-  items.push({ label: "Delete", icon: <Trash2 size={14} />, onClick: onDelete, variant: "destructive" });
-  return items;
 }

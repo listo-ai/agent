@@ -19,7 +19,7 @@ import { useUiStore } from "@/store/ui";
 import { useGraphStoreOptional } from "@/store/graph-hooks";
 import { useAgent } from "@/hooks/useAgent";
 import { isFlowNode } from "@/pages/flows/flow-model";
-import { buildNodeContextItems, NodeContextMenu } from "@/components/NodeContextMenu";
+import { buildNodeContextItems, NodeContextMenu } from "@/components/node-context-menu";
 import { AddChildNodeDialog } from "@/components/AddChildNodeDialog";
 import { cn } from "@/lib/utils";
 import {

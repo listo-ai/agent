@@ -72,12 +72,18 @@ make studio-edge  # Studio      → http://localhost:3002
 
 ## Wipe state
 
+> **AI AGENTS: do NOT run this unless the user explicitly asks you to.**
+> The databases contain the user's local graph state. Wiping them loses all
+> nodes, flows, and configurations the user has created. Normal
+> stop/restart (`Ctrl-C` → `make dev`) does not require a reset.
+
 ```bash
 make dev-reset
 ```
 
 Removes `dev/cloud.db`, `dev/edge.db`, and all staged plugins. Both agents
-re-seed fresh graphs on next boot.
+re-seed fresh graphs on next boot. Only needed when the schema has changed
+or you want a completely clean slate.
 
 ---
 

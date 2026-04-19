@@ -10,8 +10,8 @@ SHELL         := /bin/bash
 BIN           := agent
 CARGO         := cargo
 CROSS         := cross
-# nvm installs node (and pnpm) under ~/.nvm; prepend so make can find them.
-export PATH := $(HOME)/.nvm/versions/node/v22.22.0/bin:$(PATH)
+# pnpm and node are symlinked into ~/.local/bin (stable across nvm version switches).
+export PATH := $(HOME)/.local/bin:$(PATH)
 
 PNPM          := pnpm
 CLIENT_PKG    := @sys/agent-client

@@ -38,5 +38,6 @@ ui-ir = { workspace = true }
 
 [dev-dependencies]
 data-sqlite = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
 transport-fleet-zenoh = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }

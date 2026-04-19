@@ -13,8 +13,10 @@ import { createPluginsApi } from "./domain/plugins.js";
 import { createKindsApi } from "./domain/kinds.js";
 import { createAuthApi } from "./domain/auth.js";
 import { createUiApi } from "./domain/ui.js";
+import { createHistoryApi } from "./domain/history.js";
 import type { NodesApi } from "./domain/nodes.js";
 import type { SlotsApi } from "./domain/slots.js";
+import type { HistoryApi } from "./domain/history.js";
 import type { ConfigApi } from "./domain/config.js";
 import type { EventsApi } from "./domain/events.js";
 import type { LinksApi } from "./domain/links.js";
@@ -94,6 +96,7 @@ export class AgentClient {
   readonly kinds: KindsApi;
   readonly auth: AuthApi;
   readonly ui: UiApi;
+  readonly history: HistoryApi;
 
   private constructor(
     transport: RequestTransport,
@@ -111,6 +114,7 @@ export class AgentClient {
     this.kinds = createKindsApi(transport, REST_API_VERSION);
     this.auth = createAuthApi(transport, REST_API_VERSION);
     this.ui = createUiApi(transport, REST_API_VERSION);
+    this.history = createHistoryApi(transport, REST_API_VERSION);
 
     if (FleetScope.isLocal(scope)) {
       // Local: real SSE stream against baseUrl.

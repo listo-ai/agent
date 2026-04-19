@@ -22,7 +22,7 @@ import {
   type OnSelectionChangeParams,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { buildNodeContextItems, NodeContextMenu } from "@/components/NodeContextMenu";
+import { buildNodeContextItems, NodeContextMenu } from "@/components/node-context-menu";
 import { cn } from "@/lib/utils";
 import {
   formatLiveValue,

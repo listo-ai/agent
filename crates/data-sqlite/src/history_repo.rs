@@ -215,3 +215,224 @@ impl HistoryRepo for SqliteHistoryRepo {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Open an in-memory repo with all migrations applied, and seed a dummy
+    /// node so FK constraints on `slot_history.node_id` are satisfied.
+    fn mk() -> (SqliteHistoryRepo, Uuid) {
+        let repo = SqliteHistoryRepo::open_memory().unwrap();
+        let id = Uuid::nil();
+        repo.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO nodes (id, kind_id, path, name, lifecycle)
+                 VALUES (?1, 'sys.core.folder', '/test', 'test', 'created')",
+                [id.to_string()],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        (repo, id)
+    }
+
+    fn string_rec(node_id: Uuid, slot: &str, value: &str, ts: i64) -> HistoryRecord {
+        HistoryRecord {
+            id: 0,
+            node_id,
+            slot_name: slot.to_string(),
+            slot_kind: HistorySlotKind::String,
+            ts_ms: ts,
+            value_json: Some(format!("\"{}\"", value)),
+            blob_bytes: None,
+            byte_size: value.len() as i64,
+            ntp_synced: true,
+            last_sync_age_ms: None,
+        }
+    }
+
+    fn json_rec(node_id: Uuid, slot: &str, ts: i64) -> HistoryRecord {
+        HistoryRecord {
+            id: 0,
+            node_id,
+            slot_name: slot.to_string(),
+            slot_kind: HistorySlotKind::Json,
+            ts_ms: ts,
+            value_json: Some("{\"x\":1}".to_string()),
+            blob_bytes: None,
+            byte_size: 7,
+            ntp_synced: true,
+            last_sync_age_ms: None,
+        }
+    }
+
+    #[test]
+    fn insert_and_query_round_trip() {
+        let (repo, id) = mk();
+        let records = vec![
+            string_rec(id, "notes", "first",  1000),
+            string_rec(id, "notes", "second", 2000),
+            string_rec(id, "notes", "third",  3000),
+        ];
+        repo.insert_batch(&records, 100).unwrap();
+
+        let q = HistoryQuery {
+            node_id: id,
+            slot_name: "notes".into(),
+            from_ms: 0,
+            to_ms: 9999,
+            limit: None,
+        };
+        let result = repo.query_range(&q).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].ts_ms, 1000);
+        assert_eq!(result[0].value_json.as_deref(), Some("\"first\""));
+        assert_eq!(result[2].ts_ms, 3000);
+    }
+
+    #[test]
+    fn time_range_filters_correctly() {
+        let (repo, id) = mk();
+        let records = vec![
+            string_rec(id, "notes", "a", 1000),
+            string_rec(id, "notes", "b", 2000),
+            string_rec(id, "notes", "c", 3000),
+        ];
+        repo.insert_batch(&records, 100).unwrap();
+
+        let q = HistoryQuery {
+            node_id: id,
+            slot_name: "notes".into(),
+            from_ms: 1500,
+            to_ms: 2500,
+            limit: None,
+        };
+        let result = repo.query_range(&q).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].ts_ms, 2000);
+    }
+
+    #[test]
+    fn limit_caps_result_set() {
+        let (repo, id) = mk();
+        let records: Vec<_> = (0..10)
+            .map(|i| string_rec(id, "notes", "v", i * 1000))
+            .collect();
+        repo.insert_batch(&records, 100).unwrap();
+
+        let q = HistoryQuery {
+            node_id: id,
+            slot_name: "notes".into(),
+            from_ms: 0,
+            to_ms: 99999,
+            limit: Some(3),
+        };
+        let result = repo.query_range(&q).unwrap();
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn cap_enforced_at_insert() {
+        let (repo, id) = mk();
+        // Insert 7 records with a cap of 4 — oldest 3 must be evicted.
+        let batch: Vec<_> = (0..7)
+            .map(|i| string_rec(id, "notes", "v", i * 1000))
+            .collect();
+        repo.insert_batch(&batch, 4).unwrap();
+        assert_eq!(repo.count(id, "notes").unwrap(), 4);
+
+        // The 4 surviving records should be the newest.
+        let q = HistoryQuery {
+            node_id: id,
+            slot_name: "notes".into(),
+            from_ms: 0,
+            to_ms: 99999,
+            limit: None,
+        };
+        let result = repo.query_range(&q).unwrap();
+        assert_eq!(result[0].ts_ms, 3000); // oldest evicted: 0,1,2 ms
+    }
+
+    #[test]
+    fn count_returns_row_count() {
+        let (repo, id) = mk();
+        assert_eq!(repo.count(id, "notes").unwrap(), 0);
+        repo.insert_batch(&[string_rec(id, "notes", "v", 1)], 100).unwrap();
+        repo.insert_batch(&[string_rec(id, "notes", "v", 2)], 100).unwrap();
+        assert_eq!(repo.count(id, "notes").unwrap(), 2);
+        // Different slot — isolated counter.
+        assert_eq!(repo.count(id, "other").unwrap(), 0);
+    }
+
+    #[test]
+    fn evict_oldest_removes_correct_rows() {
+        let (repo, id) = mk();
+        let batch: Vec<_> = (0..5)
+            .map(|i| string_rec(id, "notes", "v", i * 1000))
+            .collect();
+        repo.insert_batch(&batch, 100).unwrap();
+
+        repo.evict_oldest(id, "notes", 2).unwrap();
+        assert_eq!(repo.count(id, "notes").unwrap(), 3);
+
+        // Verify the two oldest (ts=0, ts=1000) are gone.
+        let q = HistoryQuery {
+            node_id: id,
+            slot_name: "notes".into(),
+            from_ms: 0,
+            to_ms: 1500,
+            limit: None,
+        };
+        assert!(repo.query_range(&q).unwrap().is_empty());
+    }
+
+    #[test]
+    fn bytes_in_window_sums_byte_size() {
+        let (repo, id) = mk();
+        let day_start: i64 = 1_700_000_000_000; // some fixed ms timestamp
+        let in_window = vec![
+            // byte_size is the string length in string_rec
+            string_rec(id, "fault", "abc",    day_start + 1_000),   // 3 bytes
+            string_rec(id, "fault", "hello",  day_start + 3_600_000), // 5 bytes
+        ];
+        let out_of_window = vec![
+            string_rec(id, "fault", "old", day_start - 1), // before window
+            string_rec(id, "fault", "new", day_start + 86_400_001), // after window
+        ];
+        repo.insert_batch(&in_window, 100).unwrap();
+        repo.insert_batch(&out_of_window, 100).unwrap();
+
+        let total = repo.bytes_in_window(id, "fault", day_start).unwrap();
+        assert_eq!(total, 3 + 5);
+    }
+
+    #[test]
+    fn json_slot_kind_round_trips() {
+        let (repo, id) = mk();
+        repo.insert_batch(&[json_rec(id, "config", 1000)], 100).unwrap();
+        let q = HistoryQuery {
+            node_id: id,
+            slot_name: "config".into(),
+            from_ms: 0,
+            to_ms: 9999,
+            limit: None,
+        };
+        let result = repo.query_range(&q).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].slot_kind, HistorySlotKind::Json);
+        assert_eq!(result[0].value_json.as_deref(), Some("{\"x\":1}"));
+    }
+
+    #[test]
+    fn slot_isolation_between_slots() {
+        let (repo, id) = mk();
+        repo.insert_batch(&[string_rec(id, "a", "va", 1)], 100).unwrap();
+        repo.insert_batch(&[string_rec(id, "b", "vb", 2)], 100).unwrap();
+
+        let q_a = HistoryQuery { node_id: id, slot_name: "a".into(), from_ms: 0, to_ms: 9999, limit: None };
+        let q_b = HistoryQuery { node_id: id, slot_name: "b".into(), from_ms: 0, to_ms: 9999, limit: None };
+        assert_eq!(repo.query_range(&q_a).unwrap().len(), 1);
+        assert_eq!(repo.query_range(&q_b).unwrap().len(), 1);
+    }
+}
