@@ -8,7 +8,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { FileText, ArrowRight } from "lucide-react";
+import { FileText, ArrowRight, Pencil } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -74,27 +74,36 @@ export function PagesListPage() {
       {pages && pages.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {pages.map((page) => (
-            <Link
-              key={page.id}
-              to={`/ui/${encodeURIComponent(page.id)}`}
-              className="group block"
-            >
-              <Card className="transition-colors hover:border-primary/50">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
+            <Card key={page.id} className="transition-colors hover:border-primary/50">
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <Link
+                    to={`/ui/${encodeURIComponent(page.id)}`}
+                    className="group flex min-w-0 flex-1 flex-col gap-0.5"
+                  >
                     <CardTitle className="flex items-center gap-2 text-sm">
                       <FileText size={14} className="text-muted-foreground" />
                       {nameFromPath(page.path)}
+                      <ArrowRight
+                        size={12}
+                        className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                      />
                     </CardTitle>
-                    <ArrowRight
-                      size={14}
-                      className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-                    />
-                  </div>
-                  <CardDescription className="text-xs">{page.path}</CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
+                    <CardDescription className="truncate text-xs">
+                      {page.path}
+                    </CardDescription>
+                  </Link>
+                  <Link
+                    to={`/pages/${encodeURIComponent(page.id)}/edit`}
+                    className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    title="Edit layout"
+                    aria-label={`Edit ${nameFromPath(page.path)}`}
+                  >
+                    <Pencil size={14} />
+                  </Link>
+                </div>
+              </CardHeader>
+            </Card>
           ))}
         </div>
       )}

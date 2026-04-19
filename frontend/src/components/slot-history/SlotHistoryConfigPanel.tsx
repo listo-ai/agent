@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { useAgentClient } from "@/context/AgentClientContext";
+import { useAgent } from "@/hooks/useAgent";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,14 +39,14 @@ interface CovFields {
   deadband: number;
   min_interval_ms: number;
   max_gap_ms: number;
-  max_samples?: number;
+  max_samples?: number | undefined;
 }
 
 interface IntervalFields {
   policy: "interval";
   period_ms: number;
   align_to_wall: boolean;
-  max_samples?: number;
+  max_samples?: number | undefined;
 }
 
 interface OnDemandFields {
@@ -236,7 +236,7 @@ export function SlotHistoryConfigPanel({
   slot,
   onSaved,
 }: SlotHistoryConfigPanelProps) {
-  const client = useAgentClient();
+  const agent = useAgent();
   const qc = useQueryClient();
 
   // ── 1. Resolve config node path ──────────────────────────────────────────
@@ -245,6 +245,7 @@ export function SlotHistoryConfigPanel({
   const configQuery = useQuery({
     queryKey: ["historyConfig", nodePath],
     queryFn: async (): Promise<HistoryConfigSettings | null> => {
+      const client = agent.data!;
       try {
         const node = await client.nodes.getNode(configNodePath);
         const settingsSlot = node.slots?.find?.((s: { name: string }) => s.name === "settings");
@@ -256,6 +257,7 @@ export function SlotHistoryConfigPanel({
         return null; // node doesn't exist yet
       }
     },
+    enabled: agent.data !== undefined,
   });
 
   const existingPolicy: SlotPolicy | undefined =
@@ -283,6 +285,7 @@ export function SlotHistoryConfigPanel({
   // ── 3. Save mutation ──────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const client = agent.data!;
       // Ensure config node exists.
       let configExists = configQuery.data !== null;
       if (!configExists) {
@@ -327,6 +330,7 @@ export function SlotHistoryConfigPanel({
   const removeMutation = useMutation({
     mutationFn: async () => {
       if (!configQuery.data) return;
+      const client = agent.data!;
       const newSlots = { ...configQuery.data.slots };
       delete newSlots[slot];
       const newSettings: HistoryConfigSettings = {

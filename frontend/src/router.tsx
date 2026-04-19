@@ -3,6 +3,7 @@ import { Shell } from "@/components/layout/Shell";
 import { FlowsListPage } from "@/pages/flows/FlowsListPage";
 import { FlowsPage } from "@/pages/flows/FlowsPage";
 import { PagesListPage } from "@/pages/pages/PagesListPage";
+import { PageBuilderPage } from "@/features/page-builder/PageBuilderPage";
 import { ExtensionsPage } from "@/pages/extensions/ExtensionsPage";
 import { PluginsPage } from "@/pages/plugins/PluginsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
       // Matched after flows/edit/* so the edit prefix still wins.
       { path: "flows/*", element: <FlowsPage /> },
       { path: "pages", element: <PagesListPage /> },
+      { path: "pages/:id/edit", element: <PageBuilderPage /> },
       // SDUI renderer — any ui.page node can be navigated to directly.
       { path: "ui/:pageRef", element: <SduiPage /> },
       // SDUI render — pick the target kind's default view (S5).
