@@ -300,18 +300,17 @@ fn collect_target_slots(v: &JsonValue, acc: &mut BTreeSet<String>) {
 }
 
 fn scan_bindings(s: &str, acc: &mut BTreeSet<String>) {
-    let mut rest = s;
-    while let Some(start) = rest.find("{{") {
-        let after = &rest[start + 2..];
-        let Some(end) = after.find("}}") else { break };
-        let expr = after[..end].trim();
-        if let Some(tail) = expr.strip_prefix("$target.") {
-            if !matches!(tail, "id" | "path" | "name" | "kind") {
-                acc.insert(tail.to_string());
+    crate::binding_walk::for_each_binding_expr(
+        s,
+        &mut |expr| {
+            if let Some(tail) = expr.strip_prefix("$target.") {
+                if !matches!(tail, "id" | "path" | "name" | "kind") {
+                    acc.insert(tail.to_string());
+                }
             }
-        }
-        rest = &after[end + 2..];
-    }
+        },
+        &mut || {},
+    );
 }
 
 /// Walk the tree, find every `chart` component with a `source.{node_id,

@@ -23,3 +23,8 @@ pub mod policy;
 pub use config::{HistoryConfig, HistoryConfigSettings, SlotPolicy};
 pub use historizer::Historizer;
 pub use policy::{EffectivePolicy, PolicyKind};
+
+/// Register every kind manifest this crate contributes.
+pub fn register_kinds(kinds: &graph::KindRegistry) {
+    kinds.register(config::manifest());
+}

@@ -616,6 +616,64 @@ async fn ui_resolve_dry_run() {
     assert_shape_match(&actual, &fixture, "$");
 }
 
+async fn server_with_ui_binding_error_fixture() -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    spi::NodeId,
+) {
+    let page_cell: Arc<std::sync::Mutex<Option<spi::NodeId>>> = Arc::new(Default::default());
+    let set = page_cell.clone();
+    let (addr, handle) = start_with_graph(move |g| {
+        let root = spi::NodePath::root();
+        let page = g
+            .create_child(&root, KindId::new("ui.page"), "broken")
+            .unwrap();
+        let page_path = spi::NodePath::from_str("/broken").unwrap();
+        g.write_slot(
+            &page_path,
+            "layout",
+            serde_json::json!({
+                "ir_version": 1,
+                "root": {
+                    "type": "page",
+                    "id": "root",
+                    "title": "{{$target.not_a_slot}}",
+                    "children": []
+                }
+            }),
+        )
+        .unwrap();
+        *set.lock().unwrap() = Some(page);
+    })
+    .await;
+    let page = page_cell.lock().unwrap().unwrap();
+    (addr, handle, page)
+}
+
+#[tokio::test]
+async fn ui_resolve_dry_run_binding_errors() {
+    let (addr, _srv, page) = server_with_ui_binding_error_fixture().await;
+    let c = client(addr);
+    let req = agent_client::types::UiResolveRequest {
+        page_ref: page.0.to_string(),
+        stack: Vec::new(),
+        page_state: serde_json::json!({}),
+        dry_run: true,
+        auth_subject: None,
+        user_claims: Default::default(),
+    };
+    let resp = c.ui().resolve(&req).await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
+    let fixture = load_fixture("ui-resolve/dry-run-binding-errors.json");
+    assert_shape_match(&actual, &fixture, "$");
+    match resp {
+        agent_client::types::UiResolveResponse::DryRun { errors } => {
+            assert!(!errors.is_empty(), "expected at least one binding error");
+        }
+        _ => panic!("expected DryRun variant"),
+    }
+}
+
 async fn server_with_heartbeat_kind() -> (SocketAddr, tokio::task::JoinHandle<()>, spi::NodeId) {
     // Register the sys.logic.heartbeat kind (which carries a default
     // `overview` view via its YAML manifest) and create a node of that

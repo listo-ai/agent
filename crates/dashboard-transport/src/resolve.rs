@@ -130,7 +130,8 @@ pub async fn handler(
                 }],
             }));
         }
-        return Ok(Json(ResolveResponse::DryRun { errors: vec![] }));
+        let errors = collect_binding_issues(&page, &layout, &req, &*state.reader);
+        return Ok(Json(ResolveResponse::DryRun { errors }));
     }
 
     let render: ComponentTree = serde_json::from_value(layout.clone()).map_err(|e| {
@@ -159,6 +160,91 @@ pub async fn handler(
         subscriptions,
         meta,
     }))
+}
+
+fn collect_binding_issues(
+    page: &NodeSnapshot,
+    layout: &JsonValue,
+    req: &ResolveRequest,
+    reader: &(dyn dashboard_runtime::NodeReader + Send + Sync),
+) -> Vec<ResolveIssue> {
+    use dashboard_runtime::{Binding, ContextStack, EvalContext};
+
+    let issues_cell: std::cell::RefCell<Vec<ResolveIssue>> = std::cell::RefCell::new(Vec::new());
+
+    // Build the stack once — stack-build failures are themselves
+    // issues (missing aliased frames, for example).
+    let stack = match ContextStack::build(reader, &req.stack, 128) {
+        Ok(s) => s,
+        Err(e) => {
+            issues_cell.borrow_mut().push(ResolveIssue {
+                location: "root".into(),
+                message: format!("stack build failed: {e}"),
+            });
+            ContextStack::empty()
+        }
+    };
+
+    // Declared `$page.*` fields, if the page carries a schema. A
+    // `null`/missing schema skips the check entirely.
+    let declared_page_fields: Option<std::collections::HashSet<String>> = page
+        .slots
+        .get("page_state_schema")
+        .and_then(|v| v.as_object())
+        .and_then(|m| m.get("properties"))
+        .and_then(|p| p.as_object())
+        .map(|m| m.keys().cloned().collect());
+
+    crate::binding_walk::walk_string_leaves(layout, "root", &mut |loc, s| {
+        crate::binding_walk::for_each_binding_expr(
+            s,
+            &mut |expr| {
+                let parsed = match Binding::parse(expr) {
+                    Ok(b) => b,
+                    Err(err) => {
+                        issues_cell.borrow_mut().push(ResolveIssue {
+                            location: loc.into(),
+                            message: err.to_string(),
+                        });
+                        return;
+                    }
+                };
+                if let (Some(declared), dashboard_runtime::Source::PageField(field)) =
+                    (declared_page_fields.as_ref(), &parsed.source)
+                {
+                    if !declared.contains(field) {
+                        issues_cell.borrow_mut().push(ResolveIssue {
+                            location: loc.into(),
+                            message: format!("unresolved $page.{field} — not declared in page_state_schema.properties"),
+                        });
+                        return;
+                    }
+                }
+                let ctx = EvalContext {
+                    reader,
+                    stack: &stack,
+                    self_id: page.id,
+                    user_claims: &req.user_claims,
+                    page_state: &req.page_state,
+                    access_log: None,
+                };
+                if let Err(err) = parsed.evaluate(&ctx) {
+                    issues_cell.borrow_mut().push(ResolveIssue {
+                        location: loc.into(),
+                        message: err.to_string(),
+                    });
+                }
+            },
+            &mut || {
+                issues_cell.borrow_mut().push(ResolveIssue {
+                    location: loc.into(),
+                    message: "unterminated `{{` binding expression".into(),
+                });
+            },
+        );
+    });
+
+    issues_cell.into_inner()
 }
 
 fn enforce_subscription_cap(subs: &[SubscriptionPlan]) -> Result<(), TransportError> {

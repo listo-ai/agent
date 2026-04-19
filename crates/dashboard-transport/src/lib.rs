@@ -13,6 +13,7 @@ use tower_http::cors::CorsLayer;
 pub mod acl;
 pub mod action;
 pub mod audit;
+pub mod binding_walk;
 pub mod error;
 pub mod handler_registry;
 pub mod invalidate;
