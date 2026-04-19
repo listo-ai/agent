@@ -62,7 +62,10 @@ pub struct SlotValue {
 
 impl SlotValue {
     pub fn new(value: JsonValue) -> Self {
-        Self { value, generation: 0 }
+        Self {
+            value,
+            generation: 0,
+        }
     }
 
     pub(crate) fn bump(&mut self, new_value: JsonValue) {
@@ -99,6 +102,21 @@ impl SlotMap {
         let slot = self.inner.get_mut(name)?;
         slot.bump(value);
         Some(slot.generation)
+    }
+
+    /// Seed a slot with a specific value and generation. Used by
+    /// [`crate::persist`] during startup restoration \u{2014} no event fires
+    /// because no user-facing mutation is happening.
+    pub(crate) fn restore(&mut self, name: impl Into<String>, value: JsonValue, generation: u64) {
+        self.inner
+            .insert(name.into(), SlotValue { value, generation });
+    }
+
+    /// The current generation of the named slot, or `None` if the slot
+    /// isn't declared. Used by the write-through path to compute the
+    /// next generation for the repo call before committing to memory.
+    pub(crate) fn current_generation(&self, name: &str) -> Option<u64> {
+        self.inner.get(name).map(|sv| sv.generation)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &SlotValue)> {

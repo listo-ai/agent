@@ -73,7 +73,9 @@ mod tests {
     async fn publish_reaches_subscriber() {
         let bus = InProcessBus::new(16);
         let mut sub = bus.subscribe("graph.test.created").await.unwrap();
-        bus.publish("graph.test.created", b"hello".to_vec()).await.unwrap();
+        bus.publish("graph.test.created", b"hello".to_vec())
+            .await
+            .unwrap();
         let msg = sub.recv().await.unwrap();
         assert_eq!(msg, b"hello");
     }

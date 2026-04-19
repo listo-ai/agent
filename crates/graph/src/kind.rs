@@ -91,7 +91,10 @@ impl KindRegistry {
     }
 
     pub fn contains(&self, id: &KindId) -> bool {
-        self.inner.read().map(|m| m.contains_key(id)).unwrap_or(false)
+        self.inner
+            .read()
+            .map(|m| m.contains_key(id))
+            .unwrap_or(false)
     }
 
     pub fn len(&self) -> usize {

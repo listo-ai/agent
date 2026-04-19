@@ -6,12 +6,16 @@
 //! transactionally, and emits the matching [`GraphEvent`] via the
 //! configured [`EventSink`].
 //!
-//! Persistent backing via `data-repos` lands in Stage 5 behind this
-//! same public surface.
+//! Persistent backing via `data-repos` is wired through the optional
+//! [`GraphRepo`] passed to [`GraphStore::with_repo`]. Mutations are
+//! write-through: the DB write happens before the in-memory change, so a
+//! backend failure leaves the store untouched. In-memory-only stores
+//! (tests, ephemeral roles) skip the repo path entirely.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use data_repos::GraphRepo;
 use serde_json::Value as JsonValue;
 
 use crate::containment::{Cardinality, CascadePolicy};
@@ -22,10 +26,13 @@ use crate::kind::{KindManifest, KindRegistry};
 use crate::lifecycle::Lifecycle;
 use crate::link::{Link, LinkId, SlotRef};
 use crate::node::{NodeRecord, NodeSnapshot};
+use crate::persist;
+use crate::slot::SlotSchema;
 
 pub struct GraphStore {
     kinds: KindRegistry,
     sink: Arc<dyn EventSink>,
+    repo: Option<Arc<dyn GraphRepo>>,
     inner: RwLock<StoreInner>,
 }
 
@@ -40,12 +47,131 @@ impl GraphStore {
         Self {
             kinds,
             sink,
+            repo: None,
             inner: RwLock::new(StoreInner {
                 by_id: HashMap::new(),
                 by_path: HashMap::new(),
                 links: HashMap::new(),
             }),
         }
+    }
+
+    /// Construct a store backed by a durable repo and restore any
+    /// pre-existing graph state from it.
+    ///
+    /// Kinds must already be registered: the restore phase rejects
+    /// nodes whose `kind_id` isn't present in the registry, so a DB
+    /// with extension-contributed nodes is only safely restored after
+    /// every extension has registered its kinds.
+    pub fn with_repo(
+        kinds: KindRegistry,
+        sink: Arc<dyn EventSink>,
+        repo: Arc<dyn GraphRepo>,
+    ) -> Result<Self, GraphError> {
+        let store = Self {
+            kinds,
+            sink,
+            repo: Some(repo.clone()),
+            inner: RwLock::new(StoreInner {
+                by_id: HashMap::new(),
+                by_path: HashMap::new(),
+                links: HashMap::new(),
+            }),
+        };
+        store.restore(repo.as_ref())?;
+        Ok(store)
+    }
+
+    fn restore(&self, repo: &dyn GraphRepo) -> Result<(), GraphError> {
+        let snap = persist::load_snapshot(repo)?;
+        let mut g = self.write_inner();
+        for n in &snap.nodes {
+            let kind_id = KindId::new(&n.kind_id);
+            let manifest = self
+                .kinds
+                .get(&kind_id)
+                .ok_or_else(|| GraphError::UnknownKind(kind_id.clone()))?;
+            let id = NodeId(n.id);
+            let path = persist::snapshot_to_path(&n.path);
+            let parent = n.parent_id.map(NodeId);
+            let mut rec = NodeRecord::new(id, kind_id, path.clone(), parent);
+            rec.lifecycle = persist::lifecycle_from_str(&n.lifecycle)?;
+            for slot in &manifest.slots {
+                rec.slots.insert(slot.name.clone(), JsonValue::Null);
+            }
+            if let Some(pid) = parent {
+                if let Some(p) = g.by_id.get_mut(&pid) {
+                    p.children.push(id);
+                }
+            }
+            g.by_id.insert(id, rec);
+            g.by_path.insert(path, id);
+        }
+        for s in snap.slots {
+            let id = NodeId(s.node_id);
+            if let Some(rec) = g.by_id.get_mut(&id) {
+                rec.slots.restore(s.name, s.value, s.generation as u64);
+            }
+        }
+        for l in snap.links {
+            let link = persist::snapshot_to_link(l);
+            g.links.insert(link.id, link);
+        }
+        tracing::info!(
+            nodes = g.by_id.len(),
+            links = g.links.len(),
+            "graph restored from repo",
+        );
+        Ok(())
+    }
+
+    fn repo_save_node(&self, rec: &NodeRecord) -> Result<(), GraphError> {
+        if let Some(repo) = &self.repo {
+            persist::repo_call(repo.save_node(&persist::node_to_persisted(rec)))?;
+        }
+        Ok(())
+    }
+
+    fn repo_delete_nodes(&self, ids: &[NodeId]) -> Result<(), GraphError> {
+        if let Some(repo) = &self.repo {
+            let raw: Vec<_> = ids.iter().map(|n| n.0).collect();
+            persist::repo_call(repo.delete_nodes(&raw))?;
+        }
+        Ok(())
+    }
+
+    fn repo_save_slot(
+        &self,
+        node_id: NodeId,
+        schema: &SlotSchema,
+        value: &JsonValue,
+        generation: u64,
+    ) -> Result<(), GraphError> {
+        if let Some(repo) = &self.repo {
+            persist::repo_call(repo.upsert_slot(&persist::slot_to_persisted(
+                node_id,
+                &schema.name,
+                schema.role,
+                value,
+                generation,
+            )))?;
+        }
+        Ok(())
+    }
+
+    fn repo_save_link(&self, link: &Link) -> Result<(), GraphError> {
+        if let Some(repo) = &self.repo {
+            persist::repo_call(repo.save_link(&persist::link_to_persisted(link)))?;
+        }
+        Ok(())
+    }
+
+    fn repo_delete_links(&self, ids: &[LinkId]) -> Result<(), GraphError> {
+        if let Some(repo) = &self.repo {
+            let raw: Vec<_> = ids.iter().map(|l| l.0).collect();
+            persist::repo_call(repo.delete_links(&raw))?;
+        }
+        Ok(())
     }
 
     pub fn kinds(&self) -> &KindRegistry {
@@ -61,12 +187,12 @@ impl GraphStore {
             return Err(GraphError::RootAlreadyExists);
         }
         let id = NodeId::new();
-        let record = NodeRecord::new(id, kind.clone(), NodePath::root(), None);
-        // Pre-materialise declared slots.
-        let mut record = record;
+        let mut record = NodeRecord::new(id, kind.clone(), NodePath::root(), None);
         for slot in &manifest.slots {
             record.slots.insert(slot.name.clone(), JsonValue::Null);
         }
+        // Repo first — failure here leaves both memory and DB clean.
+        self.repo_save_node(&record)?;
         g.by_id.insert(id, record);
         g.by_path.insert(NodePath::root(), id);
         drop(g);
@@ -105,10 +231,14 @@ impl GraphStore {
 
         // Placement check: parent may contain this kind.
         if !parent_manifest.containment.may_contain.is_empty() {
-            let ok = parent_manifest.containment.may_contain.iter().any(|m| match m {
-                crate::containment::ParentMatcher::Kind(k) => k == &kind,
-                crate::containment::ParentMatcher::Facet(f) => manifest.facets.contains(*f),
-            });
+            let ok = parent_manifest
+                .containment
+                .may_contain
+                .iter()
+                .any(|m| match m {
+                    crate::containment::ParentMatcher::Kind(k) => k == &kind,
+                    crate::containment::ParentMatcher::Facet(f) => manifest.facets.contains(*f),
+                });
             if !ok {
                 return Err(GraphError::PlacementRejected {
                     kind,
@@ -165,6 +295,8 @@ impl GraphStore {
         for slot in &manifest.slots {
             record.slots.insert(slot.name.clone(), JsonValue::Null);
         }
+        // Repo first — failure aborts before any memory mutation.
+        self.repo_save_node(&record)?;
         g.by_id.insert(id, record);
         g.by_path.insert(path.clone(), id);
         if let Some(p) = g.by_id.get_mut(&parent_id) {
@@ -187,7 +319,11 @@ impl GraphStore {
         // Collect the subtree (self + descendants), depth-first post-order,
         // so children are removed before parents. Cascade policy enforced
         // on the root of the delete.
-        let root_rec = g.by_id.get(&id).cloned().ok_or_else(|| GraphError::NotFound(path.clone()))?;
+        let root_rec = g
+            .by_id
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| GraphError::NotFound(path.clone()))?;
         let root_manifest = self.require_kind(&root_rec.kind)?;
 
         let mut subtree: Vec<NodeId> = Vec::new();
@@ -213,6 +349,13 @@ impl GraphStore {
                 true
             }
         });
+
+        // Repo: remove links, then nodes. ON DELETE CASCADE handles slot
+        // rows via the FK; calling delete_links here is explicit so the
+        // repo error path matches the memory-side break list.
+        let broken_ids: Vec<LinkId> = broken.iter().map(|(id, _, _)| *id).collect();
+        self.repo_delete_links(&broken_ids)?;
+        self.repo_delete_nodes(&subtree)?;
 
         // Remove nodes depth-first post-order and collect events.
         let mut removed: Vec<(NodeId, KindId, NodePath)> = Vec::new();
@@ -267,13 +410,35 @@ impl GraphStore {
             .by_path
             .get(path)
             .ok_or_else(|| GraphError::NotFound(path.clone()))?;
+        let kind = g
+            .by_id
+            .get(&id)
+            .map(|r| r.kind.clone())
+            .ok_or_else(|| GraphError::NotFound(path.clone()))?;
+        let manifest = self.require_kind(&kind)?;
+        let schema = manifest
+            .slots
+            .iter()
+            .find(|s| s.name == slot)
+            .cloned()
+            .ok_or_else(|| {
+                GraphError::BadLink(format!("slot `{slot}` not declared on `{path}`"))
+            })?;
         let rec = g
             .by_id
             .get_mut(&id)
             .ok_or_else(|| GraphError::NotFound(path.clone()))?;
-        let gen = rec.slots.write(slot, value.clone()).ok_or_else(|| {
+        let current = rec.slots.current_generation(slot).ok_or_else(|| {
             GraphError::BadLink(format!("slot `{slot}` not declared on `{path}`"))
         })?;
+        let new_gen = current + 1;
+        // Repo first — commit to memory only if the DB accepts.
+        self.repo_save_slot(id, &schema, &value, new_gen)?;
+        let gen = rec
+            .slots
+            .write(slot, value.clone())
+            .expect("slot presence checked above");
+        debug_assert_eq!(gen, new_gen);
         drop(g);
         self.sink.emit(GraphEvent::SlotChanged {
             id,
@@ -304,6 +469,8 @@ impl GraphStore {
         }
         let from = rec.lifecycle;
         rec.lifecycle = to;
+        let snapshot = rec.clone();
+        self.repo_save_node(&snapshot)?;
         drop(g);
         self.sink.emit(GraphEvent::LifecycleTransition {
             id,
@@ -340,10 +507,31 @@ impl GraphStore {
         }
         let link = Link::new(source, target);
         let id = link.id;
+        self.repo_save_link(&link)?;
         g.links.insert(id, link.clone());
         drop(g);
         self.sink.emit(GraphEvent::LinkAdded(link));
         Ok(id)
+    }
+
+    /// All links whose source matches the given slot. Used by the engine's
+    /// live-wire executor to propagate a `SlotChanged` event to every
+    /// downstream target. Cheap enough today (linear over the link map);
+    /// Stage 7 replaces the map with an indexed store when fleet scale
+    /// arrives.
+    pub fn links_from(&self, source: &SlotRef) -> Vec<Link> {
+        let g = self.read_inner();
+        g.links
+            .values()
+            .filter(|l| &l.source == source)
+            .cloned()
+            .collect()
+    }
+
+    /// Snapshot every link. Test / introspection helper; the engine uses
+    /// [`Self::links_from`] for the hot path.
+    pub fn links(&self) -> Vec<Link> {
+        self.read_inner().links.values().cloned().collect()
     }
 
     /// Snapshot a node by path.

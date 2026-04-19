@@ -144,11 +144,21 @@ pub struct Requirement {
 
 impl Requirement {
     pub fn required(id: CapabilityId, version: SemverRange) -> Self {
-        Self { id, version, optional: false, reason: None }
+        Self {
+            id,
+            version,
+            optional: false,
+            reason: None,
+        }
     }
 
     pub fn optional(id: CapabilityId, version: SemverRange, reason: impl Into<String>) -> Self {
-        Self { id, version, optional: true, reason: Some(reason.into()) }
+        Self {
+            id,
+            version,
+            optional: true,
+            reason: Some(reason.into()),
+        }
     }
 }
 
@@ -156,7 +166,9 @@ impl Requirement {
 /// CLIs can render actionable messages (see VERSIONING.md).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mismatch {
-    NotProvided { id: CapabilityId },
+    NotProvided {
+        id: CapabilityId,
+    },
     VersionMismatch {
         id: CapabilityId,
         required: String,
@@ -170,7 +182,11 @@ impl fmt::Display for Mismatch {
             Self::NotProvided { id } => {
                 write!(f, "required capability `{id}` — not provided on this agent")
             }
-            Self::VersionMismatch { id, required, provided } => {
+            Self::VersionMismatch {
+                id,
+                required,
+                provided,
+            } => {
                 write!(
                     f,
                     "required capability `{id}` version {required} — host provides {provided}"
@@ -196,7 +212,11 @@ pub fn match_requirements(
         match provided {
             None => {
                 let m = Mismatch::NotProvided { id: req.id.clone() };
-                if req.optional { unmet_optional.push(m); } else { unmet_required.push(m); }
+                if req.optional {
+                    unmet_optional.push(m);
+                } else {
+                    unmet_required.push(m);
+                }
             }
             Some(cap) if !req.version.matches(&cap.version) => {
                 let m = Mismatch::VersionMismatch {
@@ -204,13 +224,21 @@ pub fn match_requirements(
                     required: format!("{:?}", req.version.0),
                     provided: cap.version.clone(),
                 };
-                if req.optional { unmet_optional.push(m); } else { unmet_required.push(m); }
+                if req.optional {
+                    unmet_optional.push(m);
+                } else {
+                    unmet_required.push(m);
+                }
             }
             _ => {}
         }
     }
 
-    if unmet_required.is_empty() { Ok(unmet_optional) } else { Err(unmet_required) }
+    if unmet_required.is_empty() {
+        Ok(unmet_optional)
+    } else {
+        Err(unmet_required)
+    }
 }
 
 #[cfg(test)]
@@ -228,7 +256,10 @@ mod tests {
     #[test]
     fn matches_when_all_satisfied() {
         let req = vec![
-            Requirement::required(platform::spi_extension_proto(), SemverRange::caret("1.2").unwrap()),
+            Requirement::required(
+                platform::spi_extension_proto(),
+                SemverRange::caret("1.2").unwrap(),
+            ),
             Requirement::required(platform::spi_msg(), SemverRange::caret("1").unwrap()),
         ];
         assert!(match_requirements(&host(), &req).is_ok());
@@ -236,9 +267,10 @@ mod tests {
 
     #[test]
     fn mismatches_when_version_too_low() {
-        let req = vec![
-            Requirement::required(platform::spi_extension_proto(), SemverRange::caret("1.5").unwrap()),
-        ];
+        let req = vec![Requirement::required(
+            platform::spi_extension_proto(),
+            SemverRange::caret("1.5").unwrap(),
+        )];
         let err = match_requirements(&host(), &req).unwrap_err();
         assert_eq!(err.len(), 1);
         assert!(matches!(err[0], Mismatch::VersionMismatch { .. }));

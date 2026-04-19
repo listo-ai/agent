@@ -9,7 +9,15 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The shared repo-test harness. Backends pull this in under
+# `[dev-dependencies]` to run the exact same suite against their impl.
+testing = []
+
 [dependencies]
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 data-entities = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }

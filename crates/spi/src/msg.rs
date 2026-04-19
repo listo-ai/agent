@@ -179,7 +179,10 @@ mod tests {
         // Node-RED-compatible keys
         assert_eq!(v["payload"], json!({"temp": 72}));
         assert_eq!(v["topic"], json!("sensors/floor3"));
-        assert!(v["_msgid"].is_string(), "id serialises as _msgid for Node-RED parity");
+        assert!(
+            v["_msgid"].is_string(),
+            "id serialises as _msgid for Node-RED parity"
+        );
 
         // Platform-reserved keys
         assert!(v["_ts"].is_number());

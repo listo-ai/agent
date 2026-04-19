@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 //! Service Provider Interface — cross-cutting contracts.
 //!
 //! This crate is the contract surface shared by every other crate and by

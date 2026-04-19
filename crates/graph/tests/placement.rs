@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 //! Stage 1 acceptance tests: the substrate works.
 //!
 //! Kinds register, bound nodes refuse wrong placement, free nodes drop
@@ -25,7 +26,11 @@ fn fresh() -> (Arc<VecSink>, GraphStore) {
 fn free_node_drops_anywhere() {
     let (_sink, store) = fresh();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.compute.math.add"), "sum")
+        .create_child(
+            &NodePath::root(),
+            KindId::new("acme.compute.math.add"),
+            "sum",
+        )
         .expect("free compute node can live under the station");
 }
 
@@ -116,7 +121,9 @@ fn cascade_deny_refuses_non_empty_delete() {
     store
         .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "site")
         .unwrap();
-    let err = store.delete(&NodePath::root()).expect_err("station denies when non-empty");
+    let err = store
+        .delete(&NodePath::root())
+        .expect_err("station denies when non-empty");
     assert!(matches!(err, GraphError::CascadeDenied { .. }));
 }
 
@@ -194,7 +201,9 @@ fn slot_write_emits_change_event() {
         .snapshot()
         .into_iter()
         .filter_map(|e| match e {
-            GraphEvent::SlotChanged { value, generation, .. } => Some((value, generation)),
+            GraphEvent::SlotChanged {
+                value, generation, ..
+            } => Some((value, generation)),
             _ => None,
         })
         .collect();
@@ -207,7 +216,11 @@ fn slot_write_emits_change_event() {
 fn unknown_kind_is_rejected() {
     let (_sink, store) = fresh();
     let err = store
-        .create_child(&NodePath::root(), KindId::new("not.registered.anywhere"), "x")
+        .create_child(
+            &NodePath::root(),
+            KindId::new("not.registered.anywhere"),
+            "x",
+        )
         .unwrap_err();
     assert!(matches!(err, GraphError::UnknownKind(_)));
 }

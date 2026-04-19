@@ -36,7 +36,10 @@ pub struct SlotRef {
 
 impl SlotRef {
     pub fn new(node: NodeId, slot: impl Into<String>) -> Self {
-        Self { node, slot: slot.into() }
+        Self {
+            node,
+            slot: slot.into(),
+        }
     }
 }
 
@@ -49,6 +52,10 @@ pub struct Link {
 
 impl Link {
     pub fn new(source: SlotRef, target: SlotRef) -> Self {
-        Self { id: LinkId::new(), source, target }
+        Self {
+            id: LinkId::new(),
+            source,
+            target,
+        }
     }
 }

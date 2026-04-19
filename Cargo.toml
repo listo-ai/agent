@@ -45,6 +45,7 @@ messaging = { path = "crates/messaging" }
 audit = { path = "crates/audit" }
 observability = { path = "crates/observability" }
 config = { path = "crates/config" }
+
 data-entities = { path = "crates/data-entities" }
 data-repos = { path = "crates/data-repos" }
 data-sqlite = { path = "crates/data-sqlite" }
@@ -71,6 +72,8 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync"] }
+clap = { version = "4", features = ["derive", "env"] }
+serde_yml = "0.0.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }

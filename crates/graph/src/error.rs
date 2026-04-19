@@ -19,7 +19,9 @@ pub enum GraphError {
         parent_kind: KindId,
     },
 
-    #[error("cardinality violated: `{parent}` already has the maximum number of `{kind}` children")]
+    #[error(
+        "cardinality violated: `{parent}` already has the maximum number of `{kind}` children"
+    )]
     CardinalityExceeded { kind: KindId, parent: NodePath },
 
     #[error("a node named `{name}` already exists under `{parent}`")]
@@ -39,4 +41,10 @@ pub enum GraphError {
 
     #[error("link endpoints must reference existing slots: {0}")]
     BadLink(String),
+
+    #[error("persistence backend: {0}")]
+    Backend(String),
+
+    #[error("restore failed: {0}")]
+    Restore(String),
 }

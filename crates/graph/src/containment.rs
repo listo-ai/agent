@@ -45,36 +45,26 @@ impl From<Facet> for ParentMatcher {
 }
 
 /// How many children of a given kind a parent may hold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Cardinality {
+    #[default]
     ManyPerParent,
     OnePerParent,
     ExactlyOne,
 }
 
-impl Default for Cardinality {
-    fn default() -> Self {
-        Cardinality::ManyPerParent
-    }
-}
-
 /// What happens when an instance of this kind is deleted while non-empty.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CascadePolicy {
     /// Delete the whole subtree transactionally.
+    #[default]
     Strict,
     /// Refuse the delete if the subtree is non-empty.
     Deny,
     /// Leave children orphaned (rare — detached to lost-and-found).
     Orphan,
-}
-
-impl Default for CascadePolicy {
-    fn default() -> Self {
-        CascadePolicy::Strict
-    }
 }
 
 /// Per-kind containment rules.

@@ -19,12 +19,14 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# Pull in substrate crates so the dependency graph is expressed from day one.
-# These are stubs in Stage 0 — the agent wires them together in later stages.
 spi = { workspace = true }
 messaging = { workspace = true }
 graph = { workspace = true }
 engine = { workspace = true }
+data-repos = { workspace = true }
+data-sqlite = { workspace = true }
+config = { workspace = true }
+clap = { workspace = true }
 
 [features]
 default = ["role-standalone"]

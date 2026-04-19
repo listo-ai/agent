@@ -77,9 +77,7 @@ pub fn driver_demo() -> KindManifest {
             ParentMatcher::Kind(KindId::new("acme.core.station")),
             ParentMatcher::Kind(KindId::new("acme.core.folder")),
         ])
-        .with_may_contain([ParentMatcher::Kind(KindId::new(
-            "acme.driver.demo.device",
-        ))])
+        .with_may_contain([ParentMatcher::Kind(KindId::new("acme.driver.demo.device"))])
         .with_cardinality(Cardinality::ManyPerParent),
     )
     .with_display_name("Demo Driver")
@@ -109,9 +107,7 @@ pub fn driver_demo_point() -> KindManifest {
     )
     .with_display_name("Demo Point")
     .with_facets(FacetSet::of([Facet::IsPoint, Facet::IsWritable]))
-    .with_slots(vec![
-        SlotSchema::new("value", SlotRole::Output)
-            .writable()
-            .with_schema(json!({"type": "number"})),
-    ])
+    .with_slots(vec![SlotSchema::new("value", SlotRole::Output)
+        .writable()
+        .with_schema(json!({"type": "number"}))])
 }

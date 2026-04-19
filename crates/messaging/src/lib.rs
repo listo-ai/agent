@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 //! Message bus abstraction.
 //!
 //! One trait, multiple backends. Stage 0 ships the trait and an

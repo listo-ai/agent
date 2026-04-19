@@ -46,32 +46,90 @@ Staged so each stage produces something that runs and each stage proves a specif
 
 **Goal:** crossflow executes flows that read and write graph slots.
 
-- `/crates/engine/` — crossflow wrapped in our runtime crate
-- `acme.core.flow` kind registered — flows are container nodes in the graph
-- Two flow-node types: "Read Slot" (takes a path + slot, subscribes) and "Write Slot" (commits a value)
-- Live-wire executor: reactive slot-to-slot links outside of flow documents (Niagara-style "simple case — no flow wrapper")
-- Diagram loader for Flow-container nodes
-- Engine state machine: `Starting → Running → Stopping → Stopped` (per [RUNTIME.md](../design/RUNTIME.md))
-- Graceful shutdown on SIGTERM with output safe-state stubs
-- End-to-end test: a flow subscribes to a demo-point slot, transforms the value, writes it back — all via the graph
+**Status:** Stage 2a done (crossflow-independent scope). Stage 2b (crossflow vendoring + flow-document execution) still blocked on the upstream URL + pin from the Stage 0 deferred item. The live-wire executor, engine state machine, safe-state plumbing, and SIGTERM handling all ship now; flow-document execution bolts on beside them without replacing them.
 
-**Proves:** flows and graph are unified. The engine is a consumer of graph events, not a parallel system.
+### Stage 2a — shipped
 
-## Stage 3 — The three node flavors
+- [DONE] `/crates/engine/` — engine crate with 8 focused files (`engine.rs`, `state.rs`, `queue.rs`, `live_wire.rs`, `safe_state.rs`, `kinds.rs`, `error.rs`, `lib.rs`), each under 200 lines
+- [DONE] `acme.core.flow` kind registered — flow containers live in the graph, may hold compute nodes and nested flows (facet `IsFlow`)
+- [DONE] Flow-internal kinds `acme.engine.read_slot` / `acme.engine.write_slot` registered with their config + I/O slot schemas; execution behaviour arrives in Stage 2b
+- [DONE] **Live-wire executor** — `SlotChanged` → `links_from(source)` → target writes, with fixed-point cycle short-circuiting (skip writes when target already holds the incoming value). Niagara-style "simple case, no flow wrapper" per RUNTIME.md
+- [DONE] **Engine state machine** — full 7-state form from RUNTIME.md: `Stopped → Starting → Running ↔ (Pausing → Paused → Resuming) → Stopping → Stopped`, with legal-transition table and explicit `IllegalTransition` error. `Running` is the only propagating state
+- [DONE] **Async worker** on a tokio task consuming the paired `UnboundedReceiver<GraphEvent>` — decouples synchronous graph emits from async propagation, avoids re-entrant stack recursion
+- [DONE] `queue::channel()` — the `EventSink` + `Receiver` pair the agent hands to `GraphStore::new` and `Engine::new`. Unbounded for Stage 2; Stage 7 replaces it with the bounded outbox per RUNTIME.md
+- [DONE] **Safe-state policy** — `SafeStatePolicy { Hold, FailSafe{value}, Release }`, `OutputDriver` async trait, `NoopOutputDriver` default, `SafeStateBinding` registry. Applied on every `Stopping` transition, failures logged and shutdown continues
+- [DONE] **Graceful SIGTERM / SIGINT** in `apps/agent` — agent composition wires the queue → graph → engine, starts the engine, awaits either signal, calls `engine.shutdown().await`. Falls back to Ctrl-C when SIGTERM is unavailable
+- [DONE] Integration tests (`crates/engine/tests/live_wire.rs`) — 6 scenarios: start/stop, pause-blocks-propagation + resume-restores, fan-out, fixed-point cycle quiescence, post-shutdown writes don't panic, illegal transitions return errors
+- [DONE] Additive accessors on `GraphStore` — `links_from(SlotRef)` (hot path) and `links()` (introspection)
+- [DONE] Workspace lints tightened: `cargo clippy --workspace --all-targets -- -D warnings` green across all 26 crates; `#![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]` applied to lib roots and integration test files where `unwrap()` is idiomatic
+- [DONE] Full test suite: 40 tests pass, `cargo fmt --all --check` clean, `cargo build --workspace` clean
 
-**Goal:** Validate that native, Wasm, and extension-process nodes all execute in the same flow.
+### Stage 2b — deferred
 
-- Built-in native node: "Add" — statically linked Rust
-- Wasmtime integration: "Multiply" as a `.wasm` file loaded at runtime
-  - Fuel metering, memory caps, host functions (`get_input`, `set_output`, `log`)
-  - Wasm Provider trait abstracted so browser can swap in `web-sys` later
-- Extension process: "Log" as a separate binary
-  - gRPC server over Unix domain socket
-  - Engine supervisor spawns it, monitors health, restarts on crash
-  - cgroup memory limits applied
-- End-to-end test: `[Number: 21] → [Multiply ×2] → [Log]` prints `42`
+- [DEFERRED] Vendor crossflow from `open-rmf/crossflow` at a pinned commit (blocked on URL + pin from Stage 0). Once landed, the diagram loader and crossflow-service registry wire into `crates/engine` beside the existing live-wire path — they don't replace it
+- [DEFERRED] `Read Slot` / `Write Slot` **execution** — kinds + placement exist today; behaviour needs crossflow services to implement them as flow-internal nodes
+- [DEFERRED] Diagram loader for flow-container nodes — JSON → crossflow workflow graph
+- [DEFERRED] End-to-end flow-document test: "flow subscribes to a demo-point slot, transforms the value, writes it back" — currently proved via live-wire; the flow-document version needs Stage 2b
 
-**Proves:** the three-layer plugin model works. This is the biggest technical unknown — validate it early.
+**Proves (today, for 2a):** the graph and engine are one system. Graph events drive propagation through the engine's worker without any special cases, the state machine is the canonical on/off switch for the runtime, and safe-state is a first-class shutdown concern from day one. **Proves (later, for 2b):** flow documents execute through crossflow against the same graph substrate that live-wire already uses.
+
+## Stage 3 — The three node flavors + the shared SDK
+
+**Goal:** Ship `extensions-sdk` (Rust) + `@acme/extensions-sdk-ts` (TypeScript) and validate that native, Wasm, and extension-process nodes all execute in the same flow through one authoring API.
+
+**Full scope in [NODE-SCOPE.md](NODE-SCOPE.md).** This section is the stage breakdown; NODE-SCOPE has the manifests, code, decision tables, and deliverable acceptance criteria. Read NODE-SCOPE before starting.
+
+**Why now.** Stages 1–2 ship hand-wired kinds via the graph's internal `register_kind` API. That's fine while the surface is two people's code. The moment we add a third execution model (Wasm) or anyone outside the graph crate registers a kind, we need the real SDK — otherwise every downstream stage embeds an ad-hoc authoring convention that later has to be unwound. Stage 3 is also the earliest time where the contract surface is rich enough (Msg, manifests, capabilities, slots, containment) to make the SDK non-trivial.
+
+**Prerequisite carry-over.** Any kinds registered ad-hoc in Stages 1–2 (seed kinds, flow-engine internal kinds) get migrated to use `#[derive(NodeKind)]` as part of this stage. That migration is the forcing function — if the SDK can't express those existing kinds cleanly, the SDK design is wrong.
+
+### Stage 3a — Shared SDK + core native flavor
+
+- **`crates/extensions-sdk`** (Rust author SDK) with three mutually-exclusive features (`native` | `wasm` | `process`), each swapping in a different adapter
+  - `NodeBehavior` trait (`on_init`, `on_message`, `on_config_change`, `on_shutdown`)
+  - `NodeCtx` — logger, `resolve_settings`, `emit`, `read_slot`, `update_status`, `schedule`
+  - `#[derive(NodeKind)]` proc-macro in `crates/extensions-sdk-macros` wiring manifest YAML + settings schema + trigger policy + msg_overrides
+  - `Settings<T>` / `ResolvedSettings<T>` with the resolution order from [NODE-AUTHORING.md](../design/NODE-AUTHORING.md) (msg > config > default)
+  - `NodeError` with no-panic-across-SDK-boundary guarantee
+  - `requires!` macro for declaring required capabilities (per VERSIONING.md)
+- **`sdks/sdk-ts`** (TypeScript author SDK) — minimum viable content
+  - `Msg` types generated from `spi::msg` via `@bufbuild/protoc-gen-es` or equivalent
+  - `NodeManifest` types generated from `spi/schemas/node.schema.json`
+  - `defineExtension` plugin entry point (used by MF bundles — full MF wiring lands in Stage 4)
+  - `PropertyPanel` component base on `@rjsf/core` with multi-variant settings support
+  - `useSlotValue(path, slot)` / `useNode(path)` React hook stubs (NATS-WS wiring lands in Stage 7)
+- **`Msg` round-trip contract test** — Rust-generated JSON fixtures parsed by the TS SDK and vice versa. Runs in CI on every SDK PR. Catches wire-shape drift before it breaks anyone.
+- **Core native examples** replacing the original "Add" placeholder:
+  - `acme.compute.count` — two inputs (`in`, `reset`) + `msg.reset` override, configurable step/min/max/wrap, `status.count` visible in the UI
+  - `acme.logic.trigger` — Node-RED-style modes (`once`, `extend`, `manual_reset`), trigger/reset payloads, delay timing via `NodeCtx::schedule`
+  - Both registered through `#[derive(NodeKind)]`, both in `/crates/domain-flows` (or a new `domain-compute` if the volume warrants it)
+- **Migrate existing ad-hoc kinds** (seed kinds from Stage 1, flow-engine internal kinds from Stage 2) to the SDK's derive macro. This proves the SDK can describe what's already working.
+
+### Stage 3b — Wasm flavor
+
+- **Wasmtime runtime in `crates/extensions-host`** — loads `.wasm` modules, enforces fuel metering + memory caps, exposes host-function allowlist (`emit`, `read_slot`, `update_status`, `log`, `call_extension`, `schedule`)
+- **Wasm adapter feature in `extensions-sdk`** — same `NodeBehavior` trait, wasm32-unknown-unknown target, host-function imports bound via the SDK
+- **Wasm Provider trait** abstracted so a browser adapter (`web-sys`-backed) can land later without changes to plugin authors' code
+- **Example: `acme.wasm.math_expr`** — a math-expression evaluator, taking expression in config + variables in `msg.payload`, returning the evaluated value
+- **End-to-end test** — wasm module compiled in CI, loaded at runtime, fuel-exhaustion and OOM traps produce structured `NodeError` instead of killing the agent
+
+### Stage 3c — Process plugin flavor
+
+- **Extension supervisor in `crates/extensions-host`** — spawn, health-check, restart with exponential backoff, cgroup memory limits, UDS socket setup
+- **gRPC implementation of `spi/proto/extension.proto`** — `describe` / `discover` / `subscribe` / `invoke` / `health` per the existing contract
+- **Process adapter feature in `extensions-sdk`** — `extensions_sdk::run_process_plugin()` one-liner in a plugin's `main.rs`; SDK multiplexes every registered kind behind it
+- **Example: `com.example.pg.query`** — Postgres query node with parameterised SQL, timeout, structured error output
+  - Backend binary shipped with manifest + capability declarations
+  - `must_live_under: [com.example.pg.connection]` — proves the containment rules cross the process boundary
+  - **UI (Module Federation bundle) is deferred to Stage 4** when Studio + MF land; the TS SDK's `defineExtension` entry point is already in place so the bundle can be authored without blocking
+- **End-to-end test** — agent spawns plugin, executes a query-flow end-to-end, kills the plugin mid-run and asserts the agent survives + restarts it
+
+### Deferred to Stage 4
+
+- The `com.example.pg.query` MF UI bundle (schema-aware table picker + results viewer) — written against `@acme/extensions-sdk-ts` but only wired into the Studio once the Studio shell exists. Serves as Stage 4's "untrusted federated plugin" acceptance case.
+- Browser Wasm provider (`web-sys`-backed) — the abstraction is in place in 3b, the implementation lands alongside the Studio build.
+
+**Proves:** one authoring API (the SDK) covers all three execution models; the Msg wire shape is machine-verified to match between Rust and TS; plugin authors write `NodeBehavior` and pick packaging via one Cargo feature; existing Stage 1–2 kinds port to the SDK cleanly. This is the biggest technical unknown — validate it early and hard.
 
 ## Stage 4 — Studio shell + Module Federation
 
@@ -81,38 +139,68 @@ Staged so each stage produces something that runs and each stage proves a specif
 - React Flow canvas with the three node types from Stage 3
 - Hardcoded initial graph, "Run" button triggers engine via IPC
 - Module Federation wiring in Rsbuild — React declared as required shared singleton
-- **Two federated modules built by separate pipelines** (not just co-located): a trusted one loaded into the host realm, an untrusted one loaded into an iframe with postMessage bridge. Both contribute a property panel. Proves both the host-realm and iframe isolation paths before we build extensions on them.
+- **Two federated modules built by separate pipelines** (not just co-located): a trusted one loaded into the host realm, an untrusted one loaded into an iframe with postMessage bridge. Both contribute a property panel via `@acme/extensions-sdk-ts`'s `defineExtension` entry (shipped in Stage 3). Proves both the host-realm and iframe isolation paths before we build extensions on them.
+- **Wire in the deferred Stage 3c MF UI bundle for `com.example.pg.query`** — schema-aware table picker + results viewer, serves as the "untrusted federated plugin" acceptance case.
 - Plain service registry over React Context (no InversifyJS); verify it's visible across the MF boundary in the trusted path, and correctly *not* visible across the iframe boundary
-- Schema-driven forms (`@rjsf/core`) reading `node.schema.json`
+- Schema-driven forms (`@rjsf/core`) reading `node.schema.json` — consumed via the `PropertyPanel` component shipped in Stage 3
+- **Browser Wasm provider** — `web-sys`-backed implementation of the Wasm Provider trait introduced in Stage 3b, so Wasm nodes can run in Studio previews
 
-**Proves:** Module Federation loads third-party UI into the host, *and* the iframe isolation path works for untrusted code. The other unknown.
+**Proves:** Module Federation loads third-party UI into the host, *and* the iframe isolation path works for untrusted code. The TS SDK authored in Stage 3 is the same one federated plugins use — no hidden Studio-only surface. The other unknown.
 
 ## Stage 5 — Persistence
 
 **Goal:** The graph and its flows survive restart. Same repo traits, two native-shaped backends.
 
-- Graph persistence: the `nodes`, `slots`, `links`, `tags`, `node_events` tables (see EVERYTHING-AS-NODE.md) land behind the repo trait; ephemeral nodes stay in memory.
-- Repository trait implementations: **SQLite-native** (TEXT/INTEGER, single-writer) and **Postgres-native** (UUID, TIMESTAMPTZ, JSONB, partial/GIN indexes, tenant RLS, `ltree` for subtree queries).
-- Separate migration sets per backend — physical types, indexes, and partitioning diverge. Logical shape stays consistent.
-- Shared repository test suite runs against both; backend-specific tests cover what only matters on one side (e.g. Postgres RLS, SQLite WAL).
-- YAML config loader with connection string swap
-- Graph CRUD from the Studio writes to the DB
-- **Separate telemetry store seam** stubbed: a `TelemetryRepo` trait with a SQLite-rolling-table impl for edge and a placeholder for the cloud TSDB (filled in Stage 7). Telemetry never lands in the OLTP tables.
+**Status:** Stage 5a done (SQLite path + GraphStore write-through). Stage 5b (Postgres impl, tags, audit event log, telemetry seam, YAML config) deferred — all sit behind the same `GraphRepo` trait, so they bolt in without re-working the graph crate.
 
-**Proves:** one set of repo traits, two backends that each use their native strengths. No LCD tax on Postgres. The graph is durable.
+### Stage 5a — shipped
+
+- [DONE] **`GraphRepo` trait in `data-repos`** — sync-only (matches `GraphStore`'s sync surface), DTO-based (`PersistedNode` / `PersistedSlot` / `PersistedLink` / `GraphSnapshot`) so `data-repos` has no reverse dep on `graph`. See [`crates/data-repos/src/graph_repo.rs`](../../crates/data-repos/src/graph_repo.rs)
+- [DONE] **Shared trait-test harness** behind `data-repos` feature `testing` — empty snapshot, roundtrip, delete, generation-bump. `data-sqlite` runs it under `[dev-dependencies]` with `features = ["testing"]` so any future backend (Postgres, in-memory mock) picks up the same acceptance suite
+- [DONE] **`SqliteGraphRepo` in `data-sqlite`** using `rusqlite` (bundled build). Single-connection `Mutex<Connection>` matches SQLite's single-writer model; explicit transactions on multi-row deletes; WAL journal + FK enforcement + busy timeout configured on open
+- [DONE] **Forward-only migrations** keyed off `PRAGMA user_version` — no external dependency, append-only SQL blocks, v1 ships the `nodes` / `slots` / `links` tables with materialised-path index per EVERYTHING-AS-NODE.md § "Persistence". Rollback explicitly unsupported — rollback is the deprecation-window pattern from VERSIONING.md
+- [DONE] **`GraphStore::with_repo(kinds, sink, repo)`** constructor — restores state on startup, reconstructing the in-memory tree in parent-before-child order (materialised paths sort lexicographically so `ORDER BY path` is sufficient). Rejects restoration if the DB references a kind the registry doesn't know
+- [DONE] **Write-through mutations** — every `create_root` / `create_child` / `delete` / `write_slot` / `add_link` / `transition` calls the repo *before* touching memory. Backend failure returns `GraphError::Backend(_)` and leaves memory untouched; proved by a `FlakyRepo` test that refuses writes and asserts `store.len() == 0` afterward
+- [DONE] **`persist` module in `graph`** — mapping between graph types and DTOs, lifecycle/slot-role string codecs, error-wrapping helper. Isolated from `store.rs` so mutation paths stay readable
+- [DONE] **`SlotMap::current_generation` + `restore`** helpers — let the store compute the next generation for the repo call before committing to memory, and let the persist path seed a slot with its historic generation without bumping
+- [DONE] **Integration tests** — 3 scenarios in `crates/graph/tests/persistence.rs`: full roundtrip (5-node tree + slot write + link → close → reopen → verify), `UnknownKind` rejection on restore, `FlakyRepo` proving backend failure leaves memory clean. Plus 2 file-backed tests in `crates/data-sqlite/tests/repo.rs`
+- [DONE] **Agent wiring** — `AGENT_DB=<path>` env var opens a file-backed SQLite; unset keeps the in-memory path. On boot the station root is created only if absent, so a restored DB seamlessly re-enters service. Smoke-tested: agent boots, takes SIGTERM, DB file persists on disk at 49 KB with the restored schema
+- [DONE] Workspace: `cargo fmt --all --check` clean, `cargo clippy --workspace --all-targets -- -D warnings` clean, 45 tests passing
+
+### Stage 5b — deferred (same seam)
+
+- [DEFERRED] **Postgres-native repo impl** in `data-postgres` — UUID, TIMESTAMPTZ, JSONB, partial/GIN indexes, `ltree` for real subtree queries, tenant RLS. Separate migration set per the "no LCD tax" rule; the trait contract is identical, so restoration + write-through in `GraphStore` reuses unchanged
+- [DEFERRED] **`tags` and `node_events` tables** — tags wait on an actual query need; `node_events` waits on the audit stream work that sits naturally with Stage 8 (auth / verified identity in audit entries)
+- [DEFERRED] **`TelemetryRepo` seam** — the `data-tsdb` crate already exists; Stage 5b adds the trait + rolling-SQLite edge impl. Cloud TimescaleDB impl lands with Stage 7 messaging
+- [DEFERRED] **YAML config loader** — picks the backend by connection string. `config` crate is reserved for it; until it exists, `AGENT_DB` is the one knob
+- [DEFERRED] **Postgres-specific tests** — RLS, ltree subtree queries, JSONB indexing. SQLite-specific tests (WAL concurrent reader during writer) also deferred here
+
+**Proves (today, for 5a):** the repo trait is real, SQLite is a fully working backend, the graph store is durable, write-through is atomic against a refusing backend, and the agent rehydrates on restart. **Proves (later, for 5b):** Postgres fits the same trait without bending it, and telemetry takes a separate path.
 
 ## Stage 6 — Deployment profiles
 
 **Goal:** Single binary, `--role` selects behavior.
 
-- `--role=standalone` — everything in one process (dev mode)
-- `--role=edge` — engine + local DB + extension supervision
-- `--role=cloud` — API + fleet orchestration + Postgres
-- Config precedence: flags > env > file > defaults
-- Feature flags in Cargo to gate native-only code out of browser builds
-- Cross-compile the edge binary to `aarch64-unknown-linux-gnu` and measure memory on real hardware
+**Status:** Stage 6a done (runtime role + full config precedence). Stage 6b (cross-compile to aarch64 + ARM memory measurement) deferred — needs real hardware. All compile-time feature-gate seams in place; deep role-specific code paths accumulate in later stages behind them.
 
-**Proves:** the "one binary, three roles" story holds. Catches memory surprises on ARM while fixes are cheap.
+### Stage 6a — shipped
+
+- [DONE] **Role enum** in the `config` crate (`Role::Standalone` / `Edge` / `Cloud`) with stable `as_str` and `FromStr` codecs. Capability methods (`runs_engine`, `serves_control_plane`, `expects_persistence`) are the seams later stages branch on \u{2014} all three current roles start the engine today, but the agent's `bootstrap` already consults `role.runs_engine()` so future roles (Studio-only, API gateway) slot in without touching call sites
+- [DONE] **Full config precedence `cli > env > file > defaults`** via overlay types (`AgentConfigOverlay`, `DatabaseOverlay`, `LogOverlay`). Layers compose with `merge_over`; `resolve(default_db_path_for)` fills in the concrete `AgentConfig`. Role-aware defaults: edge / standalone get `./agent.db`, cloud leaves DB `None` until the Stage 5b Postgres connection-string variant arrives
+- [DONE] **YAML file loader** (`from_file`) using `serde_yml`. `deny_unknown_fields` on every overlay struct so typos in the file surface at parse time, not via silent defaults
+- [DONE] **Environment layer** (`from_env`) reading the documented subset: `AGENT_ROLE`, `AGENT_DB`, `AGENT_LOG`. Empty strings treated as unset; invalid role value returns `ConfigError::Invalid` rather than falling through
+- [DONE] **Clap derive CLI** in `apps/agent`: `--role`, `--config <PATH>`, `--db <PATH>`, `--log <DIRECTIVE>`. Every flag has a corresponding file field; operators pick their source. `agent --help` renders correctly, `--version` wired via Cargo metadata
+- [DONE] **Agent integration** \u{2014} the binary composes the three overlays in precedence order, uses the resolved config to pick the DB path and log filter, and logs the resolved role on startup. Smoke-tested: `agent --config foo.yaml` with `AGENT_DB` env set and `--db` flag on the CLI correctly hits CLI > env > file resolution
+- [DONE] **Compile-time feature flags already present** in `apps/agent/Cargo.toml` (`role-edge`, `role-cloud`, `role-standalone`). Stage 6a does not add role-gated code paths \u{2014} it establishes the runtime selector; later stages (Postgres driver, MCP server, native protocol extensions) compile in or out behind these features
+- [DONE] 6 new config unit tests (precedence, defaults, cloud no-default-DB, YAML parse, unknown-field rejection, partial-YAML layering); 51 total across the workspace. `cargo fmt --check` + `cargo clippy --workspace --all-targets -- -D warnings` clean
+
+### Stage 6b — deferred
+
+- [DEFERRED] **Cross-compile the edge binary to `aarch64-unknown-linux-gnu`** via `cross` or a Docker toolchain. The target spec exists in OVERVIEW.md; the workflow waits on CI (itself deferred from Stage 0)
+- [DEFERRED] **ARM memory soak** \u{2014} measure RSS on real Raspberry Pi / industrial gateway hardware under the 350 MB target. Best run alongside the 24h flat-memory soak test scheduled for Stage 13 "Operations surface" / Stage 17 "Hardening"
+- [DEFERRED] **Browser / Studio feature strip** \u{2014} actually proving a build that excludes native-only crates compiles to wasm. Lands with Stage 4 (Studio shell)
+
+**Proves (today, for 6a):** the "one binary, three roles, config from four sources" story is real in code. The role enum and overlay types are stable contracts that future stages hang code off. **Proves (later, for 6b):** the edge binary fits its memory budget on real hardware.
 
 ## Stage 7 — Messaging backbone
 

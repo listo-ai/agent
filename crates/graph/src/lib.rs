@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 //! The graph service — THE CORE of the platform.
 //!
 //! See `docs/design/EVERYTHING-AS-NODE.md` for the model. This crate
@@ -20,6 +21,7 @@ mod kind;
 mod lifecycle;
 mod link;
 mod node;
+mod persist;
 pub mod seed;
 mod slot;
 mod store;

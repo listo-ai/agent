@@ -12,4 +12,12 @@ workspace = true
 [dependencies]
 data-entities = { workspace = true }
 data-repos = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
 
+[dev-dependencies]
+data-repos = { workspace = true, features = ["testing"] }
+tempfile = "3"
