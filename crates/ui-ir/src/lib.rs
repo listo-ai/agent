@@ -82,6 +82,7 @@ mod tests {
                         action: Some(Action {
                             handler: "do_thing".into(),
                             args: None,
+                            optimistic: None,
                         }),
                     },
                 ],

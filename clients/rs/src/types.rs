@@ -68,6 +68,52 @@ pub struct WriteSlotResponse {
     pub generation: u64,
 }
 
+// ---- slot history (structured: String / Json / Binary) --------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HistoryRecord {
+    pub id: i64,
+    pub node_id: String,
+    pub slot_name: String,
+    pub slot_kind: String,
+    pub ts_ms: i64,
+    /// Decoded value for String/Json records; `null` for Binary.
+    pub value: Option<JsonValue>,
+    pub byte_size: i64,
+    pub ntp_synced: bool,
+    #[serde(default)]
+    pub last_sync_age_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HistoryResponse {
+    pub data: Vec<HistoryRecord>,
+}
+
+// ---- telemetry (scalar: Bool / Number) ------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ScalarRecord {
+    pub node_id: String,
+    pub slot_name: String,
+    pub ts_ms: i64,
+    pub value: JsonValue,
+    pub ntp_synced: bool,
+    #[serde(default)]
+    pub last_sync_age_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TelemetryResponse {
+    pub data: Vec<ScalarRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecordedResponse {
+    pub recorded: bool,
+    pub kind: String,
+}
+
 // ---- links ----------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -603,6 +649,29 @@ pub enum UiComponent {
         line_action: Option<UiAction>,
     },
     // data
+    Chart {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        source: UiChartSource,
+        #[serde(default)]
+        series: Vec<UiChartSeries>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        range: Option<UiChartRange>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page_state_key: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
+    },
+    Sparkline {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default)]
+        values: Vec<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subscribe: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+    },
     Table {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
@@ -613,6 +682,33 @@ pub enum UiComponent {
         #[serde(skip_serializing_if = "Option::is_none")]
         page_size: Option<u32>,
     },
+    Tree {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        nodes: Vec<UiTreeItem>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        node_action: Option<UiAction>,
+    },
+    Timeline {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default)]
+        events: Vec<UiTimelineEvent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subscribe: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+    },
+    Markdown {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subscribe: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+    },
     // input
     RichText {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -621,6 +717,35 @@ pub enum UiComponent {
         value: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
+    },
+    RefPicker {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        query: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        value: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+    },
+    Wizard {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        steps: Vec<UiWizardStep>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        submit: Option<UiAction>,
+    },
+    Drawer {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(default)]
+        open: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page_state_key: Option<String>,
+        #[serde(default)]
+        children: Vec<UiComponent>,
     },
     // interactive
     Button {
@@ -670,6 +795,37 @@ pub struct UiAction {
     pub handler: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<JsonValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub optimistic: Option<UiOptimisticHint>,
+}
+
+/// Optimistic hint — mirrors `ui_ir::OptimisticHint`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiOptimisticHint {
+    pub target_component_id: String,
+    pub fields: JsonValue,
+}
+
+/// Chart data source — mirrors `ui_ir::ChartSource`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiChartSource {
+    pub node_id: String,
+    pub slot: String,
+}
+
+/// One chart series — mirrors `ui_ir::ChartSeries`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiChartSeries {
+    pub label: String,
+    #[serde(default)]
+    pub points: Vec<(i64, f64)>,
+}
+
+/// Chart range — mirrors `ui_ir::ChartRange`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+pub struct UiChartRange {
+    pub from: i64,
+    pub to: i64,
 }
 
 /// Table data source — mirrors `ui_ir::TableSource`.
@@ -698,6 +854,34 @@ pub struct UiDiffAnnotation {
     pub author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+}
+
+/// Tree node — mirrors `ui_ir::TreeItem`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTreeItem {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub children: Vec<UiTreeItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+/// Timeline event — mirrors `ui_ir::TimelineEvent`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTimelineEvent {
+    pub ts: String,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
+}
+
+/// Wizard step — mirrors `ui_ir::WizardStep`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiWizardStep {
+    pub label: String,
+    #[serde(default)]
+    pub children: Vec<UiComponent>,
 }
 
 /// Tab entry — mirrors `ui_ir::Tab`.

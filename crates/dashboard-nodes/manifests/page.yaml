@@ -4,8 +4,7 @@ facets:
   - isContainer
 containment:
   must_live_under: []
-  may_contain:
-    - kind: ui.widget
+  may_contain: []
   cardinality_per_parent: many_per_parent
   cascade: strict
 slots:
@@ -14,30 +13,11 @@ slots:
     value_schema:
       type: string
     writable: true
-  - name: template_ref
-    role: config
-    value_schema:
-      type: ["object", "null"]
-      description: Pinned { id, version } reference to a ui.template. Null for standalone pages.
-      properties:
-        id:
-          type: string
-        version:
-          type: integer
-          minimum: 1
-      required: [id, version]
-    writable: true
-  - name: bound_args
-    role: config
-    value_schema:
-      type: object
-      description: Hole-name -> value map satisfying the template's `requires` contract.
-    writable: true
   - name: layout
     role: config
     value_schema:
       type: ["object", "null"]
-      description: Standalone layout JSON; populated only when template_ref is null.
+      description: Typed SDUI ComponentTree — { ir_version, root }. See docs/design/SDUI.md.
     writable: true
   - name: page_state_schema
     role: config

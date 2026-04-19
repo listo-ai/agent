@@ -1,32 +1,32 @@
 /**
  * SSE subscription consumer for SDUI trees.
  *
- * Given the resolver's / render endpoint's `subscriptions: [{widget_id,
- * subjects}]` plan, this hook opens the agent's event stream and
- * invalidates the React Query cache for the current resolve / render
- * query whenever any matching `slot_changed` event arrives.  Subjects
- * follow the `node.<id>.slot.<name>` convention emitted by the backend
- * (see `SubscriptionPlan` in crates/dashboard-transport/src/resolve.rs).
+ * Given the resolver's / render endpoint's
+ * `subscriptions: [{widget_id, subjects}]` plan, this hook opens the
+ * agent's event stream and invalidates the right React-Query entry
+ * whenever a matching `slot_changed` event arrives.
  *
- * Wiring rule: components that live-update (`table`, slot-bound
- * `badge` / `text` / `kpi`) don't poll.  The resolver emits a plan
- * per-widget; this hook does the matching and the invalidation — the
- * components themselves stay dumb.
+ * Routing rule (see `crates/dashboard-transport/src/render.rs` —
+ * `derive_subscriptions`):
+ *
+ * - `widget_id` is a UUID matching the target node → the template
+ *   contains `{{$target.<slot>}}` references whose values are baked
+ *   into the tree. Invalidate the owning resolve / render query so the
+ *   tree re-resolves with the new slot values.
+ * - `widget_id` is an authored IR component id (e.g. `"t"`,
+ *   `"alarms"`) → the plan came from a `table` with `subscribe: true`.
+ *   Invalidate only that table's query key
+ *   (`["sdui-table", widget_id, …]`) — sibling tables stay untouched.
  */
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { agentPromise } from "@/lib/agent";
 import type { UiSubscriptionPlan } from "@sys/agent-client";
 
-/**
- * Subscribe to the agent event stream and invalidate the given
- * React-Query key whenever a slot-change event lands on a subject the
- * plan mentions.
- *
- * @param queryKey       the React-Query key to invalidate on match
- * @param subscriptions  the subscription plan returned by /ui/resolve
- *                       or /ui/render (may be empty)
- */
+// `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function useSubscriptions(
   queryKey: readonly unknown[],
   subscriptions: UiSubscriptionPlan[] | undefined,
@@ -37,44 +37,40 @@ export function useSubscriptions(
     const plans = subscriptions ?? [];
     if (plans.length === 0) return;
 
-    // Flatten into a set of `node.<id>.slot.<name>` subjects for O(1)
-    // lookup. A single slot_changed event yields exactly one subject;
-    // membership in the set means "invalidate".
-    const subjectSet = new Set<string>();
+    // Subject → widget_id index. Many subjects can map to the same
+    // plan; one subject maps to exactly one plan (plans don't overlap
+    // by construction in the backend).
+    const subjectToWidget = new Map<string, string>();
     for (const p of plans) {
-      for (const s of p.subjects) subjectSet.add(s);
+      for (const s of p.subjects) subjectToWidget.set(s, p.widget_id);
     }
 
     let cancelled = false;
-    let close: (() => void) | undefined;
 
     (async () => {
       const agent = await agentPromise;
       const sub = agent.events.subscribe();
-      close = () => {
-        // The transport's async iterator stops on cancel — the best
-        // portable cancellation is to set the flag and break out.
-        cancelled = true;
-      };
       for await (const event of sub) {
         if (cancelled) break;
         if (event.event !== "slot_changed") continue;
         const subject = `node.${event.id}.slot.${event.slot}`;
-        if (subjectSet.has(subject)) {
-          // Invalidate both: (1) the owning resolve/render response
-          // (in case the tree shape depends on the slot) and (2) every
-          // sdui-table query, since tables fetch their rows via a
-          // separate endpoint and their caches are keyed off the query
-          // string — not the slot. A slot write on a node in a table's
-          // result set must refetch that table.
+        const widget = subjectToWidget.get(subject);
+        if (!widget) continue;
+
+        if (UUID_RE.test(widget)) {
+          // Tree-binding plan — the target's own slot changed, the
+          // whole tree must re-resolve.
           qc.invalidateQueries({ queryKey });
-          qc.invalidateQueries({ queryKey: ["sdui-table"] });
+        } else {
+          // Table plan — invalidate just that table's rows. The key
+          // is a prefix match; React Query invalidates every query
+          // whose key starts with this array.
+          qc.invalidateQueries({ queryKey: ["sdui-table", widget] });
         }
       }
     })();
 
     return () => {
-      if (close) close();
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

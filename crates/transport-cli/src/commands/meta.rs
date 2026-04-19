@@ -129,6 +129,10 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &NODES_CREATE,
         &NODES_DELETE,
         &SLOTS_WRITE,
+        &SLOTS_HISTORY_LIST,
+        &SLOTS_HISTORY_RECORD,
+        &SLOTS_TELEMETRY_LIST,
+        &SLOTS_TELEMETRY_RECORD,
         &CONFIG_SET,
         &LINKS_LIST,
         &LINKS_CREATE,
@@ -476,6 +480,245 @@ static SLOTS_WRITE: CommandMeta = CommandMeta {
             code: "agent_unreachable",
             exit_code: 2,
         },
+    ],
+};
+
+static SLOTS_HISTORY_LIST: CommandMeta = CommandMeta {
+    name: "slots history list",
+    summary: "Query structured history records for a slot (String / Json / Binary).",
+    args: &[
+        ArgInfo {
+            name: "path",
+            required: true,
+            type_name: "node-path",
+            description: "Node path, e.g. /station/sensor",
+        },
+        ArgInfo {
+            name: "slot",
+            required: true,
+            type_name: "identifier",
+            description: "Slot name, e.g. label",
+        },
+    ],
+    examples: &[
+        "agent slots history list /station/sensor label",
+        "agent slots history list /station/sensor label --from 1700000000000 --to 1700003600000",
+        "agent slots history list /station/sensor label --limit 50",
+    ],
+    related: &["slots history record", "slots telemetry list"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path", "slot"],
+            "properties": {
+                "path":  { "type": "string", "format": "node-path" },
+                "slot":  { "type": "string" },
+                "from":  { "type": "integer", "description": "Start Unix ms" },
+                "to":    { "type": "integer", "description": "End Unix ms" },
+                "limit": { "type": "integer", "minimum": 1 }
+            }
+        })
+    },
+    output_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["data"],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "node_id", "slot_name", "slot_kind", "ts_ms", "byte_size", "ntp_synced"],
+                        "properties": {
+                            "id":        { "type": "integer" },
+                            "node_id":   { "type": "string" },
+                            "slot_name": { "type": "string" },
+                            "slot_kind": { "type": "string", "enum": ["string", "json", "binary"] },
+                            "ts_ms":     { "type": "integer" },
+                            "value":     {},
+                            "byte_size": { "type": "integer" },
+                            "ntp_synced":{ "type": "boolean" }
+                        }
+                    }
+                }
+            }
+        })
+    },
+    errors: &[
+        ErrorInfo { code: "not_found",         exit_code: 1 },
+        ErrorInfo { code: "service_unavailable", exit_code: 2 },
+        ErrorInfo { code: "agent_unreachable",  exit_code: 2 },
+    ],
+};
+
+static SLOTS_HISTORY_RECORD: CommandMeta = CommandMeta {
+    name: "slots history record",
+    summary: "Record the slot's current value on-demand (String / Json slots).",
+    args: &[
+        ArgInfo {
+            name: "path",
+            required: true,
+            type_name: "node-path",
+            description: "Node path, e.g. /station/sensor",
+        },
+        ArgInfo {
+            name: "slot",
+            required: true,
+            type_name: "identifier",
+            description: "Slot name, e.g. label",
+        },
+    ],
+    examples: &[
+        "agent slots history record /station/sensor label",
+    ],
+    related: &["slots history list", "slots telemetry record"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path", "slot"],
+            "properties": {
+                "path": { "type": "string", "format": "node-path" },
+                "slot": { "type": "string" }
+            }
+        })
+    },
+    output_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["recorded", "kind"],
+            "properties": {
+                "recorded": { "type": "boolean" },
+                "kind":     { "type": "string" }
+            }
+        })
+    },
+    errors: &[
+        ErrorInfo { code: "not_found",           exit_code: 1 },
+        ErrorInfo { code: "unprocessable",        exit_code: 1 },
+        ErrorInfo { code: "service_unavailable",  exit_code: 2 },
+        ErrorInfo { code: "agent_unreachable",    exit_code: 2 },
+    ],
+};
+
+static SLOTS_TELEMETRY_LIST: CommandMeta = CommandMeta {
+    name: "slots telemetry list",
+    summary: "Query scalar telemetry records for a slot (Bool / Number).",
+    args: &[
+        ArgInfo {
+            name: "path",
+            required: true,
+            type_name: "node-path",
+            description: "Node path, e.g. /station/sensor",
+        },
+        ArgInfo {
+            name: "slot",
+            required: true,
+            type_name: "identifier",
+            description: "Slot name, e.g. temperature",
+        },
+    ],
+    examples: &[
+        "agent slots telemetry list /station/sensor temperature",
+        "agent slots telemetry list /station/sensor temperature --from 1700000000000",
+        "agent slots telemetry list /station/sensor enabled --limit 100",
+    ],
+    related: &["slots telemetry record", "slots history list"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path", "slot"],
+            "properties": {
+                "path":  { "type": "string", "format": "node-path" },
+                "slot":  { "type": "string" },
+                "from":  { "type": "integer", "description": "Start Unix ms" },
+                "to":    { "type": "integer", "description": "End Unix ms" },
+                "limit": { "type": "integer", "minimum": 1 }
+            }
+        })
+    },
+    output_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["data"],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["node_id", "slot_name", "ts_ms", "value", "ntp_synced"],
+                        "properties": {
+                            "node_id":    { "type": "string" },
+                            "slot_name":  { "type": "string" },
+                            "ts_ms":      { "type": "integer" },
+                            "value":      {},
+                            "ntp_synced": { "type": "boolean" }
+                        }
+                    }
+                }
+            }
+        })
+    },
+    errors: &[
+        ErrorInfo { code: "not_found",          exit_code: 1 },
+        ErrorInfo { code: "service_unavailable", exit_code: 2 },
+        ErrorInfo { code: "agent_unreachable",   exit_code: 2 },
+    ],
+};
+
+static SLOTS_TELEMETRY_RECORD: CommandMeta = CommandMeta {
+    name: "slots telemetry record",
+    summary: "Record the slot's current value on-demand (Bool / Number slots).",
+    args: &[
+        ArgInfo {
+            name: "path",
+            required: true,
+            type_name: "node-path",
+            description: "Node path, e.g. /station/sensor",
+        },
+        ArgInfo {
+            name: "slot",
+            required: true,
+            type_name: "identifier",
+            description: "Slot name, e.g. temperature",
+        },
+    ],
+    examples: &[
+        "agent slots telemetry record /station/sensor temperature",
+    ],
+    related: &["slots telemetry list", "slots history record"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path", "slot"],
+            "properties": {
+                "path": { "type": "string", "format": "node-path" },
+                "slot": { "type": "string" }
+            }
+        })
+    },
+    output_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["recorded", "kind"],
+            "properties": {
+                "recorded": { "type": "boolean" },
+                "kind":     { "type": "string" }
+            }
+        })
+    },
+    errors: &[
+        ErrorInfo { code: "not_found",           exit_code: 1 },
+        ErrorInfo { code: "unprocessable",        exit_code: 1 },
+        ErrorInfo { code: "service_unavailable",  exit_code: 2 },
+        ErrorInfo { code: "agent_unreachable",    exit_code: 2 },
     ],
 };
 

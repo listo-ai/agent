@@ -55,6 +55,7 @@ pub fn mount(state: AppState) -> Router {
         .merge(crate::auth_routes::routes())
         .merge(crate::flows::routes())
         .merge(crate::preferences::routes())
+        .merge(crate::history::routes())
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -542,6 +543,13 @@ pub(crate) struct ApiError {
 }
 
 impl ApiError {
+    pub(crate) fn new(status: StatusCode, msg: impl Into<String>) -> Self {
+        Self {
+            status,
+            error: msg.into(),
+        }
+    }
+
     pub(crate) fn bad_request(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,

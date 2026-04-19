@@ -21,6 +21,13 @@ interface SduiCtx {
   /** Page-local state (read-only in children; written by set in the page root) */
   pageState: Record<string, unknown>;
   setPageState: (patch: Record<string, unknown>) => void;
+  /**
+   * React-Query key of the owning `/ui/resolve` or `/ui/render`
+   * response. Optimistic action hints and authoritative Patch /
+   * FullRender responses use this to mutate the cached tree via
+   * `queryClient.setQueryData(...)`.
+   */
+  treeQueryKey: readonly unknown[];
 }
 
 const SduiContext = createContext<SduiCtx | null>(null);
@@ -36,11 +43,18 @@ export function SduiProvider({
   customRegistry,
   pageState,
   setPageState,
+  treeQueryKey,
   children,
 }: SduiCtx & { children: React.ReactNode }) {
   return (
     <SduiContext.Provider
-      value={{ dispatchAction, customRegistry, pageState, setPageState }}
+      value={{
+        dispatchAction,
+        customRegistry,
+        pageState,
+        setPageState,
+        treeQueryKey,
+      }}
     >
       {children}
     </SduiContext.Provider>

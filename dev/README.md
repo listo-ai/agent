@@ -26,26 +26,27 @@ dev/
 | Studio → cloud      | 3001  | http://localhost:3001        |
 | Studio → edge       | 3002  | http://localhost:3002        |
 
-Port 8080 stays reserved for `make run` (the default single-agent flow
-used by most existing docs).
+Port 8080 is used by `make run` — a single edge agent using `dev/edge.yaml`
+and `dev/edge.db`. Use it for everyday dev; use `make dev` when you need
+both agents talking to each other.
 
 ## Quickstart
 
 ```bash
-# One command, everything up, colour-coded logs, Ctrl-C stops all:
+# Single edge agent on :8080 — everyday dev:
+make run
+
+# Full cloud + edge + both Studios, colour-coded logs, Ctrl-C stops all:
 make dev
 
-# Or run each piece in its own terminal:
+# Or start each piece manually:
 make run-cloud
 make run-edge
 make studio-cloud
 make studio-edge
 ```
 
-`make dev` requires [`overmind`](https://github.com/DarthSim/overmind)
-(or `hivemind`). On macOS: `brew install overmind`. On Linux:
-`go install github.com/DarthSim/overmind/v2@latest`. If you don't have
-it, start each process in its own terminal with the four targets above.
+`make dev` runs `dev/run.sh` — a self-contained bash script, no extra tools needed.
 
 ## Staging plugins per agent
 
@@ -65,9 +66,8 @@ Then click **Rescan** in that Studio's Plugins page, or
 ## Resetting state
 
 ```bash
-rm -f dev/cloud.db dev/edge.db         # wipe graphs
-rm -rf dev/cloud-plugins/* dev/edge-plugins/*   # unstage plugins
+make dev-reset
 ```
 
-The agents will seed a fresh station + `/agent/plugins/` subtree on
-their next boot.
+Removes `dev/cloud.db`, `dev/edge.db` (and WAL files), and empties both
+plugin dirs. The agents will seed a fresh graph on their next boot.

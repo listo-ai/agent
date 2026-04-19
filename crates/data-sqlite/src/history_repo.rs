@@ -10,6 +10,7 @@ use data_repos::{HistoryQuery, HistoryRecord, HistoryRepo, HistorySlotKind, Repo
 use rusqlite::{params, Connection};
 use uuid::Uuid;
 
+use crate::connection::{open, Location};
 use crate::error::SqliteError;
 
 pub struct SqliteHistoryRepo {
@@ -21,6 +22,18 @@ impl SqliteHistoryRepo {
         Self {
             conn: Mutex::new(conn),
         }
+    }
+
+    pub fn open_file(path: &std::path::Path) -> Result<Self, SqliteError> {
+        Ok(Self {
+            conn: Mutex::new(open(Location::File(path))?),
+        })
+    }
+
+    pub fn open_memory() -> Result<Self, SqliteError> {
+        Ok(Self {
+            conn: Mutex::new(open(Location::InMemory)?),
+        })
     }
 
     fn with_conn<R>(

@@ -27,6 +27,7 @@ graph = { workspace = true }
 engine = { workspace = true }
 data-repos = { workspace = true }
 data-sqlite = { workspace = true }
+data-tsdb = { workspace = true }
 domain-flows = { workspace = true }
 config = { workspace = true }
 clap = { workspace = true }

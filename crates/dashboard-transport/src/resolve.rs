@@ -1,57 +1,32 @@
-//! `POST /ui/resolve` — the binding resolver transport.
+//! `POST /ui/resolve` — resolve a `ui.page` into a typed SDUI
+//! component tree.
 //!
-//! Body:
+//! Request body:
 //!
 //! ```json
-//! {
-//!   "page_ref": "<uuid>",
-//!   "stack":    ["<nav-uuid>", ...],
-//!   "page_state": { ... },
-//!   "dry_run":  false
-//! }
+//! { "page_ref": "<uuid>", "stack": ["<nav-uuid>", ...],
+//!   "page_state": { ... }, "dry_run": false }
 //! ```
 //!
-//! With `dry_run: true` the handler validates inputs and the
-//! template parameter contract and returns `{ "errors": [...] }`
-//! without producing a render tree. Otherwise it returns a resolved
-//! [`ComponentTree`] plus `meta`. See DASHBOARD.md § M3-M5 and
-//! SDUI.md § S1.
-//!
-//! Per-widget ACL redaction is applied (§ "ACL policy"): if any node
-//! touched during a widget's binding evaluation is unreadable by the
-//! caller, the widget becomes a [`Component::Forbidden`] stub and
-//! one audit event fires per redaction. Missing bound nodes surface as
-//! [`Component::Dangling`]. Unknown widget types are a dry-run
-//! validation issue; in real resolve they also emit a forbidden stub
-//! tagged `unknown_widget_type`.
-//!
-//! Subscription-plan emission is deferred to M5.
-
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+//! The endpoint reads the page node's `layout` slot (a JSON
+//! `ComponentTree`), derives a subscription plan so the client can
+//! live-update via SSE, and returns `{render, subscriptions, meta}`.
+//! With `dry_run: true` the handler validates the layout parses and
+//! returns `{errors}` instead of a tree — used by AI authoring tools.
 
 use axum::extract::State;
 use axum::Json;
-use dashboard_nodes::{validate_bound_args, ContractError};
-use dashboard_runtime::{
-    hash_page_state, Binding, BindingError, CacheKeyInputs, ContextStack, EvalContext, NodeReader,
-    NodeSnapshot,
-};
+use dashboard_runtime::NodeSnapshot;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use spi::{KindId, NodeId};
+use spi::NodeId;
 use ui_ir::{Component, ComponentTree};
 
-use crate::acl::{AclCheck, AclSubject};
-use crate::audit::AuditEvent;
 use crate::error::TransportError;
 use crate::limits;
 use crate::state::DashboardState;
 
 const PAGE_KIND: &str = "ui.page";
-const TEMPLATE_KIND: &str = "ui.template";
-const WIDGET_KIND: &str = "ui.widget";
 
 #[derive(Debug, Deserialize)]
 pub struct ResolveRequest {
@@ -62,14 +37,13 @@ pub struct ResolveRequest {
     pub page_state: JsonValue,
     #[serde(default)]
     pub dry_run: bool,
-    /// Optional — the auth subject identifier. Threaded into the cache
-    /// key + ACL check + audit events. Real auth plumbing lands with
-    /// the AuthContext integration.
+    /// Opaque auth subject identifier threaded into the cache key and
+    /// audit events.
     #[serde(default)]
     pub auth_subject: Option<String>,
-    /// Optional user claims available as `$user.*` in bindings.
+    /// User claims available as `$user.*` in bindings.
     #[serde(default)]
-    pub user_claims: HashMap<String, JsonValue>,
+    pub user_claims: std::collections::HashMap<String, JsonValue>,
 }
 
 fn empty_object() -> JsonValue {
@@ -89,23 +63,27 @@ pub enum ResolveResponse {
     },
 }
 
-/// Subscription plan for a single widget — mechanically derived from
-/// the slots its bindings touch during evaluation. Subjects follow the
-/// `node.<id>.slot.<name>` convention the messaging crate expects.
+/// Subscription plan emitted alongside a resolve/render response.
 ///
-/// ACL-denied subjects are dropped before emission; a widget whose
-/// bindings touch any denied node is already redacted as a
-/// `ui.widget.forbidden` stub and gets no subscription plan at all.
+/// Two plan shapes flow to the client:
+///
+/// * **Tree-binding plan** — `widget_id` is the target node's id (as a
+///   string). The template contains `{{$target.<slot>}}` references
+///   whose values are baked into the tree; when any listed slot
+///   changes, the *whole* resolve / render query must be invalidated
+///   so the new tree is served.
+/// * **Table plan** — `widget_id` is the authored `table` component's
+///   id from the IR tree (e.g. `"alarms"`, `"t"`). `subscribe: true`
+///   on the table's source drives the plan's subjects from whichever
+///   nodes the RSQL query currently matches. The client invalidates
+///   just that table's React-Query key — rows refetch without
+///   re-resolving the tree.
 #[derive(Debug, Serialize)]
 pub struct SubscriptionPlan {
-    pub widget_id: NodeId,
+    pub widget_id: String,
     pub subjects: Vec<String>,
     pub debounce_ms: u32,
 }
-
-/// Per-widget debounce default. The client can override if it cares;
-/// the value feeds the cache-key indirectly via subscription churn.
-const DEFAULT_DEBOUNCE_MS: u32 = 250;
 
 #[derive(Debug, Serialize)]
 pub struct ResolveMeta {
@@ -128,111 +106,45 @@ pub async fn handler(
 ) -> Result<Json<ResolveResponse>, TransportError> {
     enforce_page_state_size(&req.page_state)?;
 
-    let reader = &*state.reader;
-    let page = reader
+    let page = state
+        .reader
         .get(&req.page_ref)
         .ok_or(TransportError::PageNotFound(req.page_ref))?;
     require_kind(&page, PAGE_KIND)?;
 
-    // SDUI fast-path: if the page has a `layout` slot, parse it directly as a
-    // ComponentTree and return it, bypassing the legacy widget resolver.
-    if let Some(layout_val) = page.slots.get("layout") {
-        if !layout_val.is_null() {
-            return sdui_layout_path(layout_val.clone(), &req, &page, &*state.reader);
-        }
-    }
-
-    let stack = ContextStack::build(reader, &req.stack, limits::MAX_NAV_DEPTH)?;
-    let widgets = collect_widgets(reader, &page.id)?;
-    let contract_errors = run_contract_validation(reader, &page)?;
-
-    if req.dry_run {
-        return Ok(Json(dry_run(
-            &req,
-            &state,
-            &page,
-            &widgets,
-            &stack,
-            contract_errors,
-        )));
-    }
-
-    if let Some(first) = contract_errors.into_iter().next() {
-        return Err(first.into());
-    }
-
-    let mut rendered: Vec<Component> = Vec::with_capacity(widgets.len());
-    let mut subscriptions: Vec<SubscriptionPlan> = Vec::with_capacity(widgets.len());
-    for w in &widgets {
-        let (r, subs) = resolve_widget(reader, &stack, w, &req, &state);
-        if let Some(s) = subs {
-            subscriptions.push(s);
-        }
-        rendered.push(r);
-    }
-
-    enforce_subscription_cap(&subscriptions)?;
-
-    let forbidden_count = rendered
-        .iter()
-        .filter(|w| matches!(w, Component::Forbidden { .. }))
-        .count();
-    let dangling_count = rendered
-        .iter()
-        .filter(|w| matches!(w, Component::Dangling { .. }))
-        .count();
-
-    let cache_key = build_cache_key(&req, &state, &page, &widgets, &stack);
-    let meta = ResolveMeta {
-        cache_key,
-        widget_count: rendered.len(),
-        forbidden_count,
-        dangling_count,
-        stack_shadowed: stack.shadowed().to_vec(),
-    };
-    let title = page
+    let layout = page
         .slots
-        .get("title")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let render = ComponentTree::new(Component::Page {
-        id: page.id.0.to_string(),
-        title,
-        children: rendered,
-    });
-
-    enforce_render_tree_size(&render)?;
-    Ok(Json(ResolveResponse::Ok {
-        render,
-        subscriptions,
-        meta,
-    }))
-}
-
-/// SDUI layout fast-path — parses the `layout` slot value directly as a
-/// `ComponentTree`, bypassing the legacy widget resolver.
-///
-/// Returned for any `ui.page` whose `layout` slot is non-null.  The dry-run
-/// variant validates the JSON is parseable; the normal variant returns the tree
-/// verbatim.  Subscriptions and cache-key are stubbed for now (S5 will wire
-/// proper subscription derivation for SDUI trees).
-fn sdui_layout_path(
-    layout_val: serde_json::Value,
-    req: &ResolveRequest,
-    page: &NodeSnapshot,
-    reader: &(dyn NodeReader + Send + Sync),
-) -> Result<Json<ResolveResponse>, TransportError> {
-    let render: ComponentTree = serde_json::from_value(layout_val.clone()).map_err(|e| {
-        TransportError::MalformedPage(page.id.clone(), format!("layout is not a valid ComponentTree: {e}"))
-    })?;
+        .get("layout")
+        .cloned()
+        .filter(|v| !v.is_null())
+        .ok_or_else(|| {
+            TransportError::MalformedPage(page.id, "page has no `layout` slot".into())
+        })?;
 
     if req.dry_run {
+        if let Err(e) = serde_json::from_value::<ComponentTree>(layout.clone()) {
+            return Ok(Json(ResolveResponse::DryRun {
+                errors: vec![ResolveIssue {
+                    location: format!("page/{}/layout", page.id),
+                    message: format!("layout is not a valid ComponentTree: {e}"),
+                }],
+            }));
+        }
         return Ok(Json(ResolveResponse::DryRun { errors: vec![] }));
     }
 
-    enforce_render_tree_size(&render)?;
+    let render: ComponentTree = serde_json::from_value(layout.clone()).map_err(|e| {
+        TransportError::MalformedPage(
+            page.id,
+            format!("layout is not a valid ComponentTree: {e}"),
+        )
+    })?;
 
-    let subscriptions = crate::render::derive_subscriptions_for_layout(&layout_val, reader);
+    enforce_render_tree_size(&render)?;
+    enforce_tree_shape(&render)?;
+
+    let subscriptions = crate::render::derive_subscriptions_for_layout(&layout, &*state.reader);
+    enforce_subscription_cap(&subscriptions)?;
 
     let meta = ResolveMeta {
         cache_key: page.version,
@@ -249,21 +161,6 @@ fn sdui_layout_path(
     }))
 }
 
-/// Recursively count all nodes in a component tree.
-fn count_components(c: &Component) -> usize {
-    let children: &[Component] = match c {
-        Component::Page { children, .. } => children,
-        Component::Row { children, .. } => children,
-        Component::Col { children, .. } => children,
-        Component::Grid { children, .. } => children,
-        Component::Tabs { tabs, .. } => {
-            return 1 + tabs.iter().map(|t| t.children.iter().map(count_components).sum::<usize>()).sum::<usize>();
-        }
-        _ => &[],
-    };
-    1 + children.iter().map(count_components).sum::<usize>()
-}
-
 fn enforce_subscription_cap(subs: &[SubscriptionPlan]) -> Result<(), TransportError> {
     let total: usize = subs.iter().map(|p| p.subjects.len()).sum();
     if total > limits::MAX_SUBSCRIPTIONS_PER_PAGE {
@@ -274,247 +171,6 @@ fn enforce_subscription_cap(subs: &[SubscriptionPlan]) -> Result<(), TransportEr
         });
     }
     Ok(())
-}
-
-fn dry_run(
-    req: &ResolveRequest,
-    state: &DashboardState,
-    page: &NodeSnapshot,
-    widgets: &[NodeSnapshot],
-    stack: &ContextStack,
-    contract_errors: Vec<ContractError>,
-) -> ResolveResponse {
-    let mut issues: Vec<ResolveIssue> = contract_errors
-        .into_iter()
-        .map(|e| ResolveIssue {
-            location: format!("page/{}/bound_args", page.id),
-            message: e.to_string(),
-        })
-        .collect();
-    for w in widgets {
-        if let Ok(wtype) = widget_type(w) {
-            if !state.widgets.contains(&wtype) {
-                issues.push(ResolveIssue {
-                    location: format!("widget/{}/widget_type", w.id),
-                    message: format!("unknown widget type `{wtype}`"),
-                });
-            }
-        }
-        let bindings = match widget_bindings(w) {
-            Ok(b) => b,
-            Err(e) => {
-                issues.push(ResolveIssue {
-                    location: format!("widget/{}/bindings", w.id),
-                    message: e.to_string(),
-                });
-                continue;
-            }
-        };
-        for (name, expr) in bindings {
-            if let Err(err) = Binding::parse(&expr).and_then(|b| {
-                b.evaluate(&EvalContext {
-                    reader: &*state.reader,
-                    stack,
-                    self_id: w.id,
-                    user_claims: &req.user_claims,
-                    page_state: &req.page_state,
-                    access_log: None,
-                })
-            }) {
-                issues.push(ResolveIssue {
-                    location: format!("widget/{}/bindings/{name}", w.id),
-                    message: err.to_string(),
-                });
-            }
-        }
-    }
-    ResolveResponse::DryRun { errors: issues }
-}
-
-fn resolve_widget<R: NodeReader + ?Sized>(
-    reader: &R,
-    stack: &ContextStack,
-    w: &NodeSnapshot,
-    req: &ResolveRequest,
-    state: &DashboardState,
-) -> (Component, Option<SubscriptionPlan>) {
-    let wid = w.id.0.to_string();
-    let subject = AclSubject {
-        subject: req.auth_subject.as_deref(),
-    };
-
-    let wtype = match widget_type(w) {
-        Ok(t) => t,
-        Err(_) => {
-            return (
-                Component::Forbidden {
-                    id: wid,
-                    reason: "malformed_widget".into(),
-                },
-                None,
-            );
-        }
-    };
-    if !state.widgets.contains(&wtype) {
-        state.audit.emit(AuditEvent::UnknownWidgetType {
-            widget: w.id,
-            widget_type: &wtype,
-            subject: subject.subject,
-        });
-        return (
-            Component::Forbidden {
-                id: wid,
-                reason: "unknown_widget_type".into(),
-            },
-            None,
-        );
-    }
-
-    let bindings = match widget_bindings(w) {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                Component::Forbidden {
-                    id: wid,
-                    reason: "malformed_widget".into(),
-                },
-                None,
-            );
-        }
-    };
-
-    let recorder = RecordingReader::new(reader);
-    let access_log: RefCell<Vec<(NodeId, String)>> = RefCell::new(Vec::new());
-    let mut values: HashMap<String, JsonValue> = HashMap::new();
-    for (name, expr) in bindings {
-        let binding = match Binding::parse(&expr) {
-            Ok(b) => b,
-            Err(_) => {
-                return (
-                    Component::Forbidden {
-                        id: wid,
-                        reason: "malformed_binding".into(),
-                    },
-                    None,
-                );
-            }
-        };
-        match binding.evaluate(&EvalContext {
-            reader: &recorder,
-            stack,
-            self_id: w.id,
-            user_claims: &req.user_claims,
-            page_state: &req.page_state,
-            access_log: Some(&access_log),
-        }) {
-            Ok(v) => {
-                values.insert(name, v);
-            }
-            Err(BindingError::RefNodeMissing(id)) => {
-                state.audit.emit(AuditEvent::WidgetDangling {
-                    widget: w.id,
-                    missing_node: id,
-                    subject: subject.subject,
-                });
-                return (Component::Dangling { id: wid }, None);
-            }
-            Err(_) => {
-                return (
-                    Component::Forbidden {
-                        id: wid,
-                        reason: "malformed_binding".into(),
-                    },
-                    None,
-                );
-            }
-        }
-    }
-
-    let touched = recorder.touched.into_inner();
-    let mut denied = false;
-    for nid in &touched {
-        if !state.acl.can_read(subject, nid) {
-            state.audit.emit(AuditEvent::WidgetRedacted {
-                widget: w.id,
-                bound_node: *nid,
-                subject: subject.subject,
-            });
-            denied = true;
-        }
-    }
-    if denied {
-        return (
-            Component::Forbidden {
-                id: wid,
-                reason: "acl".into(),
-            },
-            None,
-        );
-    }
-
-    // Build subscription plan. ACL-filter subjects: drop any subject
-    // whose node the caller cannot read (defensive — in practice if
-    // any node were denied we'd have short-circuited above, but the
-    // check keeps the contract explicit).
-    let subjects = derive_subjects(access_log.into_inner(), &state.acl, subject);
-
-    // Map the resolved ui.widget to a Text component showing the
-    // widget type + values. A richer mapping (per-widget-type IR
-    // emission) comes in later milestones. For S1 this preserves the
-    // resolved data in the tree.
-    (
-        Component::Text {
-            id: Some(wid),
-            content: format!("[{wtype}]"),
-            intent: None,
-        },
-        Some(SubscriptionPlan {
-            widget_id: w.id,
-            subjects,
-            debounce_ms: DEFAULT_DEBOUNCE_MS,
-        }),
-    )
-}
-
-fn derive_subjects(
-    log: Vec<(NodeId, String)>,
-    acl: &Arc<dyn AclCheck>,
-    subject: AclSubject<'_>,
-) -> Vec<String> {
-    let mut seen = std::collections::BTreeSet::new();
-    for (node, slot) in log {
-        if !acl.can_read(subject, &node) {
-            continue;
-        }
-        seen.insert(format!("node.{node}.slot.{slot}"));
-    }
-    seen.into_iter().collect()
-}
-
-/// Reader wrapper that records every `get` call so the caller can ACL
-/// every node visited during a widget's binding evaluation.
-struct RecordingReader<'a, R: NodeReader + ?Sized> {
-    inner: &'a R,
-    touched: RefCell<HashSet<NodeId>>,
-}
-
-impl<'a, R: NodeReader + ?Sized> RecordingReader<'a, R> {
-    fn new(inner: &'a R) -> Self {
-        Self {
-            inner,
-            touched: RefCell::new(HashSet::new()),
-        }
-    }
-}
-
-impl<R: NodeReader + ?Sized> NodeReader for RecordingReader<'_, R> {
-    fn get(&self, id: &NodeId) -> Option<NodeSnapshot> {
-        self.touched.borrow_mut().insert(*id);
-        self.inner.get(id)
-    }
-    fn children(&self, parent: &NodeId) -> Vec<NodeId> {
-        self.inner.children(parent)
-    }
 }
 
 fn enforce_page_state_size(v: &JsonValue) -> Result<(), TransportError> {
@@ -529,7 +185,109 @@ fn enforce_page_state_size(v: &JsonValue) -> Result<(), TransportError> {
     Ok(())
 }
 
-fn enforce_render_tree_size(tree: &ComponentTree) -> Result<(), TransportError> {
+/// Walks the tree and enforces per-tree shape limits: node count,
+/// nesting depth, distinct component types. Each violation becomes a
+/// 413 with a distinct `what` tag so clients can branch cleanly.
+pub fn enforce_tree_shape(tree: &ComponentTree) -> Result<(), TransportError> {
+    use std::collections::BTreeSet;
+    let mut count = 0usize;
+    let mut max_depth = 0usize;
+    let mut types: BTreeSet<&'static str> = BTreeSet::new();
+    walk(&tree.root, 0, &mut count, &mut max_depth, &mut types);
+    if count > limits::MAX_TREE_NODES {
+        return Err(TransportError::LimitExceeded {
+            what: "tree_nodes",
+            value: count,
+            max: limits::MAX_TREE_NODES,
+        });
+    }
+    if max_depth > limits::MAX_TREE_DEPTH {
+        return Err(TransportError::LimitExceeded {
+            what: "tree_depth",
+            value: max_depth,
+            max: limits::MAX_TREE_DEPTH,
+        });
+    }
+    if types.len() > limits::MAX_COMPONENT_TYPES {
+        return Err(TransportError::LimitExceeded {
+            what: "component_types",
+            value: types.len(),
+            max: limits::MAX_COMPONENT_TYPES,
+        });
+    }
+    Ok(())
+}
+
+fn walk<'a>(
+    c: &'a Component,
+    depth: usize,
+    count: &mut usize,
+    max_depth: &mut usize,
+    types: &mut std::collections::BTreeSet<&'static str>,
+) {
+    *count += 1;
+    if depth > *max_depth {
+        *max_depth = depth;
+    }
+    types.insert(variant_name(c));
+    match c {
+        Component::Page { children, .. }
+        | Component::Row { children, .. }
+        | Component::Col { children, .. }
+        | Component::Grid { children, .. }
+        | Component::Drawer { children, .. } => {
+            for ch in children {
+                walk(ch, depth + 1, count, max_depth, types);
+            }
+        }
+        Component::Tabs { tabs, .. } => {
+            for t in tabs {
+                for ch in &t.children {
+                    walk(ch, depth + 1, count, max_depth, types);
+                }
+            }
+        }
+        Component::Wizard { steps, .. } => {
+            for s in steps {
+                for ch in &s.children {
+                    walk(ch, depth + 1, count, max_depth, types);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn variant_name(c: &Component) -> &'static str {
+    match c {
+        Component::Page { .. } => "page",
+        Component::Row { .. } => "row",
+        Component::Col { .. } => "col",
+        Component::Grid { .. } => "grid",
+        Component::Tabs { .. } => "tabs",
+        Component::Text { .. } => "text",
+        Component::Heading { .. } => "heading",
+        Component::Badge { .. } => "badge",
+        Component::Diff { .. } => "diff",
+        Component::Chart { .. } => "chart",
+        Component::Sparkline { .. } => "sparkline",
+        Component::Table { .. } => "table",
+        Component::Tree { .. } => "tree",
+        Component::Timeline { .. } => "timeline",
+        Component::Markdown { .. } => "markdown",
+        Component::RichText { .. } => "rich_text",
+        Component::RefPicker { .. } => "ref_picker",
+        Component::Wizard { .. } => "wizard",
+        Component::Drawer { .. } => "drawer",
+        Component::Button { .. } => "button",
+        Component::Form { .. } => "form",
+        Component::Forbidden { .. } => "forbidden",
+        Component::Dangling { .. } => "dangling",
+        Component::Custom { .. } => "custom",
+    }
+}
+
+pub(crate) fn enforce_render_tree_size(tree: &ComponentTree) -> Result<(), TransportError> {
     let len = serde_json::to_vec(tree)
         .map(|b| b.len())
         .unwrap_or(usize::MAX);
@@ -554,107 +312,19 @@ fn require_kind(snap: &NodeSnapshot, expected: &str) -> Result<(), TransportErro
     Ok(())
 }
 
-fn collect_widgets<R: NodeReader + ?Sized>(
-    reader: &R,
-    page_id: &NodeId,
-) -> Result<Vec<NodeSnapshot>, TransportError> {
-    let mut out: Vec<NodeSnapshot> = Vec::new();
-    for cid in reader.children(page_id) {
-        if let Some(snap) = reader.get(&cid) {
-            if snap.kind == KindId::new(WIDGET_KIND) {
-                out.push(snap);
-            }
+fn count_components(c: &Component) -> usize {
+    let children: &[Component] = match c {
+        Component::Page { children, .. } => children,
+        Component::Row { children, .. } => children,
+        Component::Col { children, .. } => children,
+        Component::Grid { children, .. } => children,
+        Component::Tabs { tabs, .. } => {
+            return 1 + tabs
+                .iter()
+                .map(|t| t.children.iter().map(count_components).sum::<usize>())
+                .sum::<usize>();
         }
-    }
-    if out.len() > limits::MAX_WIDGETS_PER_PAGE {
-        return Err(TransportError::LimitExceeded {
-            what: "widgets_per_page",
-            value: out.len(),
-            max: limits::MAX_WIDGETS_PER_PAGE,
-        });
-    }
-    Ok(out)
-}
-
-fn run_contract_validation<R: NodeReader + ?Sized>(
-    reader: &R,
-    page: &NodeSnapshot,
-) -> Result<Vec<ContractError>, TransportError> {
-    let tref = match page.slots.get("template_ref") {
-        Some(v) if !v.is_null() => v,
-        _ => return Ok(Vec::new()),
+        _ => &[],
     };
-    let id_str = tref
-        .get("id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| TransportError::MalformedPage(page.id, "template_ref.id missing".into()))?;
-    let tid: NodeId = id_str
-        .parse()
-        .map(NodeId)
-        .map_err(|e| TransportError::MalformedPage(page.id, format!("template_ref.id: {e}")))?;
-    let template = reader.get(&tid).ok_or_else(|| {
-        TransportError::MalformedPage(page.id, "template_ref points at missing node".into())
-    })?;
-    require_kind(&template, TEMPLATE_KIND)?;
-    let requires = template
-        .slots
-        .get("requires")
-        .cloned()
-        .unwrap_or(JsonValue::Null);
-    let bound_args = page
-        .slots
-        .get("bound_args")
-        .cloned()
-        .unwrap_or_else(|| JsonValue::Object(Default::default()));
-    validate_bound_args(&requires, &bound_args).map_err(TransportError::Contract)
-}
-
-fn widget_bindings(w: &NodeSnapshot) -> Result<Vec<(String, String)>, TransportError> {
-    let raw = match w.slots.get("bindings") {
-        Some(v) => v,
-        None => return Ok(Vec::new()),
-    };
-    let obj = raw.as_object().ok_or_else(|| {
-        TransportError::MalformedWidget(w.id, "bindings must be an object".into())
-    })?;
-    let mut out = Vec::with_capacity(obj.len());
-    for (k, v) in obj {
-        let s = v.as_str().ok_or_else(|| {
-            TransportError::MalformedWidget(w.id, format!("binding `{k}` not a string"))
-        })?;
-        out.push((k.clone(), s.to_string()));
-    }
-    Ok(out)
-}
-
-fn widget_type(w: &NodeSnapshot) -> Result<String, TransportError> {
-    w.slots
-        .get("widget_type")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .ok_or_else(|| TransportError::MalformedWidget(w.id, "widget_type missing".into()))
-}
-
-fn build_cache_key(
-    req: &ResolveRequest,
-    state: &DashboardState,
-    page: &NodeSnapshot,
-    widgets: &[NodeSnapshot],
-    stack: &ContextStack,
-) -> u64 {
-    let widget_versions: Vec<(NodeId, u64)> = widgets.iter().map(|w| (w.id, w.version)).collect();
-    let bound_versions: Vec<(NodeId, u64)> = Vec::new();
-    let inputs = CacheKeyInputs {
-        page_ref: page.id,
-        page_node_version: page.version,
-        template_node_version: None,
-        widget_node_versions: &widget_versions,
-        bound_node_versions: &bound_versions,
-        auth_subject: req.auth_subject.as_deref().unwrap_or(""),
-        auth_role_epoch: 0,
-        stack,
-        page_state_hash: hash_page_state(&req.page_state),
-        widget_registry_version: state.widgets.version(),
-    };
-    inputs.derive().0
+    1 + children.iter().map(count_components).sum::<usize>()
 }

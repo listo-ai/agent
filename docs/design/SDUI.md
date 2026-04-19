@@ -4,7 +4,7 @@ A typed component IR emitted by the backend and rendered by a tiny React runtime
 
 ## Current status
 
-**S1–S5 complete. S6 and S7 pending.**
+**S1–S7 complete.**
 
 - **S1**: `crates/ui-ir` (16 component variants), JSON Schema, versioning scaffolding, `agent ui vocabulary`.
 - **S2**: `POST /api/v1/ui/action` + HandlerRegistry with `toast` / `navigate` / `none` / `full_render` / `form_errors` / `download` / `stream` response variants.
@@ -54,7 +54,26 @@ agent ui resolve --page <id> -o json
 - Subscription plan on `/render` is coarse: every `{{$target.<slot>}}` reference in the template contributes one subject scoped to the target. The React renderer's `useSubscriptions` hook then invalidates on any matching `slot_changed` event. Fine-grained per-widget subscription plans (one plan per component id) are an S6 refinement.
 - "Persist graph to disk" from the milestones table is orthogonal to the render spine and remains open — authored pages + plugin views still vanish across server restart.
 
-**Next: S6** — remaining components (chart, sparkline, wizard, tree, timeline, drawer, ref_picker, markdown streaming) plus `$page`-state round-trip for chart zoom. Then **S7** — optimistic action hints, capability-handshake enforcement, DoS limit tests, and the three falsification tests (BACnet discovery, PR review card, scope-plan board).
+### S6 summary
+
+Shipped the remaining IR vocabulary — `chart`, `sparkline`, `tree`,
+`timeline`, `markdown`, `ref_picker`, `wizard`, `drawer`. Chart zoom
+writes `{from, to}` into `$page[page_state_key]` (default
+`"chart_range"`) and double-click clears it; the render endpoint
+re-reads `page_state` on the next round-trip. `timeline` + `markdown`
+support `subscribe` with `mode: "append" | "replace"` for streaming
+content. `sparkline` subscribes to one subject; `chart` derives its
+subject from `source: { node_id, slot }`. Subscription-plan
+derivation recognises all three (charts, sparklines, tables) and
+emits per-widget plans keyed by the authored component id, so the
+client invalidates only the affected widget — no broad sweeps.
+
+### S7 summary
+
+- **Optimistic actions** — `Action.optimistic: { target_component_id, fields }` applied via React-Query `setQueryData` before the round-trip fires; authoritative `Patch` / `FullRender` responses replace through the same `applyPatch.ts` helpers. Rollback on round-trip error.
+- **Capability handshake** — [`frontend/src/sdui/capability.ts`](../../frontend/src/sdui/capability.ts) surfaces `SUPPORTED_IR_VERSION`; `SduiPage` and `SduiRenderPage` refuse to project a tree whose `ir_version` exceeds it and show a clean mismatch banner.
+- **DoS limits** — `crates/dashboard-transport/tests/limits.rs` asserts each of `page_state_bytes`, `render_tree_bytes`, `tree_nodes`, `tree_depth`, `component_types` returns 413 with its stable `what` tag. The legacy `widgets_per_page` and `binding_ref_depth` limits were removed with the widget resolver; new tree-shape limits (`tree_nodes` 2k, `tree_depth` 32, `component_types` 60) match SDUI.md § "Size & DoS limits".
+- **Falsification tests** — `crates/dashboard-transport/tests/falsification.rs`. UC1 BACnet discovery, UC2 PR review card, UC3 scope-plan board each ship as a fixture `layout` + minimal handler stubs; resolve + action round-trips pass with zero domain-specific keywords in `ui-ir` or the React renderer.
 
 ## Build discipline — POC-first, full-core, hard-delete
 

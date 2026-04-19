@@ -506,6 +506,16 @@ async fn server_with_ui_fixtures() -> (
         let page_path = spi::NodePath::from_str("/dashboard").unwrap();
         g.write_slot(&page_path, "title", Value::String("Dashboard".into()))
             .unwrap();
+        // SDUI layout — the resolve endpoint requires `layout`.
+        g.write_slot(
+            &page_path,
+            "layout",
+            serde_json::json!({
+                "ir_version": 1,
+                "root": { "type": "page", "id": "root", "title": "Dashboard", "children": [] }
+            }),
+        )
+        .unwrap();
         *page_set.lock().unwrap() = Some(page);
     })
     .await;

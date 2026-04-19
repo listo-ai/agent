@@ -253,31 +253,41 @@ fn derive_subscriptions(
     target: Option<&dashboard_runtime::NodeSnapshot>,
     reader: &(dyn NodeReader + Send + Sync),
 ) -> Vec<SubscriptionPlan> {
-    let mut subjects: BTreeSet<String> = BTreeSet::new();
+    let mut plans: Vec<SubscriptionPlan> = Vec::new();
 
-    // (1) $target.<slot> bindings.
+    // (1) $target.<slot> bindings baked into the tree (e.g. a Badge
+    // label `{{$target.current_state}}`). When any of these slots
+    // change, the tree itself needs to be re-resolved — so the plan is
+    // keyed off the target node's id. The client treats `widget_id ==
+    // target.id` as "invalidate the render/resolve query".
     if let Some(t) = target {
         let mut slots: BTreeSet<String> = BTreeSet::new();
         collect_target_slots(template, &mut slots);
-        for s in slots {
-            subjects.insert(format!("node.{}.slot.{}", t.id, s));
+        if !slots.is_empty() {
+            let subjects: Vec<String> = slots
+                .iter()
+                .map(|s| format!("node.{}.slot.{}", t.id, s))
+                .collect();
+            plans.push(SubscriptionPlan {
+                widget_id: t.id.to_string(),
+                subjects,
+                debounce_ms: 250,
+            });
         }
     }
 
-    // (2) Tables with subscribe:true — run the query, emit per-slot
-    // subjects for every matched node. This makes live-update work for
-    // tables whose rows are bound purely by RSQL (no $target threading).
-    collect_table_subjects(template, reader, &mut subjects);
+    // (2) One plan per `table` with `subscribe: true`. The plan's
+    // `widget_id` is the table component's id — the client uses that
+    // to invalidate just the sdui-table query, not the whole tree.
+    collect_table_plans(template, reader, &mut plans);
 
-    if subjects.is_empty() {
-        return vec![];
-    }
-    let widget_id = target.map(|t| t.id).unwrap_or_default();
-    vec![SubscriptionPlan {
-        widget_id,
-        subjects: subjects.into_iter().collect(),
-        debounce_ms: 250,
-    }]
+    // (3) Charts + sparklines — each carries its own node+slot
+    // subscription target, no RSQL query involved. Plan widget_id is
+    // the component's authored id; the hook routes invalidations
+    // per-widget.
+    collect_chart_plans(template, &mut plans);
+
+    plans
 }
 
 fn collect_target_slots(v: &JsonValue, acc: &mut BTreeSet<String>) {
@@ -304,13 +314,56 @@ fn scan_bindings(s: &str, acc: &mut BTreeSet<String>) {
     }
 }
 
-fn collect_table_subjects(
+/// Walk the tree, find every `chart` component with a `source.{node_id,
+/// slot}` and emit a subscription subject for live ticks. Complements
+/// the table-plan collector; the two are composable.
+fn collect_chart_plans(v: &JsonValue, plans: &mut Vec<SubscriptionPlan>) {
+    match v {
+        JsonValue::Array(a) => a.iter().for_each(|x| collect_chart_plans(x, plans)),
+        JsonValue::Object(m) => {
+            let is_chart = m.get("type").and_then(|v| v.as_str()) == Some("chart");
+            let is_spark = m.get("type").and_then(|v| v.as_str()) == Some("sparkline");
+            if is_chart {
+                let src = m.get("source").and_then(|v| v.as_object());
+                let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                if let (Some(src), true) = (src, !id.is_empty()) {
+                    let node = src.get("node_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let slot = src.get("slot").and_then(|v| v.as_str()).unwrap_or("");
+                    if !node.is_empty() && !slot.is_empty() {
+                        plans.push(SubscriptionPlan {
+                            widget_id: id.to_string(),
+                            subjects: vec![format!("node.{node}.slot.{slot}")],
+                            debounce_ms: 250,
+                        });
+                    }
+                }
+            }
+            if is_spark {
+                let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let subj = m.get("subscribe").and_then(|v| v.as_str()).unwrap_or("");
+                if !id.is_empty() && !subj.is_empty() {
+                    plans.push(SubscriptionPlan {
+                        widget_id: id.to_string(),
+                        subjects: vec![subj.to_string()],
+                        debounce_ms: 250,
+                    });
+                }
+            }
+            for val in m.values() {
+                collect_chart_plans(val, plans);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_table_plans(
     v: &JsonValue,
     reader: &(dyn NodeReader + Send + Sync),
-    acc: &mut BTreeSet<String>,
+    plans: &mut Vec<SubscriptionPlan>,
 ) {
     match v {
-        JsonValue::Array(a) => a.iter().for_each(|x| collect_table_subjects(x, reader, acc)),
+        JsonValue::Array(a) => a.iter().for_each(|x| collect_table_plans(x, reader, plans)),
         JsonValue::Object(m) => {
             let is_table = m.get("type").and_then(|v| v.as_str()) == Some("table");
             if is_table {
@@ -320,15 +373,23 @@ fn collect_table_subjects(
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
                     let query = source.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                    if subscribe && !query.is_empty() {
-                        emit_query_subjects(query, reader, acc);
+                    let table_id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    if subscribe && !query.is_empty() && !table_id.is_empty() {
+                        let mut subjects: BTreeSet<String> = BTreeSet::new();
+                        emit_query_subjects(query, reader, &mut subjects);
+                        if !subjects.is_empty() {
+                            plans.push(SubscriptionPlan {
+                                widget_id: table_id.to_string(),
+                                subjects: subjects.into_iter().collect(),
+                                debounce_ms: 250,
+                            });
+                        }
                     }
                 }
             }
-            // Recurse into every field — tables can be nested under
-            // rows/cols/tabs.
+            // Recurse — tables can be nested under rows / cols / tabs.
             for val in m.values() {
-                collect_table_subjects(val, reader, acc);
+                collect_table_plans(val, reader, plans);
             }
         }
         _ => {}

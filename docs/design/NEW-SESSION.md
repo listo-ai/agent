@@ -79,6 +79,7 @@ These are enforced in review. A PR that violates them gets sent back. No excepti
 | [VERSIONING.md](VERSIONING.md) | Per-surface semver rules, capability manifest, extension install-time match, kind migrations, deprecation windows. |
 | [LOGGING.md](LOGGING.md) | One log format everywhere. Canonical fields, levels, correlation ids, per-deployment sinks, plugin integration across all three flavors, redaction, outbox-backed shipping, log-vs-audit boundary. |
 | [TESTS.md](TESTS.md) | Test-driven development here — test categories, trait-suite pattern, contract fixtures, multi-backend parity, property + snapshot tests, determinism rules, what NOT to test, CI gates. |
+| [../testing/TESTING.md](../testing/TESTING.md) | **Local dev environment for testing.** Canonical CLI commands to build and start the full cloud+edge stack or a solo edge agent. Read this before running any local integration test. FOR LOCAL TESTING ONLY. |
 | [../sessions/STEPS.md](../sessions/STEPS.md) | **Current coding stages** with `[DONE]` / `[DEFERRED]` markers. Temporary — will be removed when implementation catches up. Always check it to see what's already wired up before duplicating work. |
 
 ## Task router — read these docs before starting
@@ -87,6 +88,7 @@ Find your task. Read the listed docs **in the order given** before touching code
 
 | Task | Read, in order |
 |---|---|
+| **Run local tests / start the dev environment** | NEW-SESSION (this doc) → [TESTING.md](../testing/TESTING.md) — contains the exact `make` commands; do not guess the startup sequence |
 | **Build a plugin / extension** (protocol driver, API integration, compute extension) | NEW-SESSION (this doc) → EVERYTHING-AS-NODE → NODE-AUTHORING → VERSIONING → UI (if it contributes UI) → CODE-LAYOUT (where extension crates live) → README (extension sections) |
 | **Add a new built-in node kind** | NEW-SESSION → EVERYTHING-AS-NODE → NODE-AUTHORING → CODE-LAYOUT (`domain-*` crates) → STEPS (current stage) |
 | **Work on the frontend / Studio** | NEW-SESSION → UI → EVERYTHING-AS-NODE (data model the UI renders) → NODE-AUTHORING (property-panel schemas + multi-variant forms) |

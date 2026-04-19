@@ -33,6 +33,7 @@ dependencies = [
  "dashboard-transport",
  "data-repos",
  "data-sqlite",
+ "data-tsdb",
  "domain-compute",
  "domain-extensions",
  "domain-fleet",
@@ -821,7 +822,6 @@ name = "dashboard-transport"
 version = "0.0.1"
 dependencies = [
  "axum",
- "dashboard-nodes",
  "dashboard-runtime",
  "dashboard-transport",
  "graph",
@@ -4395,7 +4395,9 @@ dependencies = [
  "axum",
  "data-entities",
  "data-repos",
+ "data-tsdb",
  "domain-flows",
+ "domain-history",
  "engine",
  "extensions-host",
  "extensions-sdk",

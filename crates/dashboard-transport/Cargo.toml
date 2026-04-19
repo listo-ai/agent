@@ -12,7 +12,6 @@ workspace = true
 [dependencies]
 spi = { workspace = true }
 graph = { workspace = true }
-dashboard-nodes = { workspace = true }
 dashboard-runtime = { workspace = true }
 ui-ir = { workspace = true }
 query = { workspace = true }

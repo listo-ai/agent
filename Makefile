@@ -55,8 +55,8 @@ build: ## Build agent (debug by default; RELEASE=1 for release)
 	$(CARGO) build $(PROFILE_FLAG) --bin $(BIN)
 
 .PHONY: run
-run: ## Run agent in standalone mode (RELEASE=1 for release build)
-	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --role standalone --plugins-dir ./plugins
+run: ## Run edge agent on :8080 using dev/edge.yaml + dev/edge.db (RELEASE=1 for release)
+	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --config dev/edge.yaml --http 127.0.0.1:8080
 
 .PHONY: frontend
 frontend: build-client ## Start the Rsbuild dev server (builds client first)
@@ -70,13 +70,8 @@ frontend-build: build-client ## Production web build of the Studio UI
 # See dev/README.md for the full port map and rationale.
 
 .PHONY: dev
-dev: ## Start cloud + edge + both Studios via overmind (Ctrl-C stops all)
-	@command -v overmind >/dev/null 2>&1 || { \
-	  echo "overmind not found. Install with 'brew install overmind' or"; \
-	  echo "'go install github.com/DarthSim/overmind/v2@latest', or run"; \
-	  echo "the four processes individually: make run-cloud / run-edge /"; \
-	  echo "studio-cloud / studio-edge."; exit 1; }
-	overmind start -f Procfile.dev
+dev: ## Start cloud + edge + both Studios (Ctrl-C stops all)
+	@bash dev/run.sh
 
 .PHONY: run-cloud
 run-cloud: ## Run the cloud agent on 127.0.0.1:8081 (config: dev/cloud.yaml)

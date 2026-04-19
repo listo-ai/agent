@@ -43,6 +43,7 @@ pub mod capabilities;
 pub mod event;
 pub mod fleet;
 pub mod flows;
+pub mod history;
 pub mod kinds;
 pub mod plugins;
 pub mod preferences;

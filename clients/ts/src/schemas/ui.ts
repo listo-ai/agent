@@ -44,9 +44,16 @@ export type UiResolveRequest = z.infer<typeof UiResolveRequestSchema>;
 
 // ---- Action ---------------------------------------------------------------
 
+export const UiOptimisticHintSchema = z.object({
+  target_component_id: z.string(),
+  fields: z.unknown(),
+});
+export type UiOptimisticHint = z.infer<typeof UiOptimisticHintSchema>;
+
 export const UiActionSchema = z.object({
   handler: z.string(),
   args: z.unknown().optional(),
+  optimistic: UiOptimisticHintSchema.optional(),
 });
 export type UiAction = z.infer<typeof UiActionSchema>;
 
@@ -72,6 +79,56 @@ export const UiDiffAnnotationSchema = z.object({
   created_at: z.string().optional(),
 });
 export type UiDiffAnnotation = z.infer<typeof UiDiffAnnotationSchema>;
+
+export const UiChartSourceSchema = z.object({
+  node_id: z.string(),
+  slot: z.string(),
+});
+export type UiChartSource = z.infer<typeof UiChartSourceSchema>;
+
+export const UiChartSeriesSchema = z.object({
+  label: z.string(),
+  points: z.array(z.tuple([z.number(), z.number()])).default([]),
+});
+export type UiChartSeries = z.infer<typeof UiChartSeriesSchema>;
+
+export const UiChartRangeSchema = z.object({
+  from: z.number().int(),
+  to: z.number().int(),
+});
+export type UiChartRange = z.infer<typeof UiChartRangeSchema>;
+
+export type UiTreeItem = {
+  id: string;
+  label: string;
+  children: UiTreeItem[];
+  icon?: string | undefined;
+};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const UiTreeItemSchema: z.ZodType<any> = z.lazy(() =>
+  z.object({
+    id: z.string(),
+    label: z.string(),
+    children: z.array(UiTreeItemSchema).default([]),
+    icon: z.string().optional(),
+  }),
+);
+
+export const UiTimelineEventSchema = z.object({
+  ts: z.string(),
+  text: z.string(),
+  intent: z.string().optional(),
+});
+export type UiTimelineEvent = z.infer<typeof UiTimelineEventSchema>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const UiWizardStepSchema: z.ZodType<any> = z.lazy(() =>
+  z.object({
+    label: z.string(),
+    children: z.array(UiComponentSchema).default([]),
+  }),
+);
+export type UiWizardStep = { label: string; children: UiComponent[] };
 
 // ---- Component (recursive) ------------------------------------------------
 
@@ -153,6 +210,22 @@ export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
     }),
     // data
     z.object({
+      type: z.literal("chart"),
+      id: z.string().optional(),
+      source: UiChartSourceSchema,
+      series: z.array(UiChartSeriesSchema).default([]),
+      range: UiChartRangeSchema.optional(),
+      page_state_key: z.string().optional(),
+      kind: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("sparkline"),
+      id: z.string().optional(),
+      values: z.array(z.number()).default([]),
+      subscribe: z.string().optional(),
+      intent: z.string().optional(),
+    }),
+    z.object({
       type: z.literal("table"),
       id: z.string().optional(),
       source: UiTableSourceSchema,
@@ -160,12 +233,53 @@ export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
       row_action: UiActionSchema.optional(),
       page_size: z.number().int().optional(),
     }),
+    z.object({
+      type: z.literal("tree"),
+      id: z.string().optional(),
+      nodes: z.array(UiTreeItemSchema),
+      node_action: UiActionSchema.optional(),
+    }),
+    z.object({
+      type: z.literal("timeline"),
+      id: z.string().optional(),
+      events: z.array(UiTimelineEventSchema).default([]),
+      subscribe: z.string().optional(),
+      mode: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("markdown"),
+      id: z.string().optional(),
+      content: z.string().optional(),
+      subscribe: z.string().optional(),
+      mode: z.string().optional(),
+    }),
     // input
     z.object({
       type: z.literal("rich_text"),
       id: z.string().optional(),
       value: z.string().optional(),
       placeholder: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("ref_picker"),
+      id: z.string().optional(),
+      query: z.string().optional(),
+      value: z.string().optional(),
+      placeholder: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("wizard"),
+      id: z.string().optional(),
+      steps: z.array(UiWizardStepSchema),
+      submit: UiActionSchema.optional(),
+    }),
+    z.object({
+      type: z.literal("drawer"),
+      id: z.string().optional(),
+      title: z.string().optional(),
+      open: z.boolean().default(false),
+      page_state_key: z.string().optional(),
+      children: z.array(UiComponentSchema).default([]),
     }),
     // interactive
     z.object({

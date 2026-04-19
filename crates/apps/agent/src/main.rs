@@ -26,7 +26,9 @@ use config::{
 use data_repos::PreferencesService;
 use data_sqlite::SqliteFlowRevisionRepo;
 use data_sqlite::SqliteGraphRepo;
+use data_sqlite::SqliteHistoryRepo;
 use data_sqlite::SqlitePreferencesRepo;
+use data_tsdb::sqlite::SqliteTelemetryRepo;
 use domain_flows::FlowService;
 use engine::{kinds as engine_kinds, Engine};
 use extensions_host::{HostPolicy, PluginHost, PluginRegistry};
@@ -303,6 +305,26 @@ async fn run_daemon(
             }
             Err(e) => {
                 tracing::warn!(error = %e, "failed to open preferences repo — preferences endpoints unavailable");
+            }
+        }
+
+        // Wire history repos from the same DB path.
+        match SqliteHistoryRepo::open_file(path) {
+            Ok(repo) => {
+                app_state = app_state.with_history_repo(std::sync::Arc::new(repo));
+                info!("history repo attached");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to open history repo — structured history endpoints unavailable");
+            }
+        }
+        match SqliteTelemetryRepo::open_file(path) {
+            Ok(repo) => {
+                app_state = app_state.with_telemetry_repo(std::sync::Arc::new(repo));
+                info!("telemetry repo attached");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to open telemetry repo — scalar history endpoints unavailable");
             }
         }
     }

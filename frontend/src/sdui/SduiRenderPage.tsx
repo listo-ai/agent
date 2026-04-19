@@ -14,6 +14,7 @@ import { agentPromise } from "@/lib/agent";
 import { SduiProvider, type CustomRegistry } from "./context";
 import { Renderer } from "./Renderer";
 import { useSubscriptions } from "./useSubscriptions";
+import { checkIrVersion } from "./capability";
 import type { UiActionResponse, UiResolveResponse } from "@sys/agent-client";
 
 export const globalCustomRegistry: CustomRegistry = new Map();
@@ -109,12 +110,26 @@ export function SduiRenderPage() {
     );
   }
 
+  const mismatch = checkIrVersion(data.render);
+  if (mismatch) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-destructive">
+          Capability mismatch: server emitted <code>ir_version={mismatch.received}</code>,
+          client supports up to <code>{mismatch.supported}</code>. Upgrade the
+          frontend to render this page.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <SduiProvider
       dispatchAction={dispatchAction}
       customRegistry={globalCustomRegistry}
       pageState={pageState}
       setPageState={mergePageState}
+      treeQueryKey={queryKey}
     >
       <Renderer node={data.render.root} />
     </SduiProvider>

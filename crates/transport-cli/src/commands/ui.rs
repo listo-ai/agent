@@ -365,6 +365,8 @@ fn component_info(c: &UiComponent) -> (&str, Option<&str>, &[UiComponent]) {
         UiComponent::Heading { id, .. } => ("heading", id.as_deref(), &[]),
         UiComponent::Badge { id, .. } => ("badge", id.as_deref(), &[]),
         UiComponent::Diff { id, .. } => ("diff", id.as_deref(), &[]),
+        UiComponent::Chart { id, .. } => ("chart", id.as_deref(), &[]),
+        UiComponent::Sparkline { id, .. } => ("sparkline", id.as_deref(), &[]),
         UiComponent::Table { id, .. } => ("table", id.as_deref(), &[]),
         UiComponent::RichText { id, .. } => ("rich_text", id.as_deref(), &[]),
         UiComponent::Button { id, .. } => ("button", id.as_deref(), &[]),
@@ -372,5 +374,11 @@ fn component_info(c: &UiComponent) -> (&str, Option<&str>, &[UiComponent]) {
         UiComponent::Forbidden { id, .. } => ("forbidden", Some(id), &[]),
         UiComponent::Dangling { id } => ("dangling", Some(id), &[]),
         UiComponent::Custom { id, .. } => ("custom", id.as_deref(), &[]),
+        UiComponent::Tree { id, .. } => ("tree", id.as_deref(), &[]),
+        UiComponent::Timeline { id, .. } => ("timeline", id.as_deref(), &[]),
+        UiComponent::Markdown { id, .. } => ("markdown", id.as_deref(), &[]),
+        UiComponent::RefPicker { id, .. } => ("ref_picker", id.as_deref(), &[]),
+        UiComponent::Wizard { id, .. } => ("wizard", id.as_deref(), &[]),
+        UiComponent::Drawer { id, children, .. } => ("drawer", id.as_deref(), children),
     }
 }

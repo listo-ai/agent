@@ -3,8 +3,10 @@
 use std::sync::Arc;
 
 use auth::DevNullProvider;
-use data_repos::PreferencesService;
+use data_repos::{HistoryRepo, PreferencesService};
+use data_tsdb::TelemetryRepo;
 use domain_flows::FlowService;
+use domain_history::Historizer;
 use engine::BehaviorRegistry;
 use extensions_host::{PluginHost, PluginRegistry};
 use graph::GraphStore;
@@ -43,6 +45,15 @@ pub struct AppState {
     /// a database (in-memory only). In-memory agents return 400 on
     /// preference endpoints rather than silently losing writes.
     pub prefs: Option<PreferencesService>,
+    /// Structured history repo (String/Json/Binary slots → `slot_history` table).
+    /// `None` when the agent has no DB path configured.
+    pub history_repo: Option<Arc<dyn HistoryRepo>>,
+    /// Scalar history repo (Bool/Number slots → `slot_timeseries` table).
+    /// `None` when the agent has no DB path configured.
+    pub telemetry_repo: Option<Arc<dyn TelemetryRepo>>,
+    /// Historizer service — used for `POST /history/record` (on-demand recording).
+    /// `None` until Stage 3 wiring lands; REST currently falls back to direct insert.
+    pub historizer: Option<Arc<Historizer>>,
 }
 
 impl AppState {
@@ -63,6 +74,9 @@ impl AppState {
             auth_provider: Arc::new(DevNullProvider::new()),
             flows: None,
             prefs: None,
+            history_repo: None,
+            telemetry_repo: None,
+            historizer: None,
         }
     }
 
@@ -87,6 +101,9 @@ impl AppState {
             auth_provider: Arc::new(DevNullProvider::new()),
             flows: None,
             prefs: None,
+            history_repo: None,
+            telemetry_repo: None,
+            historizer: None,
         }
     }
 
@@ -120,6 +137,24 @@ impl AppState {
     /// Provide the user / org preferences service.
     pub fn with_prefs_service(mut self, svc: PreferencesService) -> Self {
         self.prefs = Some(svc);
+        self
+    }
+
+    /// Attach the structured-history repo (String/Json/Binary slots → `slot_history` table).
+    pub fn with_history_repo(mut self, repo: Arc<dyn HistoryRepo>) -> Self {
+        self.history_repo = Some(repo);
+        self
+    }
+
+    /// Attach the scalar telemetry repo (Bool/Number slots → `slot_timeseries` table).
+    pub fn with_telemetry_repo(mut self, repo: Arc<dyn TelemetryRepo>) -> Self {
+        self.telemetry_repo = Some(repo);
+        self
+    }
+
+    /// Attach the historizer service (used for on-demand recording).
+    pub fn with_historizer(mut self, h: Arc<Historizer>) -> Self {
+        self.historizer = Some(h);
         self
     }
 }

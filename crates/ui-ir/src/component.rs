@@ -119,6 +119,48 @@ pub enum Component {
     },
 
     // ---- data -----------------------------------------------------
+    /// Time-series chart. Data points are fetched server-side at
+    /// resolve time against the node+slot addressed by `source`. Zoom
+    /// / pan gestures write `{from, to}` into `$page[page_state_key]`
+    /// and re-issue `/ui/resolve`, so the server can return denser
+    /// data for the focused window. Live ticks come in via the
+    /// subscription plan — the subject is `node.<id>.slot.<slot>`.
+    Chart {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        source: ChartSource,
+        /// Series emitted by the server (one per line / area).
+        #[serde(default)]
+        series: Vec<ChartSeries>,
+        /// Current visible window (inclusive ms since epoch). The
+        /// server fills this from `$page.<page_state_key>` or its own
+        /// default when the client hasn't zoomed yet.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        range: Option<ChartRange>,
+        /// Client writes zoom / pan state here on `$page`. Defaults to
+        /// `"chart_range"` when absent.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page_state_key: Option<String>,
+        /// `"line"` | `"area"` | `"bar"`. Defaults to `"line"`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
+    },
+
+    /// Compact sparkline — a single line of recent points, no axes, no
+    /// interaction. Intended for KPI tiles.
+    Sparkline {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        /// Inline values, newest last. Server fills these at resolve.
+        #[serde(default)]
+        values: Vec<f64>,
+        /// Subscription subject for live append (`node.<id>.slot.<s>`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subscribe: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+    },
+
     /// Server-paginated, sortable table. Rows fetched via
     /// `GET /api/v1/ui/table` (S3); S1 emits the schema only.
     Table {
@@ -132,6 +174,49 @@ pub enum Component {
         page_size: Option<u32>,
     },
 
+    /// Hierarchical tree — the sidebar/file-browser shape. Children
+    /// arrive pre-expanded; lazy-expand is an S7 refinement.
+    Tree {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        nodes: Vec<TreeItem>,
+        /// Optional click action — `$node.id` is substituted at
+        /// dispatch time.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        node_action: Option<Action>,
+    },
+
+    /// Chronological event list. When `subscribe` is set and `mode` is
+    /// `"append"`, incoming NATS messages on the subject are appended
+    /// to `events` client-side without a tree re-resolve — the
+    /// streaming-text story from SDUI.md § "Streaming content".
+    Timeline {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default)]
+        events: Vec<TimelineEvent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subscribe: Option<String>,
+        /// `"append"` (default — new messages are added to the list)
+        /// or `"replace"` (each message replaces the list).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+    },
+
+    /// Markdown block. With `subscribe` set, new messages on the
+    /// subject append (or replace) the content depending on `mode` —
+    /// the UC2 AI-streaming-output primitive.
+    Markdown {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subscribe: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+    },
+
     // ---- input ----------------------------------------------------
     /// Markdown-aware rich-text editor.
     RichText {
@@ -141,6 +226,49 @@ pub enum Component {
         value: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
+    },
+
+    /// Node-graph reference picker — user searches/filters nodes in
+    /// the graph, picks one; the form stores its id. UC1 alarm rules,
+    /// UC2 settings forms, UC3 scope target pickers.
+    RefPicker {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        /// RSQL filter restricting which nodes the picker offers.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        query: Option<String>,
+        /// Current value — a node id.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        value: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+    },
+
+    /// Multi-step form. Each step has a nested child tree rendered
+    /// one at a time; `submit` fires when the last step is confirmed.
+    Wizard {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        steps: Vec<WizardStep>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        submit: Option<Action>,
+    },
+
+    /// Off-canvas slide-over panel. `open` is bound from `$page`; the
+    /// close gesture writes `false` back.
+    Drawer {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(default)]
+        open: bool,
+        /// `$page` key that owns the open state. Defaults to
+        /// `drawer_<id>`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page_state_key: Option<String>,
+        #[serde(default)]
+        children: Vec<Component>,
     },
 
     // ---- interactive ----------------------------------------------
@@ -210,8 +338,7 @@ pub enum Component {
 // Supporting types
 // -------------------------------------------------------------------
 
-/// An action reference carried by interactive components. S2 adds the
-/// `/api/v1/ui/action` dispatcher; S1 defines the shape only.
+/// An action reference carried by interactive components.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Action {
     /// Handler name registered in the handler registry, e.g.
@@ -220,6 +347,56 @@ pub struct Action {
     /// Opaque arguments forwarded to the handler.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<JsonValue>,
+    /// Client-side hint for making the UI feel instant: apply this
+    /// patch to the tree immediately on click; when the server
+    /// responds, either it confirms (no-op) or it returns an
+    /// authoritative Patch/FullRender that replaces the optimistic
+    /// one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub optimistic: Option<OptimisticHint>,
+}
+
+/// Client-side optimistic-update hint — see SDUI.md § "Optimistic
+/// hints". Applied before the round-trip fires; the server's response
+/// overrides.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct OptimisticHint {
+    /// Target IR component id to patch. The client walks the current
+    /// tree, finds the node with this id, and shallow-merges `fields`
+    /// into it.
+    pub target_component_id: String,
+    /// Object of field-name → value pairs to merge into the target
+    /// component. `serde_json::Value` so any typed field can be
+    /// updated.
+    pub fields: JsonValue,
+}
+
+/// Data source for a [`Component::Chart`] — a node + slot that carries
+/// a time series.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChartSource {
+    /// Node id (UUID as string) — the subscription plan is derived
+    /// from this plus `slot`.
+    pub node_id: String,
+    /// Slot name on the node (e.g. `"value"`, `"current_count"`).
+    pub slot: String,
+}
+
+/// One series in a [`Component::Chart`].
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChartSeries {
+    /// Display label.
+    pub label: String,
+    /// Point list — `[ts_ms, value]` pairs, oldest first.
+    #[serde(default)]
+    pub points: Vec<(i64, f64)>,
+}
+
+/// Inclusive time window (ms since epoch) for a chart.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+pub struct ChartRange {
+    pub from: i64,
+    pub to: i64,
 }
 
 /// Data source for a [`Component::Table`].
@@ -251,6 +428,36 @@ pub struct DiffAnnotation {
     pub author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+}
+
+/// One node inside a [`Component::Tree`].
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TreeItem {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub children: Vec<TreeItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+/// One event inside a [`Component::Timeline`].
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TimelineEvent {
+    /// RFC 3339 timestamp or raw ms-since-epoch string.
+    pub ts: String,
+    pub text: String,
+    /// `"info"` | `"ok"` | `"warn"` | `"danger"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
+}
+
+/// One step of a [`Component::Wizard`].
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WizardStep {
+    pub label: String,
+    #[serde(default)]
+    pub children: Vec<Component>,
 }
 
 /// A single tab inside a [`Component::Tabs`].
@@ -332,6 +539,7 @@ mod tests {
             submit: Some(Action {
                 handler: "node.update_settings".into(),
                 args: Some(json!({"target": "$target.id"})),
+                optimistic: None,
             }),
         };
         let v = serde_json::to_value(&c).unwrap();

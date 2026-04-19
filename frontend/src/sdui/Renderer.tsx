@@ -7,7 +7,10 @@ import type { UiComponent } from "@sys/agent-client";
 import type {
   PageNode, RowNode, ColNode, GridNode, TabsNode,
   TextNode, HeadingNode, BadgeNode, DiffNode,
-  TableNode, RichTextNode, ButtonNode, FormNode,
+  TableNode, ChartNode, SparklineNode,
+  TreeNode, TimelineNode, MarkdownNode,
+  RichTextNode, RefPickerNode, WizardNode, DrawerNode,
+  ButtonNode, FormNode,
   ForbiddenNode, DanglingNode, CustomNode,
 } from "./types";
 import { PageComponent } from "./components/Page";
@@ -18,6 +21,14 @@ import { HeadingComponent } from "./components/Heading";
 import { BadgeComponent } from "./components/Badge";
 import { DiffComponent } from "./components/Diff";
 import { TableComponent } from "./components/TableComp";
+import { ChartComponent } from "./components/Chart";
+import { SparklineComponent } from "./components/Sparkline";
+import { TreeComponent } from "./components/Tree";
+import { TimelineComponent } from "./components/Timeline";
+import { MarkdownComponent } from "./components/Markdown";
+import { RefPickerComponent } from "./components/RefPicker";
+import { WizardComponent } from "./components/Wizard";
+import { DrawerComponent } from "./components/Drawer";
 import { RichTextComponent } from "./components/RichText";
 import { ButtonComponent } from "./components/ButtonComp";
 import { FormComponent } from "./components/FormComp";
@@ -40,6 +51,14 @@ export function Renderer({ node }: { node: UiComponent }) {
     case "badge":     return <BadgeComponent node={as<BadgeNode>(node)} />;
     case "diff":      return <DiffComponent node={as<DiffNode>(node)} />;
     case "table":     return <TableComponent node={as<TableNode>(node)} />;
+    case "chart":     return <ChartComponent node={as<ChartNode>(node)} />;
+    case "sparkline": return <SparklineComponent node={as<SparklineNode>(node)} />;
+    case "tree":      return <TreeComponent node={as<TreeNode>(node)} />;
+    case "timeline":  return <TimelineComponent node={as<TimelineNode>(node)} />;
+    case "markdown":  return <MarkdownComponent node={as<MarkdownNode>(node)} />;
+    case "ref_picker":return <RefPickerComponent node={as<RefPickerNode>(node)} />;
+    case "wizard":    return <WizardComponent node={as<WizardNode>(node)} />;
+    case "drawer":    return <DrawerComponent node={as<DrawerNode>(node)} />;
     case "rich_text": return <RichTextComponent node={as<RichTextNode>(node)} />;
     case "button":    return <ButtonComponent node={as<ButtonNode>(node)} />;
     case "form":      return <FormComponent node={as<FormNode>(node)} />;

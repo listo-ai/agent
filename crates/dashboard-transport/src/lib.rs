@@ -23,7 +23,6 @@ pub mod render;
 pub mod resolve;
 pub mod state;
 pub mod table;
-pub mod widget_registry;
 
 pub use acl::{AclCheck, AclSubject, AllowAll};
 pub use action::{ActionContext, ActionResponse, NavigateTo, ToastIntent};
@@ -34,7 +33,6 @@ pub use invalidate::{InvalidateEvent, InvalidateReason, InvalidateSink, TracingI
 pub use reader::GraphReader;
 pub use state::DashboardState;
 pub use table::{TableMeta, TableResponse, TableRow};
-pub use widget_registry::WidgetRegistry;
 
 /// REST API version. Matches `transport-rest::API_PREFIX`.
 pub const API_VERSION: u32 = 1;

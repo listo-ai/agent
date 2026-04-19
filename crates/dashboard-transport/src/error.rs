@@ -7,7 +7,6 @@ use serde_json::json;
 use spi::NodeId;
 use thiserror::Error;
 
-use dashboard_nodes::ContractError;
 use dashboard_runtime::{BindingError, StackError};
 
 #[derive(Debug, Error)]
@@ -31,8 +30,6 @@ pub enum TransportError {
         #[source]
         err: BindingError,
     },
-    #[error("parameter contract: {0}")]
-    Contract(#[from] ContractError),
     #[error("limit exceeded: {what} = {value}, max = {max}")]
     LimitExceeded {
         what: &'static str,
@@ -64,7 +61,6 @@ impl TransportError {
             Self::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Stack(_)
             | Self::Binding { .. }
-            | Self::Contract(_)
             | Self::MalformedPage(_, _)
             | Self::MalformedWidget(_, _)
             | Self::MalformedView { .. } => StatusCode::UNPROCESSABLE_ENTITY,
