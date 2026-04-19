@@ -1,0 +1,171 @@
+{
+  "id": "studio_host",
+  "name": "studio_host",
+  "metaData": {
+    "name": "studio_host",
+    "type": "app",
+    "buildInfo": {
+      "buildVersion": "0.1.0",
+      "buildName": "@acme/studio"
+    },
+    "remoteEntry": {
+      "name": "static/js/studio_host.88d8bf3b.js",
+      "path": "",
+      "type": "global"
+    },
+    "types": {
+      "path": "",
+      "name": "",
+      "zip": "@mf-types.zip",
+      "api": "@mf-types.d.ts"
+    },
+    "globalName": "studio_host",
+    "pluginVersion": "0.6.16",
+    "publicPath": "/",
+    "prefetchInterface": false
+  },
+  "shared": [
+    {
+      "id": "studio_host:@tanstack/react-query",
+      "name": "@tanstack/react-query",
+      "version": "5.99.0",
+      "singleton": true,
+      "requiredVersion": "^5.99.0",
+      "assets": {
+        "js": {
+          "async": [],
+          "sync": [
+            "static/js/async/724.8434c2cc.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": []
+        }
+      }
+    },
+    {
+      "id": "studio_host:react-dom",
+      "name": "react-dom",
+      "version": "19.2.5",
+      "singleton": true,
+      "requiredVersion": "^19.2.5",
+      "assets": {
+        "js": {
+          "async": [
+            "static/js/lib-react.0f1e253f.js",
+            "static/js/async/724.8434c2cc.js",
+            "static/js/async/lib-router.e0c483bc.js",
+            "static/js/async/493.ac2bff86.js",
+            "static/js/async/849.b6dbaed6.js",
+            "static/js/async/__federation_expose_registry.2c12591e.js",
+            "static/js/async/874.e4391c08.js"
+          ],
+          "sync": [
+            "static/js/studio_host.88d8bf3b.js",
+            "static/js/lib-react.0f1e253f.js",
+            "static/js/416.a26b1847.js",
+            "static/js/index.3b193f17.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": [
+            "static/css/index.4e237a15.css"
+          ]
+        }
+      }
+    },
+    {
+      "id": "studio_host:react-router-dom",
+      "name": "react-router-dom",
+      "version": "7.14.1",
+      "singleton": true,
+      "requiredVersion": "^7.14.1",
+      "assets": {
+        "js": {
+          "async": [],
+          "sync": [
+            "static/js/async/lib-router.e0c483bc.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": []
+        }
+      }
+    },
+    {
+      "id": "studio_host:react",
+      "name": "react",
+      "version": "19.2.5",
+      "singleton": true,
+      "requiredVersion": "^19.2.5",
+      "assets": {
+        "js": {
+          "async": [
+            "static/js/lib-react.0f1e253f.js",
+            "static/js/async/724.8434c2cc.js",
+            "static/js/async/lib-router.e0c483bc.js",
+            "static/js/async/493.ac2bff86.js",
+            "static/js/async/849.b6dbaed6.js",
+            "static/js/async/__federation_expose_registry.2c12591e.js",
+            "static/js/async/874.e4391c08.js"
+          ],
+          "sync": [
+            "static/js/studio_host.88d8bf3b.js",
+            "static/js/lib-react.0f1e253f.js",
+            "static/js/416.a26b1847.js",
+            "static/js/index.3b193f17.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": [
+            "static/css/index.4e237a15.css"
+          ]
+        }
+      }
+    },
+    {
+      "id": "studio_host:zustand",
+      "name": "zustand",
+      "version": "5.0.12",
+      "singleton": true,
+      "requiredVersion": "^5.0.12",
+      "assets": {
+        "js": {
+          "async": [],
+          "sync": [
+            "static/js/async/849.b6dbaed6.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": []
+        }
+      }
+    }
+  ],
+  "remotes": [],
+  "exposes": [
+    {
+      "id": "studio_host:registry",
+      "name": "registry",
+      "assets": {
+        "js": {
+          "sync": [
+            "static/js/lib-react.0f1e253f.js",
+            "static/js/async/__federation_expose_registry.2c12591e.js"
+          ],
+          "async": []
+        },
+        "css": {
+          "sync": [],
+          "async": []
+        }
+      },
+      "path": "./registry"
+    }
+  ]
+}

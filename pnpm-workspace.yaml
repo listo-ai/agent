@@ -1,0 +1,4 @@
+packages:
+  - "clients/ts"
+  - "frontend"
+  - "examples/plugin-hello"

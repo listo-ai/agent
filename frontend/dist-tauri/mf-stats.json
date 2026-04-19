@@ -1,0 +1,187 @@
+{
+  "id": "studio_host",
+  "name": "studio_host",
+  "metaData": {
+    "name": "studio_host",
+    "type": "app",
+    "buildInfo": {
+      "buildVersion": "0.1.0",
+      "buildName": "@acme/studio"
+    },
+    "remoteEntry": {
+      "name": "static/js/studio_host.bcbc5dc7.js",
+      "path": "",
+      "type": "global"
+    },
+    "types": {
+      "path": "",
+      "name": "",
+      "zip": "@mf-types.zip",
+      "api": "@mf-types.d.ts"
+    },
+    "globalName": "studio_host",
+    "pluginVersion": "0.6.16",
+    "publicPath": "/"
+  },
+  "shared": [
+    {
+      "singleton": true,
+      "requiredVersion": "^5.99.0",
+      "shareScope": "default",
+      "name": "@tanstack/react-query",
+      "version": "5.99.0",
+      "eager": false,
+      "id": "studio_host:@tanstack/react-query",
+      "assets": {
+        "js": {
+          "async": [],
+          "sync": [
+            "static/js/async/724.391c2115.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": []
+        }
+      },
+      "usedIn": []
+    },
+    {
+      "singleton": true,
+      "requiredVersion": "^19.2.5",
+      "shareScope": "default",
+      "name": "react-dom",
+      "version": "19.2.5",
+      "eager": false,
+      "id": "studio_host:react-dom",
+      "assets": {
+        "js": {
+          "async": [
+            "static/js/lib-react.735e9a9b.js",
+            "static/js/async/724.391c2115.js",
+            "static/js/async/lib-router.5ac334bc.js",
+            "static/js/async/493.a199019f.js",
+            "static/js/async/849.dc735c43.js",
+            "static/js/async/__federation_expose_registry.ece07bc5.js",
+            "static/js/async/874.b592310f.js"
+          ],
+          "sync": [
+            "static/js/studio_host.bcbc5dc7.js",
+            "static/js/lib-react.735e9a9b.js",
+            "static/js/506.7e6eb2e8.js",
+            "static/js/index.538d215e.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": [
+            "static/css/index.4a5d2df4.css"
+          ]
+        }
+      },
+      "usedIn": []
+    },
+    {
+      "singleton": true,
+      "requiredVersion": "^7.14.1",
+      "shareScope": "default",
+      "name": "react-router-dom",
+      "version": "7.14.1",
+      "eager": false,
+      "id": "studio_host:react-router-dom",
+      "assets": {
+        "js": {
+          "async": [],
+          "sync": [
+            "static/js/async/lib-router.5ac334bc.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": []
+        }
+      },
+      "usedIn": []
+    },
+    {
+      "singleton": true,
+      "requiredVersion": "^19.2.5",
+      "shareScope": "default",
+      "name": "react",
+      "version": "19.2.5",
+      "eager": false,
+      "id": "studio_host:react",
+      "assets": {
+        "js": {
+          "async": [
+            "static/js/lib-react.735e9a9b.js",
+            "static/js/async/724.391c2115.js",
+            "static/js/async/lib-router.5ac334bc.js",
+            "static/js/async/493.a199019f.js",
+            "static/js/async/849.dc735c43.js",
+            "static/js/async/__federation_expose_registry.ece07bc5.js",
+            "static/js/async/874.b592310f.js"
+          ],
+          "sync": [
+            "static/js/studio_host.bcbc5dc7.js",
+            "static/js/lib-react.735e9a9b.js",
+            "static/js/506.7e6eb2e8.js",
+            "static/js/index.538d215e.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": [
+            "static/css/index.4a5d2df4.css"
+          ]
+        }
+      },
+      "usedIn": []
+    },
+    {
+      "singleton": true,
+      "requiredVersion": "^5.0.12",
+      "shareScope": "default",
+      "name": "zustand",
+      "version": "5.0.12",
+      "eager": false,
+      "id": "studio_host:zustand",
+      "assets": {
+        "js": {
+          "async": [],
+          "sync": [
+            "static/js/async/849.dc735c43.js"
+          ]
+        },
+        "css": {
+          "async": [],
+          "sync": []
+        }
+      },
+      "usedIn": []
+    }
+  ],
+  "remotes": [],
+  "exposes": [
+    {
+      "path": "./registry",
+      "id": "studio_host:registry",
+      "name": "registry",
+      "requires": [],
+      "file": "src/providers/registry.tsx",
+      "assets": {
+        "js": {
+          "sync": [
+            "static/js/lib-react.735e9a9b.js",
+            "static/js/async/__federation_expose_registry.ece07bc5.js"
+          ],
+          "async": []
+        },
+        "css": {
+          "sync": [],
+          "async": []
+        }
+      }
+    }
+  ]
+}
