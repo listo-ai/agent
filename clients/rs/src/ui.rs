@@ -1,5 +1,5 @@
 //! Dashboard UI operations — `GET /api/v1/ui/nav`, `POST /api/v1/ui/resolve`,
-//! `POST /api/v1/ui/action`.
+//! `POST /api/v1/ui/action`, `GET /api/v1/ui/table`.
 //!
 //! See `docs/design/DASHBOARD.md` for the endpoint semantics and
 //! `docs/design/NEW-API.md` for the client-parity rule this module
@@ -7,7 +7,10 @@
 
 use crate::error::ClientError;
 use crate::http::HttpClient;
-use crate::types::{UiActionRequest, UiActionResponse, UiNavNode, UiResolveRequest, UiResolveResponse};
+use crate::types::{
+    UiActionRequest, UiActionResponse, UiNavNode, UiResolveRequest, UiResolveResponse,
+    UiTableParams, UiTableResponse,
+};
 
 pub struct Ui<'c> {
     http: &'c HttpClient,
@@ -66,5 +69,36 @@ impl<'c> Ui<'c> {
     /// ```
     pub async fn action(&self, req: &UiActionRequest) -> Result<UiActionResponse, ClientError> {
         self.http.post(&format!("{}/action", self.base), req).await
+    }
+
+    /// Fetch a paginated table of nodes matching `params.query`.
+    ///
+    /// The `query` field is the RSQL string from a `Table` component's
+    /// `source.query`. Pagination and extra filtering via `params.filter`.
+    pub async fn table(&self, params: &UiTableParams) -> Result<UiTableResponse, ClientError> {
+        let mut qp: Vec<(String, String)> = Vec::new();
+        if !params.query.is_empty() {
+            qp.push(("query".into(), params.query.clone()));
+        }
+        if let Some(f) = &params.filter {
+            qp.push(("filter".into(), f.clone()));
+        }
+        if let Some(s) = &params.sort {
+            qp.push(("sort".into(), s.clone()));
+        }
+        if let Some(p) = params.page {
+            qp.push(("page".into(), p.to_string()));
+        }
+        if let Some(sz) = params.size {
+            qp.push(("size".into(), sz.to_string()));
+        }
+        if let Some(id) = &params.source_id {
+            qp.push(("source_id".into(), id.clone()));
+        }
+        let pairs: Vec<(&str, String)> =
+            qp.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        self.http
+            .get_query(&format!("{}/table", self.base), &pairs)
+            .await
     }
 }

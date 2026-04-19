@@ -652,6 +652,16 @@ pub enum UiComponent {
     Dangling {
         id: String,
     },
+    // escape hatch
+    Custom {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        renderer_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        props: Option<JsonValue>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        subscribe: Vec<String>,
+    },
 }
 
 /// Action reference — mirrors `ui_ir::Action`.
@@ -715,7 +725,53 @@ pub struct UiResolveIssue {
     pub message: String,
 }
 
-// ---- ui action -------------------------------------------------------------
+// ---- ui table ---------------------------------------------------------------
+
+/// Query params for `GET /api/v1/ui/table`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct UiTableParams {
+    /// Base RSQL query string from `TableSource.query`.
+    #[serde(default)]
+    pub query: String,
+    /// Additional client-side RSQL filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<usize>,
+    /// Optional table component id for audit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+}
+
+/// A single node row returned by `GET /api/v1/ui/table`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTableRow {
+    pub id: String,
+    pub kind: String,
+    pub path: String,
+    pub parent_id: Option<String>,
+    pub slots: std::collections::HashMap<String, JsonValue>,
+}
+
+/// Pagination metadata.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTableMeta {
+    pub total: usize,
+    pub page: usize,
+    pub size: usize,
+    pub pages: usize,
+}
+
+/// Response from `GET /api/v1/ui/table`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiTableResponse {
+    pub data: Vec<UiTableRow>,
+    pub meta: UiTableMeta,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UiActionContext {

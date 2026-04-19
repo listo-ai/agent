@@ -65,6 +65,16 @@ export type {
   UiTableSource,
   UiTableColumn,
   UiDiffAnnotation,
+  // S2
+  UiActionContext,
+  UiActionRequest,
+  UiActionResponse,
+  UiNavigateTo,
+  // S3
+  UiTableParams,
+  UiTableRow,
+  UiTableMeta,
+  UiTableResponse,
 } from "./schemas/ui.js";
 export type { WriteSlotResponse } from "./schemas/slot.js";
 export type { SeedResult, SeededNode } from "./schemas/seed.js";

@@ -181,6 +181,29 @@ pub enum Component {
     /// Widget whose bound node has been deleted. Renderer shows a
     /// neutral "missing" stub.
     Dangling { id: String },
+
+    // ---- escape hatch ---------------------------------------------
+    /// Opaque custom component rendered by a plugin-registered
+    /// client-side renderer. The server emits `props` verbatim; the
+    /// React app looks up `renderer_id` in its component registry and
+    /// delegates. Falls back to a neutral stub when the renderer is
+    /// not installed.
+    ///
+    /// Ships in S3 — unblocks UC1 floor-plan, UC2 flow canvas, UC3
+    /// state-machine diagram screens before the S4 acceptance demo.
+    Custom {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        /// Unique renderer identifier, e.g. `"acme.floorplan"`.
+        renderer_id: String,
+        /// Opaque props forwarded verbatim to the renderer.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        props: Option<JsonValue>,
+        /// Subscription subjects the renderer wants to watch for live
+        /// updates. Mirrors the resolver's subscription plan shape.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        subscribe: Vec<String>,
+    },
 }
 
 // -------------------------------------------------------------------
@@ -344,5 +367,21 @@ mod tests {
         let schema = schemars::schema_for!(Component);
         let json = serde_json::to_string(&schema).unwrap();
         assert!(json.contains("\"type\""));
+    }
+
+    #[test]
+    fn custom_escape_hatch_round_trip() {
+        let c = Component::Custom {
+            id: Some("map1".into()),
+            renderer_id: "acme.floorplan".into(),
+            props: Some(serde_json::json!({ "floor": 2 })),
+            subscribe: vec!["node.123.slot.state".into()],
+        };
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["type"], "custom");
+        assert_eq!(v["renderer_id"], "acme.floorplan");
+        assert_eq!(v["subscribe"][0], "node.123.slot.state");
+        let back: Component = serde_json::from_value(v).unwrap();
+        assert!(matches!(back, Component::Custom { .. }));
     }
 }

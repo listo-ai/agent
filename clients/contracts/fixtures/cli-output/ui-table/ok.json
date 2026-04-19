@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "id": "VARIES",
+      "kind": "sys.core.station",
+      "path": "/",
+      "parent_id": null,
+      "slots": null
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "page": 1,
+    "size": 50,
+    "pages": 1
+  }
+}

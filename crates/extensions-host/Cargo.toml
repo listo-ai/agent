@@ -33,3 +33,7 @@ tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 tokio-stream = { workspace = true, features = ["net"] }
 futures-core = "0.3"
+# Pure-Rust WAT→wasm assembler. Lets integration tests bake a tiny
+# hand-written module into the binary without requiring a wasm
+# toolchain on CI.
+wat = "1"

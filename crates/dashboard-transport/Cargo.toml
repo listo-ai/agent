@@ -15,6 +15,7 @@ graph = { workspace = true }
 dashboard-nodes = { workspace = true }
 dashboard-runtime = { workspace = true }
 ui-ir = { workspace = true }
+query = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 axum = { workspace = true }
@@ -28,3 +29,4 @@ test-helpers = []
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 dashboard-transport = { path = ".", features = ["test-helpers"] }
 ui-ir = { workspace = true }
+uuid = { workspace = true }

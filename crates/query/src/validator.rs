@@ -60,6 +60,26 @@ pub fn validate(schema: &QuerySchema, req: QueryRequest) -> Result<ValidatedQuer
     })
 }
 
+/// Parse a raw filter/sort/page/size without schema field validation.
+///
+/// Intended for the `GET /api/v1/ui/table` endpoint where the set of
+/// filterable fields is determined by the component author at run time,
+/// not at compile time. All filter fields are accepted; only structural
+/// parse errors are rejected.
+pub fn parse_only(req: QueryRequest, max_size: usize) -> Result<ValidatedQuery, QueryError> {
+    let filters = parse_filters(req.filter.as_deref())?;
+    let sort = parse_sort(req.sort.as_deref())?;
+    let p = page(&req)?.unwrap_or(1);
+    let s = size(&req)?.unwrap_or(50);
+    let s = if s == 0 || s > max_size { max_size } else { s };
+    Ok(ValidatedQuery {
+        filters,
+        sort,
+        page: p,
+        size: s,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,10 +1,14 @@
-//! `agent ui nav` / `agent ui resolve` — dashboard surface.
+//! `agent ui nav` / `agent ui resolve` / `agent ui action` / `agent ui table`
+//! — dashboard surface.
 //!
 //! See `docs/design/DASHBOARD.md` for the endpoint semantics and
 //! `docs/design/NEW-API.md` for the five-touchpoint rule this module
 //! completes.
 
-use agent_client::types::{UiComponent, UiResolveRequest, UiResolveResponse};
+use agent_client::types::{
+    UiActionContext, UiActionRequest, UiComponent, UiResolveRequest, UiResolveResponse,
+    UiTableParams,
+};
 use agent_client::AgentClient;
 use anyhow::{anyhow, Result};
 use clap::Subcommand;
@@ -44,6 +48,60 @@ pub enum UiCmd {
         #[arg(long)]
         auth_subject: Option<String>,
     },
+
+    /// Dispatch a named action handler.
+    Action {
+        /// Fully-qualified handler name (e.g. `com.acme.hello.greet`).
+        #[arg(long)]
+        handler: String,
+
+        /// Handler arguments as a JSON value.
+        #[arg(long, default_value = "null")]
+        args: String,
+
+        /// Originating component id.
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Comma-separated nav node ids forming the context stack.
+        #[arg(long, default_value = "")]
+        stack: String,
+
+        /// Page-local state as a JSON object.
+        #[arg(long, default_value = "{}")]
+        page_state: String,
+
+        /// Opaque auth subject identifier.
+        #[arg(long)]
+        auth_subject: Option<String>,
+    },
+
+    /// Fetch a paginated table of nodes matching an RSQL query.
+    Table {
+        /// Base RSQL query string.
+        #[arg(long, default_value = "")]
+        query: String,
+
+        /// Additional client-side RSQL filter.
+        #[arg(long)]
+        filter: Option<String>,
+
+        /// Sort expression (`field asc|desc`).
+        #[arg(long)]
+        sort: Option<String>,
+
+        /// 1-based page number.
+        #[arg(long)]
+        page: Option<usize>,
+
+        /// Page size (max 200).
+        #[arg(long)]
+        size: Option<usize>,
+
+        /// Optional table component id for audit.
+        #[arg(long)]
+        source_id: Option<String>,
+    },
 }
 
 impl UiCmd {
@@ -51,6 +109,8 @@ impl UiCmd {
         match self {
             Self::Nav { .. } => "ui nav",
             Self::Resolve { .. } => "ui resolve",
+            Self::Action { .. } => "ui action",
+            Self::Table { .. } => "ui table",
         }
     }
 }
@@ -138,6 +198,81 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                 }
             }
         }
+        UiCmd::Action {
+            handler,
+            args,
+            target,
+            stack,
+            page_state,
+            auth_subject,
+        } => {
+            let args_val: serde_json::Value = serde_json::from_str(args)
+                .map_err(|e| anyhow!("--args is not valid JSON: {e}"))?;
+            let page_state_val: serde_json::Value = serde_json::from_str(page_state)
+                .map_err(|e| anyhow!("--page-state is not valid JSON: {e}"))?;
+            let stack_ids: Vec<String> = stack
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect();
+            let req = UiActionRequest {
+                handler: handler.clone(),
+                args: args_val,
+                context: UiActionContext {
+                    target: target.clone(),
+                    stack: stack_ids,
+                    page_state: page_state_val,
+                    auth_subject: auth_subject.clone(),
+                },
+            };
+            let resp = client.ui().action(&req).await?;
+            output::ok(fmt, &resp)?;
+        }
+        UiCmd::Table {
+            query,
+            filter,
+            sort,
+            page,
+            size,
+            source_id,
+        } => {
+            let params = UiTableParams {
+                query: query.clone(),
+                filter: filter.clone(),
+                sort: sort.clone(),
+                page: *page,
+                size: *size,
+                source_id: source_id.clone(),
+            };
+            let resp = client.ui().table(&params).await?;
+            match fmt {
+                OutputFormat::Json => output::ok(fmt, &resp)?,
+                OutputFormat::Table => {
+                    output::ok_table(
+                        fmt,
+                        &["ID", "KIND", "PATH", "PARENT"],
+                        &resp.data,
+                        |r| {
+                            vec![
+                                r.id.clone(),
+                                r.kind.clone(),
+                                r.path.clone(),
+                                r.parent_id.as_deref().unwrap_or("").to_string(),
+                            ]
+                        },
+                    )?;
+                    eprintln!(
+                        // NO_PRINTLN_LINT:allow
+                        "total={}  page={}/{}  size={}",
+                        resp.meta.total,
+                        resp.meta.page,
+                        resp.meta.pages,
+                        resp.meta.size,
+                    );
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -201,5 +336,6 @@ fn component_info(c: &UiComponent) -> (&str, Option<&str>, &[UiComponent]) {
         UiComponent::Form { id, .. } => ("form", id.as_deref(), &[]),
         UiComponent::Forbidden { id, .. } => ("forbidden", Some(id), &[]),
         UiComponent::Dangling { id } => ("dangling", Some(id), &[]),
+        UiComponent::Custom { id, .. } => ("custom", id.as_deref(), &[]),
     }
 }

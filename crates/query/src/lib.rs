@@ -18,4 +18,4 @@ pub use ast::{FilterExpr, Operator, QueryRequest, SortDir, SortField};
 pub use error::QueryError;
 pub use executor::{execute, Page, PageMeta};
 pub use schema::{FieldSpec, FieldType, QuerySchema};
-pub use validator::{validate, ValidatedQuery};
+pub use validator::{parse_only, validate, ValidatedQuery};

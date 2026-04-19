@@ -17,6 +17,12 @@ pub struct NodeSnapshot {
     pub kind: KindId,
     pub version: u64,
     pub slots: HashMap<String, JsonValue>,
+    /// Absolute node path — populated by [`GraphReader`]. `None` for
+    /// test fixtures created without an explicit path.
+    pub path: Option<String>,
+    /// Parent node id — populated by [`GraphReader`]. `None` for root
+    /// nodes or test fixtures.
+    pub parent_id: Option<String>,
 }
 
 impl NodeSnapshot {
@@ -26,6 +32,8 @@ impl NodeSnapshot {
             kind: kind.into(),
             version: 1,
             slots: HashMap::new(),
+            path: None,
+            parent_id: None,
         }
     }
 
@@ -43,9 +51,14 @@ impl NodeSnapshot {
 pub trait NodeReader {
     fn get(&self, id: &NodeId) -> Option<NodeSnapshot>;
 
-    /// Children of `parent` in graph order. Empty if the parent has no
-    /// children or does not exist.
+    /// Children of `parent` in graph order.
     fn children(&self, parent: &NodeId) -> Vec<NodeId>;
+
+    /// Enumerate all nodes. Used by the table endpoint (S3). Default
+    /// returns empty — production `GraphReader` overrides this.
+    fn list_all(&self) -> Vec<NodeSnapshot> {
+        Vec::new()
+    }
 }
 
 /// Test-only reader backed by a `HashMap`. Not exported from the crate
@@ -86,5 +99,9 @@ impl NodeReader for InMemoryReader {
 
     fn children(&self, parent: &NodeId) -> Vec<NodeId> {
         self.children.get(parent).cloned().unwrap_or_default()
+    }
+
+    fn list_all(&self) -> Vec<NodeSnapshot> {
+        self.nodes.values().cloned().collect()
     }
 }

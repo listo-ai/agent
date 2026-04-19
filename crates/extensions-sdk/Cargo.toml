@@ -6,8 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+[lints.rust]
+# Inherit workspace policy, but the `wasm` feature needs `unsafe`
+# at the FFI boundary (raw-pointer slice reads into guest linear
+# memory — cannot be written in safe Rust). Overridden `forbid` →
+# `deny` so a narrow `#[allow(unsafe_code)]` works in wasm.rs.
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+unwrap_used = "warn"
+panic = "warn"
+todo = "warn"
 
 [features]
 # Exactly one must be active per consumer. Enforced by a compile-time

@@ -1,0 +1,1 @@
+export { DanglingComponent } from "./Forbidden";

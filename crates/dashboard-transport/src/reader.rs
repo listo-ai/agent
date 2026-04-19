@@ -39,6 +39,8 @@ impl NodeReader for GraphReader {
             kind: snap.kind,
             version,
             slots,
+            path: Some(snap.path.to_string()),
+            parent_id: snap.parent.map(|p| p.0.to_string()),
         })
     }
 
@@ -51,6 +53,31 @@ impl NodeReader for GraphReader {
             .into_iter()
             .filter(|s| s.parent == Some(*parent))
             .map(|s| s.id)
+            .collect()
+    }
+
+    fn list_all(&self) -> Vec<RuntimeSnapshot> {
+        self.store
+            .snapshots()
+            .into_iter()
+            .map(|snap| {
+                let mut slots = HashMap::new();
+                let mut version: u64 = 0;
+                for (name, sv) in snap.slot_values {
+                    if sv.generation > version {
+                        version = sv.generation;
+                    }
+                    slots.insert(name, sv.value.clone());
+                }
+                RuntimeSnapshot {
+                    id: snap.id,
+                    kind: snap.kind,
+                    version,
+                    slots,
+                    path: Some(snap.path.to_string()),
+                    parent_id: snap.parent.map(|p| p.0.to_string()),
+                }
+            })
             .collect()
     }
 }

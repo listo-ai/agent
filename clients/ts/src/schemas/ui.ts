@@ -194,6 +194,14 @@ export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
       type: z.literal("dangling"),
       id: z.string(),
     }),
+    // escape hatch — custom renderer
+    z.object({
+      type: z.literal("custom"),
+      id: z.string().optional(),
+      renderer_id: z.string(),
+      props: z.unknown().optional(),
+      subscribe: z.array(z.string()).default([]),
+    }),
   ]),
 );
 
@@ -306,3 +314,44 @@ export const UiActionResponseSchema = z.discriminatedUnion("type", [
   }),
 ]);
 export type UiActionResponse = z.infer<typeof UiActionResponseSchema>;
+
+// ---- table -----------------------------------------------------------------
+
+/** Query params for `GET /api/v1/ui/table`. */
+export const UiTableParamsSchema = z.object({
+  /** Base RSQL query (from the Table component's source.query). */
+  query: z.string().default(""),
+  /** Additional RSQL clauses merged server-side. */
+  filter: z.string().optional(),
+  sort: z.string().optional(),
+  page: z.number().int().positive().optional(),
+  size: z.number().int().positive().optional(),
+  /** Table component id for audit. */
+  source_id: z.string().optional(),
+});
+export type UiTableParams = z.infer<typeof UiTableParamsSchema>;
+
+/** A single node row returned by `GET /api/v1/ui/table`. */
+export const UiTableRowSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  path: z.string(),
+  parent_id: z.string().nullable().optional(),
+  slots: z.record(z.unknown()),
+});
+export type UiTableRow = z.infer<typeof UiTableRowSchema>;
+
+export const UiTableMetaSchema = z.object({
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  size: z.number().int().positive(),
+  pages: z.number().int().nonnegative(),
+});
+export type UiTableMeta = z.infer<typeof UiTableMetaSchema>;
+
+/** Response from `GET /api/v1/ui/table`. */
+export const UiTableResponseSchema = z.object({
+  data: z.array(UiTableRowSchema),
+  meta: UiTableMetaSchema,
+});
+export type UiTableResponse = z.infer<typeof UiTableResponseSchema>;

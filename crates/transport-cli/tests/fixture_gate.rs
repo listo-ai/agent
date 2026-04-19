@@ -693,6 +693,20 @@ async fn ui_action_not_found() {
 }
 
 #[tokio::test]
+async fn ui_table_ok() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let resp = c
+        .ui()
+        .table(&agent_client::types::UiTableParams::default())
+        .await
+        .unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
+    let fixture = load_fixture("ui-table/ok.json");
+    assert_shape_match(&actual, &fixture, "$");
+}
+
+#[tokio::test]
 async fn capabilities_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);

@@ -20,6 +20,7 @@ pub mod nav;
 pub mod reader;
 pub mod resolve;
 pub mod state;
+pub mod table;
 pub mod widget_registry;
 
 pub use acl::{AclCheck, AclSubject, AllowAll};
@@ -30,6 +31,7 @@ pub use handler_registry::HandlerRegistry;
 pub use invalidate::{InvalidateEvent, InvalidateReason, InvalidateSink, TracingInvalidate};
 pub use reader::GraphReader;
 pub use state::DashboardState;
+pub use table::{TableMeta, TableResponse, TableRow};
 pub use widget_registry::WidgetRegistry;
 
 /// REST API version. Matches `transport-rest::API_PREFIX`.
@@ -44,5 +46,6 @@ pub fn router(state: DashboardState) -> Router {
         .route("/api/v1/ui/nav", get(nav::handler))
         .route("/api/v1/ui/resolve", post(resolve::handler))
         .route("/api/v1/ui/action", post(action::handler))
+        .route("/api/v1/ui/table", get(table::handler))
         .with_state(state)
 }

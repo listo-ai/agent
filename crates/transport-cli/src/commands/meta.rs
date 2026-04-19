@@ -147,6 +147,7 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &UI_NAV,
         &UI_RESOLVE,
         &UI_ACTION,
+        &UI_TABLE,
         &FLOWS_LIST,
         &FLOWS_GET,
         &FLOWS_CREATE,
@@ -1134,6 +1135,80 @@ static UI_ACTION: CommandMeta = CommandMeta {
         },
         ErrorInfo {
             code: "unprocessable_entity",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static UI_TABLE: CommandMeta = CommandMeta {
+    name: "ui table",
+    summary: "Fetch a paginated table of nodes matching an RSQL query.",
+    args: &[
+        ArgInfo {
+            name: "--query",
+            required: false,
+            type_name: "rsql",
+            description: "Base RSQL query string",
+        },
+        ArgInfo {
+            name: "--filter",
+            required: false,
+            type_name: "rsql",
+            description: "Additional client-side RSQL filter",
+        },
+        ArgInfo {
+            name: "--sort",
+            required: false,
+            type_name: "string",
+            description: "Sort expression (field asc|desc)",
+        },
+        ArgInfo {
+            name: "--page",
+            required: false,
+            type_name: "usize",
+            description: "1-based page number",
+        },
+        ArgInfo {
+            name: "--size",
+            required: false,
+            type_name: "usize",
+            description: "Page size (max 200)",
+        },
+        ArgInfo {
+            name: "--source-id",
+            required: false,
+            type_name: "string",
+            description: "Optional table component id for audit",
+        },
+    ],
+    examples: &[
+        "agent ui table",
+        "agent ui table --query 'kind==\"ui.page\"'",
+        "agent ui table --size 20 --page 2 -o json",
+    ],
+    related: &["ui resolve", "ui nav"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+                "query":     { "type": "string" },
+                "filter":    { "type": "string" },
+                "sort":      { "type": "string" },
+                "page":      { "type": "integer", "minimum": 1 },
+                "size":      { "type": "integer", "minimum": 1, "maximum": 200 },
+                "source_id": { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::UiTableResponse>,
+    errors: &[
+        ErrorInfo {
+            code: "bad_request",
             exit_code: 1,
         },
         ErrorInfo {

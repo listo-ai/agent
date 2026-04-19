@@ -6,6 +6,7 @@ import { DashboardPage } from "@/pages/dashboard/DashboardPage";
 import { ExtensionsPage } from "@/pages/extensions/ExtensionsPage";
 import { PluginsPage } from "@/pages/plugins/PluginsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
+import { SduiPage } from "@/sdui/SduiPage";
 
 const router = createBrowserRouter([
   {
@@ -21,6 +22,8 @@ const router = createBrowserRouter([
       // Matched after flows/edit/* so the edit prefix still wins.
       { path: "flows/*", element: <FlowsPage /> },
       { path: "dashboard", element: <DashboardPage /> },
+      // SDUI renderer — any ui.page node can be navigated to directly.
+      { path: "ui/:pageRef", element: <SduiPage /> },
       { path: "extensions", element: <ExtensionsPage /> },
       { path: "plugins", element: <PluginsPage /> },
       { path: "settings", element: <SettingsPage /> },

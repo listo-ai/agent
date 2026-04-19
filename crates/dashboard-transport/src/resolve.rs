@@ -134,6 +134,14 @@ pub async fn handler(
         .ok_or(TransportError::PageNotFound(req.page_ref))?;
     require_kind(&page, PAGE_KIND)?;
 
+    // SDUI fast-path: if the page has a `layout` slot, parse it directly as a
+    // ComponentTree and return it, bypassing the legacy widget resolver.
+    if let Some(layout_val) = page.slots.get("layout") {
+        if !layout_val.is_null() {
+            return sdui_layout_path(layout_val.clone(), &req, &page);
+        }
+    }
+
     let stack = ContextStack::build(reader, &req.stack, limits::MAX_NAV_DEPTH)?;
     let widgets = collect_widgets(reader, &page.id)?;
     let contract_errors = run_contract_validation(reader, &page)?;
@@ -199,6 +207,58 @@ pub async fn handler(
         subscriptions,
         meta,
     }))
+}
+
+/// SDUI layout fast-path — parses the `layout` slot value directly as a
+/// `ComponentTree`, bypassing the legacy widget resolver.
+///
+/// Returned for any `ui.page` whose `layout` slot is non-null.  The dry-run
+/// variant validates the JSON is parseable; the normal variant returns the tree
+/// verbatim.  Subscriptions and cache-key are stubbed for now (S5 will wire
+/// proper subscription derivation for SDUI trees).
+fn sdui_layout_path(
+    layout_val: serde_json::Value,
+    req: &ResolveRequest,
+    page: &NodeSnapshot,
+) -> Result<Json<ResolveResponse>, TransportError> {
+    let render: ComponentTree = serde_json::from_value(layout_val).map_err(|e| {
+        TransportError::MalformedPage(page.id.clone(), format!("layout is not a valid ComponentTree: {e}"))
+    })?;
+
+    if req.dry_run {
+        return Ok(Json(ResolveResponse::DryRun { errors: vec![] }));
+    }
+
+    enforce_render_tree_size(&render)?;
+
+    let meta = ResolveMeta {
+        cache_key: page.version,
+        widget_count: count_components(&render.root),
+        forbidden_count: 0,
+        dangling_count: 0,
+        stack_shadowed: vec![],
+    };
+
+    Ok(Json(ResolveResponse::Ok {
+        render,
+        subscriptions: vec![],
+        meta,
+    }))
+}
+
+/// Recursively count all nodes in a component tree.
+fn count_components(c: &Component) -> usize {
+    let children: &[Component] = match c {
+        Component::Page { children, .. } => children,
+        Component::Row { children, .. } => children,
+        Component::Col { children, .. } => children,
+        Component::Grid { children, .. } => children,
+        Component::Tabs { tabs, .. } => {
+            return 1 + tabs.iter().map(|t| t.children.iter().map(count_components).sum::<usize>()).sum::<usize>();
+        }
+        _ => &[],
+    };
+    1 + children.iter().map(count_components).sum::<usize>()
 }
 
 fn enforce_subscription_cap(subs: &[SubscriptionPlan]) -> Result<(), TransportError> {
