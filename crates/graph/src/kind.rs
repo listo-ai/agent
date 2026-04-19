@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use serde_json::json;
 use spi::{KindId, KindManifest};
+use spi::{SlotRole, SlotSchema};
 
 /// Thread-safe kind registry.
 ///
@@ -28,6 +30,7 @@ impl KindRegistry {
             .inner
             .write()
             .expect("KindRegistry lock poisoned — programmer error");
+        let manifest = with_synthesised_slots(manifest);
         tracing::debug!(kind = %manifest.id, "registering kind");
         map.insert(manifest.id.clone(), manifest);
     }
@@ -60,5 +63,91 @@ impl KindRegistry {
             .read()
             .map(|m| m.values().cloned().collect())
             .unwrap_or_default()
+    }
+}
+
+/// Inject synthesised config slots that every kind gets for free:
+///
+/// * `position` — canvas x/y (editor metadata, not behaviour).
+/// * `notes`    — free-form annotation.
+/// * `settings` — behaviour settings blob, injected only for kinds
+///   whose manifest declares a non-null `settings_schema`. This is
+///   what makes settings first-class graph state: persisted, subject
+///   to the same write-through / event / subscription machinery as
+///   every other slot, and therefore free of the
+///   `BehaviorRegistry::configs` parallel-state antipattern (see
+///   [`docs/design/EVERYTHING-AS-NODE.md`] § "The agent itself is a
+///   node too — no parallel state").
+fn with_synthesised_slots(mut manifest: KindManifest) -> KindManifest {
+    ensure_slot(
+        &mut manifest,
+        SlotSchema::new("position", SlotRole::Config)
+            .writable()
+            .with_schema(json!({
+                "type": "object",
+                "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" }
+                },
+                "required": ["x", "y"],
+                "additionalProperties": false
+            })),
+    );
+
+    ensure_slot(
+        &mut manifest,
+        SlotSchema::new("notes", SlotRole::Config)
+            .writable()
+            .with_schema(json!({
+                "type": ["string", "null"]
+            })),
+    );
+
+    if !manifest.settings_schema.is_null() {
+        let schema = manifest.settings_schema.clone();
+        ensure_slot(
+            &mut manifest,
+            SlotSchema::new("settings", SlotRole::Config)
+                .writable()
+                .with_schema(schema),
+        );
+    }
+
+    manifest
+}
+
+fn ensure_slot(manifest: &mut KindManifest, slot: SlotSchema) {
+    if manifest.slots.iter().all(|existing| existing.name != slot.name) {
+        manifest.slots.push(slot);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use spi::{ContainmentSchema, FacetSet};
+
+    #[test]
+    fn register_injects_canvas_slots() {
+        let kinds = KindRegistry::new();
+        let manifest = KindManifest {
+            id: KindId::new("acme.test.kind"),
+            display_name: Some("Test".to_string()),
+            facets: FacetSet::default(),
+            containment: ContainmentSchema::default(),
+            slots: Vec::new(),
+            settings_schema: serde_json::Value::Null,
+            msg_overrides: Default::default(),
+            trigger_policy: Default::default(),
+            schema_version: 1,
+        };
+
+        kinds.register(manifest);
+        let stored = kinds
+            .get(&KindId::new("acme.test.kind"))
+            .expect("kind should be registered");
+
+        assert!(stored.slots.iter().any(|slot| slot.name == "position"));
+        assert!(stored.slots.iter().any(|slot| slot.name == "notes"));
     }
 }

@@ -203,8 +203,13 @@ async fn set_config(
         .get(&path)
         .ok_or_else(|| ApiError::not_found(format!("no node at `{path}`")))?
         .id;
-    s.behaviors.set_config(id, req.config);
-    // Re-run on_init so the new config takes effect. Idempotent for
+    // Settings now live as a config-role slot on the node itself;
+    // `set_config` writes it through the graph store, so the change
+    // persists and fires `SlotChanged` for every subscriber.
+    s.behaviors
+        .set_config(id, req.config)
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    // Re-run on_init so the new settings take effect. Idempotent for
     // well-behaved behaviours (count seeds the slot; trigger resets
     // armed/pending_timer).
     s.behaviors

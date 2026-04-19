@@ -70,7 +70,10 @@ pub(crate) fn apply(state: &AppState, preset: Preset) -> Result<SeedResult, ApiE
             .create_child(&folder_path, KindId::new(*kind), name)
             .map_err(ApiError::from_graph)?;
         let cfg = default_config(kind);
-        state.behaviors.set_config(id, cfg);
+        state
+            .behaviors
+            .set_config(id, cfg)
+            .map_err(|e| ApiError::bad_request(format!("set settings failed for `{name}`: {e}")))?;
         state
             .behaviors
             .dispatch_init(id)

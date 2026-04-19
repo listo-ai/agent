@@ -15,10 +15,12 @@ node_modules/
 dist/
 frontend/dist/
 frontend/dist-web/
+frontend/@mf-types/
 .pnpm-store/
 agent.db
 
 # Examples
 examples/plugin-hello/node_modules
+plugins/com.acme.hello/ui/
 agent.db-shm
 agent.db-wal

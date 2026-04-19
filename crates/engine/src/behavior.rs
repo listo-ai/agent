@@ -1,13 +1,14 @@
 //! `BehaviorRegistry` — kind→behaviour dispatch table.
 //!
 //! Stage 3a-2 wires the imperative side of the SDK to the running
-//! engine. The registry holds:
-//!
-//!   * **kind-level**: one [`Arc<dyn DynBehavior>`] per `KindId` plus
-//!     the kind's manifest (cached for slot-role lookups on the hot
-//!     path).
-//!   * **node-level**: persisted config JSON per `NodeId`, set when the
-//!     node is created.
+//! engine. The registry is a pure dispatch table: it holds one
+//! [`Arc<dyn DynBehavior>`] per [`KindId`] plus the kind's manifest
+//! (cached for slot-role lookups on the hot path). **Per-node config is
+//! not held here** — the `settings` slot on the node itself is the
+//! source of truth, injected automatically by
+//! [`graph::KindRegistry::register`] for every kind whose manifest
+//! declares a `settings_schema`. See
+//! [`docs/design/EVERYTHING-AS-NODE.md`] § "No parallel state" for why.
 //!
 //! On every `GraphEvent::SlotChanged` the dispatcher looks up the
 //! target node's kind, checks the schema for that slot, and only fires
@@ -36,8 +37,12 @@ struct BehaviorEntry {
 #[derive(Default)]
 struct Inner {
     behaviors: HashMap<KindId, BehaviorEntry>,
-    configs: HashMap<NodeId, JsonValue>,
 }
+
+/// Canonical name of the auto-injected config slot that holds a
+/// behaviour's settings blob. See
+/// [`graph::KindRegistry::register`] for the injection site.
+pub const SETTINGS_SLOT: &str = "settings";
 
 /// Behaviour dispatch table. Cheap to clone (an `Arc`).
 #[derive(Clone)]
@@ -89,9 +94,26 @@ impl BehaviorRegistry {
         Ok(())
     }
 
-    /// Bind a config blob to a node. Replaces any prior config.
-    pub fn set_config(&self, node: NodeId, config: JsonValue) {
-        self.write_inner().configs.insert(node, config);
+    /// Replace a node's settings blob. Writes to the node's synthesised
+    /// `settings` config slot via [`GraphStore::write_slot`], so the
+    /// change persists, fires `SlotChanged`, and is visible to every
+    /// subscriber — no parallel state.
+    ///
+    /// Does **not** re-run `on_init` on its own; callers that want that
+    /// semantics (e.g. the REST `POST /api/v1/config` handler) invoke
+    /// [`Self::dispatch_init`] explicitly. Direct slot writes via
+    /// [`GraphStore::write_slot`] to `"settings"` are equally valid —
+    /// the behaviour picks up the new value on its next dispatch
+    /// because [`Self::config_for`] reads the slot every call.
+    pub fn set_config(&self, node: NodeId, config: JsonValue) -> Result<(), EngineError> {
+        let snap = self
+            .graph
+            .get_by_id(node)
+            .ok_or(EngineError::UnknownNode(node))?;
+        self.graph
+            .write_slot(&snap.path, SETTINGS_SLOT, config)
+            .map(|_| ())
+            .map_err(|e| EngineError::Behavior(format!("write settings slot: {e}")))
     }
 
     /// Fire `on_timer` for a node. Called by the engine worker loop
@@ -210,10 +232,13 @@ impl BehaviorRegistry {
     }
 
     fn config_for(&self, node: NodeId) -> JsonValue {
-        self.inner
-            .read()
-            .ok()
-            .and_then(|g| g.configs.get(&node).cloned())
+        let Some(snap) = self.graph.get_by_id(node) else {
+            return JsonValue::Null;
+        };
+        snap.slot_values
+            .into_iter()
+            .find(|(n, _)| n == SETTINGS_SLOT)
+            .map(|(_, sv)| sv.value)
             .unwrap_or(JsonValue::Null)
     }
 

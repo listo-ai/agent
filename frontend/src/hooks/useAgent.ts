@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { AgentClient, NodeSnapshot } from "@acme/agent-client";
+import type { AgentClient, Kind, Link, NodeSnapshot } from "@acme/agent-client";
 
 import { agentPromise } from "@/lib/agent";
 
@@ -25,5 +25,24 @@ export function useNodes() {
     queryKey: ["nodes"],
     queryFn: () => agent.data!.nodes.getNodes(),
     enabled: agent.data !== undefined,
+  });
+}
+
+export function useLinks() {
+  const agent = useAgent();
+  return useQuery<Link[]>({
+    queryKey: ["links"],
+    queryFn: () => agent.data!.links.list(),
+    enabled: agent.data !== undefined,
+  });
+}
+
+export function useKinds() {
+  const agent = useAgent();
+  return useQuery<Kind[]>({
+    queryKey: ["kinds"],
+    queryFn: () => agent.data!.kinds.list(),
+    enabled: agent.data !== undefined,
+    staleTime: Number.POSITIVE_INFINITY,
   });
 }

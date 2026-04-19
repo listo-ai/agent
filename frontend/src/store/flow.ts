@@ -8,31 +8,39 @@ interface FlowState {
   openFlowPath: string | null;
   /** Paths of selected nodes on the canvas. */
   selectedNodePaths: string[];
-  /** True when the canvas has uncommitted local edits. */
-  isDirty: boolean;
+  /** IDs of selected links on the canvas. */
+  selectedEdgeIds: string[];
+  /** Canvas presentation toggles. */
+  showGrid: boolean;
+  showMiniMap: boolean;
 
   setOpenFlow: (path: string | null) => void;
   setSelectedNodes: (paths: string[]) => void;
+  setSelectedEdges: (ids: string[]) => void;
   toggleNodeSelection: (path: string) => void;
   clearSelection: () => void;
-  markDirty: () => void;
-  markClean: () => void;
+  toggleGrid: () => void;
+  toggleMiniMap: () => void;
 }
 
 export const useFlowStore = create<FlowState>()((set) => ({
   openFlowPath: null,
   selectedNodePaths: [],
-  isDirty: false,
+  selectedEdgeIds: [],
+  showGrid: true,
+  showMiniMap: true,
 
-  setOpenFlow: (openFlowPath) => set({ openFlowPath, selectedNodePaths: [], isDirty: false }),
+  setOpenFlow: (openFlowPath) =>
+    set({ openFlowPath, selectedNodePaths: [], selectedEdgeIds: [] }),
   setSelectedNodes: (selectedNodePaths) => set({ selectedNodePaths }),
+  setSelectedEdges: (selectedEdgeIds) => set({ selectedEdgeIds }),
   toggleNodeSelection: (path) =>
     set((s) => ({
       selectedNodePaths: s.selectedNodePaths.includes(path)
         ? s.selectedNodePaths.filter((p) => p !== path)
         : [...s.selectedNodePaths, path],
     })),
-  clearSelection: () => set({ selectedNodePaths: [] }),
-  markDirty: () => set({ isDirty: true }),
-  markClean: () => set({ isDirty: false }),
+  clearSelection: () => set({ selectedNodePaths: [], selectedEdgeIds: [] }),
+  toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
+  toggleMiniMap: () => set((s) => ({ showMiniMap: !s.showMiniMap })),
 }));

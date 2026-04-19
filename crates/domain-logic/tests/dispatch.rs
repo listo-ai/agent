@@ -166,7 +166,7 @@ async fn setup_with(config: JsonValue) -> (Arc<Engine>, Arc<GraphStore>, NodePat
         .behaviors()
         .register(kind, domain_logic::behavior())
         .unwrap();
-    engine.behaviors().set_config(id, config);
+    engine.behaviors().set_config(id, config).unwrap();
     engine.start().await.unwrap();
     engine.behaviors().dispatch_init(id).unwrap();
     yield_dispatch().await;

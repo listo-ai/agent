@@ -1,0 +1,46 @@
+id: acme.logic.heartbeat
+display_name: Heartbeat
+facets:
+  - isCompute
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: state
+    role: output
+    value_schema:
+      type: boolean
+    writable: false
+  - name: count
+    role: output
+    value_schema:
+      type: integer
+      minimum: 0
+    writable: false
+trigger_policy: on_any
+settings_schema:
+  type: object
+  title: Heartbeat settings
+  description: Emits an alternating boolean on a timer. No inputs — drives itself.
+  properties:
+    interval_ms:
+      type: integer
+      title: Interval (ms)
+      description: "Milliseconds between toggles. 1000 = 1s, 60000 = 1min, 120000 = 2min."
+      default: 1000
+      minimum: 10
+      maximum: 3600000
+      examples: [500, 1000, 5000, 60000, 300000]
+    start_state:
+      type: boolean
+      title: Start state
+      description: First value emitted at on_init. The next tick flips it.
+      default: false
+    enabled:
+      type: boolean
+      title: Enabled
+      description: If false, the heartbeat pauses (no timer armed). Counter preserved.
+      default: true
+  additionalProperties: false

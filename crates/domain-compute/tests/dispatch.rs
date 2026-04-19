@@ -57,7 +57,7 @@ fn slot(graph: &GraphStore, path: &NodePath, name: &str) -> JsonValue {
 fn on_init_seeds_count_from_initial() {
     let (graph, sink, behaviors, path) = make();
     let id = graph.get(&path).unwrap().id;
-    behaviors.set_config(id, json!({ "initial": 7, "step": 1 }));
+    behaviors.set_config(id, json!({ "initial": 7, "step": 1 })).unwrap();
     behaviors.dispatch_init(id).unwrap();
     let _ = sink.take();
     assert_eq!(slot(&graph, &path, "count"), json!(7));
@@ -67,7 +67,7 @@ fn on_init_seeds_count_from_initial() {
 fn on_message_increments_and_emits() {
     let (graph, sink, behaviors, path) = make();
     let id = graph.get(&path).unwrap().id;
-    behaviors.set_config(id, json!({ "initial": 0, "step": 1 }));
+    behaviors.set_config(id, json!({ "initial": 0, "step": 1 })).unwrap();
     behaviors.dispatch_init(id).unwrap();
     sink.take();
 
@@ -91,7 +91,7 @@ fn on_message_increments_and_emits() {
 fn slot_source_regression_external_write_wins() {
     let (graph, sink, behaviors, path) = make();
     let id = graph.get(&path).unwrap().id;
-    behaviors.set_config(id, json!({ "initial": 10, "step": 1 }));
+    behaviors.set_config(id, json!({ "initial": 10, "step": 1 })).unwrap();
     behaviors.dispatch_init(id).unwrap();
     sink.take();
 
@@ -117,7 +117,7 @@ fn slot_source_regression_external_write_wins() {
 fn reset_via_port_returns_to_initial() {
     let (graph, sink, behaviors, path) = make();
     let id = graph.get(&path).unwrap().id;
-    behaviors.set_config(id, json!({ "initial": 100, "step": 1 }));
+    behaviors.set_config(id, json!({ "initial": 100, "step": 1 })).unwrap();
     behaviors.dispatch_init(id).unwrap();
     sink.take();
 
@@ -135,7 +135,7 @@ fn reset_via_port_returns_to_initial() {
 fn reset_via_msg_metadata_returns_to_initial() {
     let (graph, sink, behaviors, path) = make();
     let id = graph.get(&path).unwrap().id;
-    behaviors.set_config(id, json!({ "initial": 50, "step": 1 }));
+    behaviors.set_config(id, json!({ "initial": 50, "step": 1 })).unwrap();
     behaviors.dispatch_init(id).unwrap();
     sink.take();
 
@@ -156,7 +156,7 @@ fn reset_via_msg_metadata_returns_to_initial() {
 fn msg_step_override_beats_config() {
     let (graph, sink, behaviors, path) = make();
     let id = graph.get(&path).unwrap().id;
-    behaviors.set_config(id, json!({ "initial": 0, "step": 1 }));
+    behaviors.set_config(id, json!({ "initial": 0, "step": 1 })).unwrap();
     behaviors.dispatch_init(id).unwrap();
     sink.take();
 
@@ -176,7 +176,7 @@ fn msg_step_override_beats_config() {
 fn status_writes_do_not_dispatch() {
     let (graph, _sink, behaviors, path) = make();
     let id = graph.get(&path).unwrap().id;
-    behaviors.set_config(id, json!({ "initial": 0, "step": 1 }));
+    behaviors.set_config(id, json!({ "initial": 0, "step": 1 })).unwrap();
     behaviors.dispatch_init(id).unwrap();
 
     // Synthesise a SlotChanged for the status slot — the dispatcher

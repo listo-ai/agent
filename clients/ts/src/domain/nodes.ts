@@ -21,6 +21,7 @@ export interface NodesApi {
     kind: string;
     name: string;
   }): Promise<{ id: string; path: string }>;
+  removeNode(path: string): Promise<void>;
 }
 
 export function createNodesApi(http: HttpClient, apiVersion: number): NodesApi {
@@ -41,6 +42,10 @@ export function createNodesApi(http: HttpClient, apiVersion: number): NodesApi {
 
     async createNode(args): Promise<{ id: string; path: string }> {
       return http.post<{ id: string; path: string }>(`${base}/nodes`, args);
+    },
+
+    async removeNode(path: string): Promise<void> {
+      await http.delete(`${base}/node?path=${encodeURIComponent(path)}`);
     },
   };
 }
