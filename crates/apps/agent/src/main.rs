@@ -17,10 +17,11 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use auth::{DevNullProvider, StaticTokenProvider};
 use config::{
     default_db_path, default_plugins_dir, from_env, from_file, AgentConfig, AgentConfigOverlay,
-    DatabaseOverlay, Defaults, FleetConfig, FleetOverlay, LogOverlay, PluginsOverlay, Role,
-    ZenohFleetOverlay,
+    AuthConfig, DatabaseOverlay, Defaults, FleetConfig, FleetOverlay, LogOverlay, PluginsOverlay,
+    Role, ZenohFleetOverlay,
 };
 use data_sqlite::SqliteGraphRepo;
 use data_sqlite::SqliteFlowRevisionRepo;
@@ -28,7 +29,7 @@ use domain_flows::FlowService;
 use engine::{kinds as engine_kinds, Engine};
 use extensions_host::PluginRegistry;
 use graph::{seed, GraphStore, KindRegistry};
-use spi::{FleetTransport, KindId, TenantId};
+use spi::{AuthProvider, FleetTransport, KindId, TenantId};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{info, warn};
 use transport_cli::{CliCommand, GlobalOpts};
@@ -227,11 +228,30 @@ async fn run_daemon(
         "agent starting",
     );
 
-    let (engine, graph, events, plugins) = bootstrap(&cfg).await?;
+    let (engine, graph, events, ring, plugins) = bootstrap(&cfg).await?;
     engine.start().await?;
     info!(state = ?engine.state(), "engine running");
 
-    let mut app_state = AppState::new(graph.clone(), engine.behaviors().clone(), events, plugins);
+    let mut app_state = AppState::new_with_ring(graph.clone(), engine.behaviors().clone(), events, ring, plugins);
+
+    // Resolve the identity provider. Absent / `dev_null` → default
+    // `DevNullProvider` stays; `static_token` → swap in a
+    // `StaticTokenProvider` populated from config.
+    let auth_provider: Arc<dyn AuthProvider> = match &cfg.auth {
+        AuthConfig::DevNull => {
+            info!(provider = "dev_null", "auth provider resolved");
+            Arc::new(DevNullProvider::new())
+        }
+        AuthConfig::StaticToken { tokens } => {
+            info!(
+                provider = "static_token",
+                token_count = tokens.len(),
+                "auth provider resolved",
+            );
+            Arc::new(StaticTokenProvider::new(tokens.iter().cloned()))
+        }
+    };
+    app_state = app_state.with_auth_provider(auth_provider);
 
     // Wire flow service when a DB path is configured.
     if let Some(ref path) = cfg.database.path {
@@ -325,6 +345,7 @@ fn resolve_config(
         log: log.map(|f| LogOverlay { filter: Some(f) }),
         plugins: plugins_dir.map(|d| PluginsOverlay { dir: Some(d) }),
         fleet,
+        auth: None,
     };
     let env_layer = from_env().context("reading env config")?;
     let file_layer = match config_path {
@@ -347,10 +368,11 @@ async fn bootstrap(
 ) -> Result<(
     Arc<Engine>,
     Arc<GraphStore>,
-    tokio::sync::broadcast::Sender<graph::GraphEvent>,
+    tokio::sync::broadcast::Sender<transport_rest::SequencedEvent>,
+    transport_rest::EventRing,
     PluginRegistry,
 )> {
-    let (sink, events_rx, bcast) = transport_rest::agent_sink();
+    let (sink, events_rx, bcast, ring) = transport_rest::agent_sink();
 
     let kinds = KindRegistry::new();
     seed::register_builtins(&kinds);
@@ -418,7 +440,7 @@ async fn bootstrap(
         )
         .context("registering heartbeat behaviour")?;
 
-    Ok((engine, graph, bcast, plugins))
+    Ok((engine, graph, bcast, ring, plugins))
 }
 
 /// Reflect every loaded plugin as an `acme.agent.plugin` node under

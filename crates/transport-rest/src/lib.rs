@@ -40,10 +40,12 @@ use tokio::sync::{broadcast, mpsc};
 pub mod auth;
 pub mod auth_routes;
 pub mod capabilities;
+pub mod event;
 pub mod fleet;
 pub mod flows;
 pub mod kinds;
 pub mod plugins;
+pub mod ring;
 pub mod routes;
 pub mod seed;
 pub mod sink;
@@ -51,6 +53,8 @@ pub mod state;
 pub mod ui;
 
 pub use capabilities::{host_capabilities, CapabilityManifest, REST_API_VERSION};
+pub use event::{HelloFrame, SequencedEvent};
+pub use ring::{EventRing, DEFAULT_RING_CAPACITY};
 pub use routes::API_PREFIX;
 pub use sink::AgentSink;
 pub use state::AppState;
@@ -62,15 +66,19 @@ pub use state::AppState;
 ///     live-wire + behaviour dispatch
 ///   * the REST SSE broadcast (bounded, lossy on slow consumers) —
 ///     drives the `GET /api/events` stream
+///   * the event ring — stores the last N events for reconnect replay
 pub fn agent_sink() -> (
     Arc<dyn EventSink>,
     mpsc::UnboundedReceiver<GraphEvent>,
-    broadcast::Sender<GraphEvent>,
+    broadcast::Sender<SequencedEvent>,
+    EventRing,
 ) {
     let (engine_tx, engine_rx) = mpsc::unbounded_channel();
     let (bcast_tx, _) = broadcast::channel(512);
-    let sink: Arc<dyn EventSink> = Arc::new(AgentSink::new(engine_tx, bcast_tx.clone()));
-    (sink, engine_rx, bcast_tx)
+    let ring = EventRing::new(DEFAULT_RING_CAPACITY);
+    let sink: Arc<dyn EventSink> =
+        Arc::new(AgentSink::new(engine_tx, bcast_tx.clone(), ring.clone()));
+    (sink, engine_rx, bcast_tx, ring)
 }
 
 /// Build the axum router. Call once, serve with

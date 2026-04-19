@@ -1,14 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
+import { create, useStore } from "zustand";
 import { GitBranch, Plus, Pencil, Trash2 } from "lucide-react";
 
-import { useAgent, useLinks, useNodes } from "@/hooks/useAgent";
-import { queryClient } from "@/providers/query";
+import { useAgent } from "@/hooks/useAgent";
+import { useGraphStoreOptional } from "@/store/graph-hooks";
 import { cn } from "@/lib/utils";
 import { AGENT_BASE_URL } from "@/lib/agent";
 
 import { basename, isDirectChildOfFlow, isFlowNode, nextFlowName } from "./flow-model";
+
+/** Stable empty store used as a fallback before the GraphStore connects. */
+const emptyStore = create(() => ({
+  nodes: new Map() as Map<string, import("@acme/agent-client").NodeSnapshot>,
+  links: new Map() as Map<string, import("@acme/agent-client").Link>,
+}));
 
 /**
  * Landing page for /flows — lists every `acme.core.flow` container node
@@ -18,14 +25,26 @@ import { basename, isDirectChildOfFlow, isFlowNode, nextFlowName } from "./flow-
 export function FlowsListPage() {
   const navigate = useNavigate();
   const agent = useAgent();
-  const nodesQuery = useNodes();
-  const linksQuery = useLinks();
+  const graphStore = useGraphStoreOptional();
+
+  // Eagerly expand root so the GraphStore fetches and caches top-level flows.
+  // The store is null until the agent handshake resolves, so we watch for it.
+  useEffect(() => {
+    if (!graphStore) return;
+    graphStore.getState().expand("/");
+  }, [graphStore]);
+
+  const nodes = useStore(
+    graphStore ?? emptyStore,
+    (s) => [...s.nodes.values()],
+  );
+  const links = useStore(
+    graphStore ?? emptyStore,
+    (s) => [...s.links.values()],
+  );
 
   const [filter, setFilter] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const nodes = nodesQuery.data ?? [];
-  const links = linksQuery.data ?? [];
 
   const rows = useMemo(() => {
     const flows = nodes.filter(isFlowNode);
@@ -66,8 +85,8 @@ export function FlowsListPage() {
       });
       return created.path;
     },
-    onSuccess: async (path) => {
-      await queryClient.invalidateQueries({ queryKey: ["nodes"] });
+    onSuccess: (path) => {
+      // GraphStore will update reactively from the SSE node_created event.
       setErrorMessage(null);
       navigate(`/flows/edit${path}`);
     },
@@ -79,24 +98,21 @@ export function FlowsListPage() {
       await agent.data!.nodes.removeNode(path);
     },
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["nodes"] }),
-        queryClient.invalidateQueries({ queryKey: ["links"] }),
-      ]);
+      // GraphStore will update reactively from the SSE node_removed event.
       setErrorMessage(null);
     },
     onError: (error) => setErrorMessage(formatError(error)),
   });
 
-  if (nodesQuery.isPending || linksQuery.isPending) {
+  if (!graphStore || agent.isPending) {
     return <CenteredMessage title="Loading flows…" detail={AGENT_BASE_URL} />;
   }
 
-  if (nodesQuery.isError || linksQuery.isError || agent.isError) {
+  if (agent.isError) {
     return (
       <CenteredMessage
         title="Could not reach the agent"
-        detail={`${AGENT_BASE_URL} — ${formatError(nodesQuery.error ?? linksQuery.error ?? agent.error)}`}
+        detail={`${AGENT_BASE_URL} — ${formatError(agent.error)}`}
       />
     );
   }

@@ -41,6 +41,9 @@ pub struct NodeSnapshot {
     pub kind: KindId,
     pub path: NodePath,
     pub parent: Option<NodeId>,
+    /// `true` when the node has at least one child in the store.
+    /// Lets tree UIs render expand chevrons without a second round-trip.
+    pub has_children: bool,
     pub lifecycle: Lifecycle,
     pub slot_values: Vec<(String, SlotValue)>,
 }
@@ -52,6 +55,7 @@ impl NodeSnapshot {
             kind: r.kind.clone(),
             path: r.path.clone(),
             parent: r.parent,
+            has_children: !r.children.is_empty(),
             lifecycle: r.lifecycle,
             slot_values: r
                 .slots

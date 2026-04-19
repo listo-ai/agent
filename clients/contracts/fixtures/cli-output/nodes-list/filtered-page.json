@@ -6,6 +6,7 @@
       "path": "/beta",
       "parent_path": "/",
       "parent_id": "00000000-0000-0000-0000-000000000000",
+      "has_children": false,
       "lifecycle": "created",
       "slots": [
         { "name": "notes",    "value": null, "generation": null },

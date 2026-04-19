@@ -10,7 +10,7 @@ use spi::{Actor, AuthContext, AuthError, AuthProvider, RequestHeaders, Scope, Sc
 
 /// One entry in the static-token table. Shape matches what the config
 /// overlay loader ultimately parses from YAML.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StaticTokenEntry {
     pub token: String,
     pub actor: Actor,

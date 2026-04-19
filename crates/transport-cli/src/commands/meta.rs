@@ -144,6 +144,16 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &AUTH_WHOAMI,
         &UI_NAV,
         &UI_RESOLVE,
+        &FLOWS_LIST,
+        &FLOWS_GET,
+        &FLOWS_CREATE,
+        &FLOWS_DELETE,
+        &FLOWS_EDIT,
+        &FLOWS_UNDO,
+        &FLOWS_REDO,
+        &FLOWS_REVERT,
+        &FLOWS_REVISIONS,
+        &FLOWS_DOCUMENT_AT,
     ];
     ALL
 }
@@ -1016,5 +1026,303 @@ static AUTH_WHOAMI: CommandMeta = CommandMeta {
             code: "agent_unreachable",
             exit_code: 2,
         },
+    ],
+};
+
+// ---- flows ----------------------------------------------------------------
+
+static FLOWS_LIST: CommandMeta = CommandMeta {
+    name: "flows list",
+    summary: "List all flows, newest-first by head_seq.",
+    args: &[
+        ArgInfo { name: "--limit", required: false, type_name: "u32",  description: "Maximum number of flows to return (default: 50)" },
+        ArgInfo { name: "--offset", required: false, type_name: "u32",  description: "Skip this many flows (default: 0)" },
+    ],
+    examples: &[
+        "agent flows list",
+        "agent flows list --limit 10",
+    ],
+    related: &["flows get", "flows create"],
+    input_schema: empty_input,
+    output_schema: schema_for_vec::<types::FlowDto>,
+    errors: &[ErrorInfo { code: "agent_unreachable", exit_code: 2 }],
+};
+
+static FLOWS_GET: CommandMeta = CommandMeta {
+    name: "flows get",
+    summary: "Fetch a single flow by id.",
+    args: &[ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" }],
+    examples: &["agent flows get <id>"],
+    related: &["flows list"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id"],
+            "properties": { "id": { "type": "string", "format": "uuid" } }
+        })
+    },
+    output_schema: schema_for_type::<types::FlowDto>,
+    errors: &[
+        ErrorInfo { code: "not_found",        exit_code: 1 },
+        ErrorInfo { code: "conflict",         exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+static FLOWS_CREATE: CommandMeta = CommandMeta {
+    name: "flows create",
+    summary: "Create a new flow with an optional initial document.",
+    args: &[
+        ArgInfo { name: "name", required: true, type_name: "string", description: "Human-readable name" },
+        ArgInfo { name: "--document", required: false, type_name: "string", description: "Initial document as JSON (default: {})" },
+        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+    ],
+    examples: &[
+        "agent flows create my-flow",
+        "agent flows create my-flow --document '{\"nodes\":[]}' --author alice",
+    ],
+    related: &["flows list", "flows edit"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name":     { "type": "string" },
+                "document": { "type": "object" },
+                "author":   { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::FlowDto>,
+    errors: &[ErrorInfo { code: "agent_unreachable", exit_code: 2 }],
+};
+
+static FLOWS_DELETE: CommandMeta = CommandMeta {
+    name: "flows delete",
+    summary: "Delete a flow and its entire revision history.",
+    args: &[
+        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
+        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard; omit to bypass)" },
+    ],
+    examples: &[
+        "agent flows delete <id>",
+        "agent flows delete <id> --expected-head <rev-id>",
+    ],
+    related: &["flows create"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id":            { "type": "string", "format": "uuid" },
+                "expected_head": { "type": "string", "format": "uuid" }
+            }
+        })
+    },
+    output_schema: status_output,
+    errors: &[
+        ErrorInfo { code: "not_found",        exit_code: 1 },
+        ErrorInfo { code: "conflict",         exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+static FLOWS_EDIT: CommandMeta = CommandMeta {
+    name: "flows edit",
+    summary: "Append a forward edit revision to a flow.",
+    args: &[
+        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
+        ArgInfo { name: "document", required: true, type_name: "string", description: "New document as a JSON string" },
+        ArgInfo { name: "--summary", required: false, type_name: "string", description: "Short description (default: \"edited via CLI\")" },
+        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
+        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+    ],
+    examples: &[
+        "agent flows edit <id> '{\"nodes\":[]}' --expected-head <rev-id>",
+    ],
+    related: &["flows undo", "flows redo", "flows revert"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id", "document"],
+            "properties": {
+                "id":            { "type": "string", "format": "uuid" },
+                "document":      { "type": "object" },
+                "summary":       { "type": "string" },
+                "expected_head": { "type": "string", "format": "uuid" },
+                "author":        { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::FlowMutationResult>,
+    errors: &[
+        ErrorInfo { code: "not_found",        exit_code: 1 },
+        ErrorInfo { code: "conflict",         exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+static FLOWS_UNDO: CommandMeta = CommandMeta {
+    name: "flows undo",
+    summary: "Undo the last logical edit (appends an undo revision — non-destructive).",
+    args: &[
+        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
+        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
+        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+    ],
+    examples: &["agent flows undo <id> --expected-head <rev-id>"],
+    related: &["flows redo", "flows revert"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id":            { "type": "string", "format": "uuid" },
+                "expected_head": { "type": "string", "format": "uuid" },
+                "author":        { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::FlowMutationResult>,
+    errors: &[
+        ErrorInfo { code: "not_found",           exit_code: 1 },
+        ErrorInfo { code: "conflict",            exit_code: 1 },
+        ErrorInfo { code: "unprocessable_entity", exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable",   exit_code: 2 },
+    ],
+};
+
+static FLOWS_REDO: CommandMeta = CommandMeta {
+    name: "flows redo",
+    summary: "Redo the next undone edit.",
+    args: &[
+        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
+        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
+        ArgInfo { name: "--expected-target", required: false, type_name: "string", description: "Expected redo-target revision id (stale-cursor guard)" },
+        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+    ],
+    examples: &["agent flows redo <id> --expected-head <rev-id>"],
+    related: &["flows undo"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id":              { "type": "string", "format": "uuid" },
+                "expected_head":   { "type": "string", "format": "uuid" },
+                "expected_target": { "type": "string", "format": "uuid" },
+                "author":          { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::FlowMutationResult>,
+    errors: &[
+        ErrorInfo { code: "not_found",           exit_code: 1 },
+        ErrorInfo { code: "conflict",            exit_code: 1 },
+        ErrorInfo { code: "unprocessable_entity", exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable",   exit_code: 2 },
+    ],
+};
+
+static FLOWS_REVERT: CommandMeta = CommandMeta {
+    name: "flows revert",
+    summary: "Revert a flow to the document state at a specific revision (non-destructive).",
+    args: &[
+        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
+        ArgInfo { name: "--to", required: false, type_name: "string", description: "Target revision id to revert to" },
+        ArgInfo { name: "--expected-head", required: false, type_name: "string", description: "Expected head revision id (OCC guard)" },
+        ArgInfo { name: "--author", required: false, type_name: "string", description: "Author tag (default: cli)" },
+    ],
+    examples: &["agent flows revert <id> --to <rev-id>"],
+    related: &["flows undo", "flows revisions"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id", "to"],
+            "properties": {
+                "id":            { "type": "string", "format": "uuid" },
+                "to":            { "type": "string", "format": "uuid" },
+                "expected_head": { "type": "string", "format": "uuid" },
+                "author":        { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::FlowMutationResult>,
+    errors: &[
+        ErrorInfo { code: "not_found",        exit_code: 1 },
+        ErrorInfo { code: "conflict",         exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+static FLOWS_REVISIONS: CommandMeta = CommandMeta {
+    name: "flows revisions",
+    summary: "List revisions for a flow, newest first.",
+    args: &[
+        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
+        ArgInfo { name: "--limit", required: false, type_name: "u32",    description: "Maximum revisions to return (default: 50)" },
+        ArgInfo { name: "--offset", required: false, type_name: "u32",    description: "Skip this many revisions (default: 0)" },
+    ],
+    examples: &[
+        "agent flows revisions <id>",
+        "agent flows revisions <id> --limit 20",
+    ],
+    related: &["flows get", "flows document-at"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id":     { "type": "string", "format": "uuid" },
+                "limit":  { "type": "integer", "minimum": 1 },
+                "offset": { "type": "integer", "minimum": 0 }
+            }
+        })
+    },
+    output_schema: schema_for_vec::<types::FlowRevisionDto>,
+    errors: &[
+        ErrorInfo { code: "not_found",        exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+static FLOWS_DOCUMENT_AT: CommandMeta = CommandMeta {
+    name: "flows document-at",
+    summary: "Return the materialised flow document at a specific revision.",
+    args: &[
+        ArgInfo { name: "id", required: true, type_name: "string", description: "Flow id (UUID)" },
+        ArgInfo { name: "--rev-id", required: false, type_name: "string", description: "Revision id" },
+    ],
+    examples: &["agent flows document-at <id> --rev-id <rev-id>"],
+    related: &["flows revisions"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["id", "rev_id"],
+            "properties": {
+                "id":     { "type": "string", "format": "uuid" },
+                "rev_id": { "type": "string", "format": "uuid" }
+            }
+        })
+    },
+    output_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "description": "Materialised flow document at the requested revision"
+        })
+    },
+    errors: &[
+        ErrorInfo { code: "not_found",        exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
     ],
 };

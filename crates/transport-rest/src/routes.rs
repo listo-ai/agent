@@ -10,7 +10,6 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use futures_util::stream::Stream;
 use graph::{Lifecycle, LinkId, NodeSnapshot, SlotRef};
 use query::{FieldType, Operator, QueryRequest, QuerySchema, SortField};
 use serde::{Deserialize, Serialize};
@@ -22,6 +21,7 @@ use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
 use crate::capabilities::host_capabilities;
+use crate::event::SequencedEvent;
 use crate::seed::{self, Preset, SeedResult};
 use crate::state::AppState;
 use crate::ui;
@@ -78,6 +78,9 @@ pub(crate) struct NodeDto {
     /// without walking the full subtree + filtering client-side.
     parent_path: Option<String>,
     parent_id: Option<String>,
+    /// Whether the node has at least one child. Computed server-side so
+    /// tree UIs can show expand chevrons without a speculative child query.
+    has_children: bool,
     lifecycle: Lifecycle,
     slots: Vec<SlotDto>,
 }
@@ -97,6 +100,7 @@ impl From<NodeSnapshot> for NodeDto {
             parent_path: s.path.parent().map(|p| p.to_string()),
             path: s.path.to_string(),
             parent_id: s.parent.map(|p| p.to_string()),
+            has_children: s.has_children,
             lifecycle: s.lifecycle,
             slots: s
                 .slot_values
@@ -124,7 +128,7 @@ fn node_query_schema() -> QuerySchema {
         .field(
             "id",
             FieldType::Text,
-            [Operator::Eq, Operator::Ne, Operator::Prefix],
+            [Operator::Eq, Operator::Ne, Operator::Prefix, Operator::In],
         )
         .field(
             "kind",
@@ -300,17 +304,68 @@ async fn set_config(
 
 async fn stream_events(
     State(s): State<AppState>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    Query(q): Query<EventsQuery>,
+) -> Response {
+    // Determine replay set and current seq, or return 409 if cursor is
+    // below the ring's floor.
+    let (replay, current_seq) = if let Some(since) = q.since {
+        match s.ring.since(since) {
+            Err(available_from) => {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({
+                        "error": "cursor_too_old",
+                        "available_from": available_from
+                    })),
+                )
+                    .into_response();
+            }
+            Ok(events) => (events, s.ring.current_seq()),
+        }
+    } else {
+        (Vec::new(), s.ring.current_seq())
+    };
+
+    // Subscribe to live events *before* building the replay prefix so
+    // we don't miss events that arrive between ring-read and subscribe.
     let rx = s.events.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(|res| match res {
+
+    // First frame is always `hello { seq }` so the client knows where
+    // "now" is without having consumed any events yet.
+    let hello_frame: Result<Event, Infallible> = {
+        let f = crate::event::HelloFrame::new(current_seq);
+        Ok(Event::default().json_data(&f).unwrap_or_default())
+    };
+
+    // Replay prefix (empty on fresh connect).
+    let replay_frames = replay
+        .into_iter()
+        .map(|ev| Ok(Event::default().json_data(&ev).unwrap_or_default()));
+
+    // Live stream — slow consumers drop frames (broadcast semantics).
+    let live = BroadcastStream::new(rx).filter_map(|res| match res {
         Ok(ev) => Some(Ok(Event::default().json_data(&ev).unwrap_or_default())),
-        Err(_lag) => None, // slow consumer lagged; drop and continue
+        Err(_lag) => None,
     });
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+
+    let stream = futures_util::stream::once(futures_util::future::ready(hello_frame))
+        .chain(futures_util::stream::iter(replay_frames))
+        .chain(live);
+
+    Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+        .into_response()
 }
 
 pub(crate) fn parse_path(s: &str) -> Result<NodePath, ApiError> {
     NodePath::from_str(s).map_err(|e| ApiError::bad_request(format!("bad path `{s}`: {e}")))
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct EventsQuery {
+    /// Resume from this sequence number — reply with events whose `seq > since`.
+    /// Omit for a fresh connection.
+    since: Option<u64>,
 }
 
 // ---- links ----------------------------------------------------------------

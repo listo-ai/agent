@@ -33,3 +33,5 @@ spi = { workspace = true }
 axum = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 uuid = { workspace = true }
+data-sqlite = { workspace = true }
+domain-flows = { workspace = true }

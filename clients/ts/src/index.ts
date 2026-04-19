@@ -22,6 +22,7 @@ export type {
   LinkAddedEvent,
   LinkRemovedEvent,
   LinkBrokenEvent,
+  HelloEvent,
   Lifecycle,
 } from "./schemas/events.js";
 export type { NodeSnapshot, NodeListResponse, PageMeta, Slot } from "./schemas/node.js";
@@ -46,8 +47,10 @@ export type {
   UiResolveResponse,
   UiSubscriptionPlan,
 } from "./schemas/ui.js";
+export type { WriteSlotResponse } from "./schemas/slot.js";
+export type { SeedResult, SeededNode } from "./schemas/seed.js";
 
 // Domain request shapes.
 export type { LinkEndpointRef } from "./domain/links.js";
-export type { SeedPreset, SeedResult } from "./domain/seed.js";
+export type { SeedPreset } from "./domain/seed.js";
 export type { NodeConfig } from "./domain/config.js";

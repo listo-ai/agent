@@ -34,10 +34,19 @@ fn collect_fixtures() -> Vec<PathBuf> {
 
 #[test]
 fn every_event_fixture_round_trips() {
+    // The wire fixtures carry `seq` and `ts` from the transport-layer
+    // `SequencedEvent` wrapper.  `GraphEvent` does not own those fields —
+    // strip them before the typed round-trip so the comparison validates only
+    // the domain event shape.
     for path in collect_fixtures() {
         let raw = fs::read_to_string(&path).expect("read fixture");
-        let original: Value = serde_json::from_str(&raw)
+        let mut original: Value = serde_json::from_str(&raw)
             .unwrap_or_else(|e| panic!("{}: not valid JSON: {e}", path.display()));
+        // Strip transport metadata before typed round-trip.
+        if let Some(obj) = original.as_object_mut() {
+            obj.remove("seq");
+            obj.remove("ts");
+        }
         let event: GraphEvent = serde_json::from_value(original.clone())
             .unwrap_or_else(|e| panic!("{}: not a valid GraphEvent: {e}", path.display()));
         let reserialised = serde_json::to_value(&event).expect("GraphEvent always serialises");

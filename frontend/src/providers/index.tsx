@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { QueryProvider } from "./query";
 import { AuthProvider } from "./auth";
 import { RegistryProvider } from "./registry";
+import { GraphStoreProvider } from "./graph-store";
 
 interface ProvidersProps {
   children: ReactNode;
@@ -18,7 +19,10 @@ export function Providers({ children }: ProvidersProps) {
       <RegistryProvider>
         {/* AuthProvider hydrates user session from OIDC. */}
         <AuthProvider>
-          {children}
+          {/* GraphStoreProvider opens one SSE subscription for the whole app. */}
+          <GraphStoreProvider>
+            {children}
+          </GraphStoreProvider>
         </AuthProvider>
       </RegistryProvider>
     </QueryProvider>

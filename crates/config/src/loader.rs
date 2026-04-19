@@ -56,6 +56,7 @@ pub fn from_env() -> Result<AgentConfigOverlay, ConfigError> {
         log: log_filter.map(|f| LogOverlay { filter: Some(f) }),
         plugins: plugins_dir.map(|d| PluginsOverlay { dir: Some(d) }),
         fleet: None,
+        auth: None,
     })
 }
 

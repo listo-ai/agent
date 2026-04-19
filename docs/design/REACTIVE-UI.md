@@ -56,7 +56,7 @@ Both views read from the same `GraphStore` (client-side), subscribe to the same 
 **What the flow canvas adds on top** (but still inside the same store):
 - A **link cache** keyed by link id — link events (`LinkAdded` / `LinkRemoved` / `LinkBroken`) mutate it idempotently, same pattern.
 - A **selection state** — which node is open in the property panel. Purely frontend, shared between canvas and panel via the store so deep-links (e.g. `?flow=/demo&node=/demo/counter`) work.
-- **Optimistic slot writes.** The panel fires `POST /api/v1/slots` and records the expected generation; when the `SlotChanged` event returns, the pending write is resolved. If the server's generation is different from what was expected (conflict), the panel reverts and shows "reloaded".
+- **Optimistic slot writes.** The panel fires `POST /api/v1/slots` and records `{ expected_gen, value }` in the store's `pending` map. Either the `SlotChanged` SSE event or the HTTP response resolves the pending entry — **whichever arrives first**. Both carry the same `generation`, so late arrivals are no-ops by the standard stale-check. A newer-than-expected generation means a concurrent remote write won → revert. See § "Optimistic slot writes" for the full table.
 
 These all live inside the `GraphStore` so the canvas doesn't grow its own parallel state that could drift from the sidebar.
 
@@ -306,22 +306,25 @@ write(42);  // optimistic; resolves on matching SlotChanged, reverts on conflict
 ### State invariants the store enforces
 
 1. **Cache monotonicity on slots.** A slot value only ever moves forward in `generation`. Out-of-order SSE frames → ignored.
-2. **Subtree consistency on rename.** Either the whole subtree's keys are rewritten, or none are. Wrapped in a single store transaction.
-3. **Expanded ⊆ cached-parent.** If `expanded` contains `/a/b`, then `/a/b` is in the cache. Collapse a path doesn't violate; expand without the parent cached triggers a fetch first.
-4. **`lastSeq` is monotonic.** Only updated on successful event apply, never on retry.
+2. **Subtree consistency on rename.** Either the whole subtree's keys + every reference to them (`expanded`, `openFlow`, `selection`, link endpoints) are rewritten, or none are. Wrapped in a single store transaction.
+3. **Parent `has_children` matches cache reality.** After every create/remove mutation, if the parent is cached, its `has_children` equals `{ n ∈ cache | n.parent_path === parent.path }.size > 0`. Enforced by the mutation handlers, not a background reconciler.
+4. **Expanded ⊆ cached-parent.** If `expanded` contains `/a/b`, then `/a/b` is in the cache. Collapse a path doesn't violate; expand without the parent cached triggers a fetch first.
+5. **Open flow ⊆ cached.** If `openFlow === /x`, then `/x` is in the cache.
+6. **At most one pending optimistic write per `(path, slot)`.** A second `writeSlot` on the same slot while one is pending either queues (if we add that later) or — today — rejects synchronously. Keeps generation accounting linear.
+7. **`lastSeq` is monotonic.** Only updated on successful event apply, never on retry.
 
 ## Staged landing
 
 | Stage | What | Bail-out signal |
 |---|---|---|
-| **1a — `has_children`** | Add field to `NodeDto`, compute in handler, mirror in Rust + TS clients, update fixtures. Single small PR following [NEW-API.md](../design/NEW-API.md). | No — smallest PR, straightforward. |
-| **1b — Event `seq` + ring buffer** | `graph::GraphEvent` grows `seq` + `ts`. Store assigns. `AppState` owns the ring. Tests cover wrap-around and 409 cursor-too-old behaviour. | Retention math gets fiddly → default to higher capacity (4096) and document the tradeoff. |
-| **1c — `?since=` resumable SSE** | Extract the existing `stream_events` handler, add `since` query, replay from ring, fall through to live stream. `hello { seq }` first frame. | Backpressure on a large replay → chunk replays; cap at one frame per poll. |
-| **1d — Frontend `GraphStore`** | Path-keyed node cache, id-keyed link cache, expanded set, canvas selection, SSE subscriber, subscribe-before-fetch startup, reconnect flow. Unit tests on each event-type mutation + rename subtree rewrite + `cursor_too_old` recovery. | Rename subtree rewrite complexity → deferrable as an explicit "cold-reconcile on rename" shortcut for v1; note the follow-up. |
+| **1a — `has_children` + `id=in=` operator** | Add `has_children: bool` to `NodeDto`. Add `In` to the query schema's supported operators for the `id` field (unlocks the batched NodeCreated fetch). Mirror in Rust + TS clients, update fixtures. Single small PR following [NEW-API.md](../design/NEW-API.md). | No — smallest PR, straightforward. |
+| **1b — Event `seq` + `ts` + ring buffer** | `graph::GraphEvent` grows `seq: u64` + `ts: DateTime`. `GraphStore` assigns `seq` via `AtomicU64`. `AppState` owns the ring (capacity config, default 1024). Tests: monotonicity under concurrent writes, wrap-around, retrieve-since-cursor. Still non-resumable on the wire — the existing `/api/v1/events` handler is left alone in this stage. | Ring fill rate pathological on noisy agents → bump default capacity to 4096 and document the memory tradeoff. |
+| **1c — `?since=` resumable SSE + `hello` frame** | Extract the existing `stream_events` handler, add `since` query param, replay from ring, fall through to live stream. First emitted frame is `hello { seq }`. `409 cursor_too_old` with `{ available_from: <n> }` when cursor is below the ring's lower bound. Ships separately from 1b because the transport wire change is independently testable. | Backpressure on a large replay → chunk replays; cap at one frame per poll loop. |
+| **1d — Frontend `GraphStore`** | Path-keyed node cache, id-keyed link cache, expanded set, `openFlow`, `selection`, `pending` optimistic map, `lastSeq`. Subscribe-before-fetch startup. Batched-NodeCreated-fetch debouncer. Reconnect iterating over `stalePaths = expanded ∪ {openFlow}`. First-signal-wins optimistic resolution. Unit tests on every event-type mutation + rename subtree rewrite + `cursor_too_old` recovery + batch coalescing + event-first vs HTTP-first ordering. | Rename subtree rewrite complexity → deferrable as an explicit "cold-reconcile on rename" shortcut for v1; note the follow-up. |
 | **1e — Sidebar bindings** | `useNodeChildren`, `useExpanded`, tree rows with chevrons keyed off `has_children`. Wire [`FlowSidebar.tsx`](../../frontend/src/pages/flows/FlowSidebar.tsx) to the store — *not* to `AgentClient` directly. | Re-render performance on wide trees → memoise row selectors; if still slow, that's the trigger to add virtualisation (a separate follow-up per non-goals). |
-| **1f — Flow canvas + property panel bindings** | `useFlowSubtree(flowPath)`, selection hooks, optimistic slot writes with generation tracking. Wire [`FlowCanvas.tsx`](../../frontend/src/pages/flows/FlowCanvas.tsx) + [`FlowPropertyPanel.tsx`](../../frontend/src/pages/flows/FlowPropertyPanel.tsx) to the store. Reuse existing [`useFlowLiveData.ts`](../../frontend/src/pages/flows/useFlowLiveData.ts) as the migration target. | Property-panel optimistic-write conflict UX → if "revert and reload" feels too aggressive, fall back to "read-only banner + explicit reload button"; note in FLOW-UI.md. |
+| **1f — Flow canvas + property panel bindings** | `useFlowSubtree(flowPath)`, selection hooks, `useSlotWrite` with first-signal-wins reconciliation. Wire [`FlowCanvas.tsx`](../../frontend/src/pages/flows/FlowCanvas.tsx) + [`FlowPropertyPanel.tsx`](../../frontend/src/pages/flows/FlowPropertyPanel.tsx) to the store. Reuse existing [`useFlowLiveData.ts`](../../frontend/src/pages/flows/useFlowLiveData.ts) as the migration target. | Property-panel optimistic-write conflict UX → if "revert and reload" feels too aggressive, fall back to "read-only banner + explicit reload button"; note in FLOW-UI.md. |
 
-Each stage is independently testable. 1a–1c ship together as the "wire reliability" PR. 1d lands the store shared by every UI surface. 1e and 1f are the two binding landings — both surface the same live state, and can ship in either order once 1d is in.
+**PR boundaries:** 1a ships on its own (cheap, no dependency on anything else). 1b and 1c are separate PRs — the `seq`/`ts`/ring change (1b) is internal and has its own fixture surface; the `?since=` wire change (1c) modifies the public HTTP contract and warrants its own NEW-API.md round of client + TS + CLI mirroring. 1d lands the store shared by every UI surface. 1e and 1f are the two binding landings — both consume the same store and can ship in either order once 1d is in.
 
 ## Testing
 

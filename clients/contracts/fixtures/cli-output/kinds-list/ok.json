@@ -1,0 +1,14 @@
+[
+  {
+    "id": "acme.core.station",
+    "display_name": null,
+    "facets": null,
+    "containment": null,
+    "slots": null,
+    "settings_schema": null,
+    "msg_overrides": null,
+    "trigger_policy": "on_any",
+    "schema_version": 1,
+    "placement_class": "free"
+  }
+]

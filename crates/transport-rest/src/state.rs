@@ -6,15 +6,20 @@ use auth::DevNullProvider;
 use domain_flows::FlowService;
 use engine::BehaviorRegistry;
 use extensions_host::PluginRegistry;
-use graph::{GraphEvent, GraphStore};
+use graph::{GraphStore};
 use spi::{AuthProvider, FleetTransport, NullTransport};
 use tokio::sync::broadcast;
+
+use crate::event::SequencedEvent;
+use crate::ring::EventRing;
 
 #[derive(Clone)]
 pub struct AppState {
     pub graph: Arc<GraphStore>,
     pub behaviors: BehaviorRegistry,
-    pub events: broadcast::Sender<GraphEvent>,
+    pub events: broadcast::Sender<SequencedEvent>,
+    /// Ring buffer for reconnect replay — see `GET /api/v1/events?since=`.
+    pub ring: EventRing,
     pub plugins: PluginRegistry,
     /// Fleet transport — `NullTransport` when the agent is configured
     /// with `fleet: null` (standalone / offline). Holding it in
@@ -35,13 +40,36 @@ impl AppState {
     pub fn new(
         graph: Arc<GraphStore>,
         behaviors: BehaviorRegistry,
-        events: broadcast::Sender<GraphEvent>,
+        events: broadcast::Sender<SequencedEvent>,
         plugins: PluginRegistry,
     ) -> Self {
         Self {
             graph,
             behaviors,
             events,
+            ring: EventRing::new(crate::ring::DEFAULT_RING_CAPACITY),
+            plugins,
+            fleet: Arc::new(NullTransport),
+            auth_provider: Arc::new(DevNullProvider::new()),
+            flows: None,
+        }
+    }
+
+    /// Construct with an explicit ring (used by `agent_sink()` which
+    /// creates the ring alongside the sink so they share the same
+    /// backing storage).
+    pub fn new_with_ring(
+        graph: Arc<GraphStore>,
+        behaviors: BehaviorRegistry,
+        events: broadcast::Sender<SequencedEvent>,
+        ring: EventRing,
+        plugins: PluginRegistry,
+    ) -> Self {
+        Self {
+            graph,
+            behaviors,
+            events,
+            ring,
             plugins,
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),

@@ -82,6 +82,13 @@ fn matches_filter(json: &Value, filter: &FilterExpr) -> bool {
         Operator::Prefix => {
             scalar_text(actual).is_some_and(|value| value.starts_with(&filter.value))
         }
+        Operator::In => {
+            let needle = scalar_text(actual);
+            filter
+                .value
+                .split(',')
+                .any(|candidate| needle == Some(candidate.trim()))
+        }
     }
 }
 

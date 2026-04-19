@@ -1,5 +1,5 @@
 import type { HttpClient } from "../transport/http.js";
-import { z } from "zod";
+import { WriteSlotResponseSchema } from "../schemas/slot.js";
 
 /**
  * Slot writes against `POST /api/v1/slots` `{path, slot, value}`.
@@ -10,10 +10,8 @@ import { z } from "zod";
  * one-op and easy to test.
  */
 
-const WriteSlotRespSchema = z.object({
-  generation: z.number().int().nonnegative(),
-});
-type WriteSlotResp = z.infer<typeof WriteSlotRespSchema>;
+const WriteSlotRespSchema = WriteSlotResponseSchema;
+type WriteSlotResp = { generation: number };
 
 export interface SlotsApi {
   /** Returns the new generation number assigned by the graph store. */

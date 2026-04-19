@@ -10,6 +10,7 @@ use crate::output::OutputFormat;
 mod auth;
 mod capabilities;
 mod config;
+mod flows;
 mod health;
 mod kinds;
 mod lifecycle;
@@ -99,6 +100,10 @@ pub enum CliCommand {
     #[command(subcommand)]
     Ui(ui::UiCmd),
 
+    /// Flow document operations.
+    #[command(subcommand)]
+    Flows(flows::FlowsCmd),
+
     /// Seed a preset graph for testing.
     Seed {
         /// Preset name: `count_chain` or `trigger_demo`.
@@ -129,6 +134,7 @@ impl CliCommand {
             Self::Plugins(sub) => sub.command_name(),
             Self::Auth(sub) => sub.command_name(),
             Self::Ui(sub) => sub.command_name(),
+            Self::Flows(sub) => sub.command_name(),
             Self::Lifecycle { .. } => "lifecycle",
             Self::Seed { .. } => "seed",
             Self::Schema { .. } => "schema",
@@ -149,6 +155,7 @@ pub async fn dispatch(client: &AgentClient, global: &GlobalOpts, cmd: &CliComman
         CliCommand::Plugins(sub) => plugins::run(client, fmt, sub).await,
         CliCommand::Auth(sub) => auth::run(client, fmt, sub).await,
         CliCommand::Ui(sub) => ui::run(client, fmt, sub).await,
+        CliCommand::Flows(sub) => flows::run(client, fmt, sub).await,
         CliCommand::Lifecycle { path, to } => lifecycle::run(client, fmt, path, to).await,
         CliCommand::Seed { preset } => seed::run(client, fmt, preset).await,
         CliCommand::Schema { all, command } => schema::run(fmt, *all, command),

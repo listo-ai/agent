@@ -24,6 +24,11 @@ export const NodeSnapshotSchema = z.object({
    */
   parent_path: z.string().nullable(),
   parent_id: z.string().nullable(),
+  /**
+   * Whether the node has at least one child. Lets tree UIs render expand
+   * chevrons without issuing a speculative child query.
+   */
+  has_children: z.boolean(),
   lifecycle: LifecycleSchema,
   slots: z.array(SlotSchema),
 });

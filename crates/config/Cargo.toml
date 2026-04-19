@@ -10,8 +10,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+auth = { workspace = true }
 serde = { workspace = true }
 serde_yml = { workspace = true }
+spi = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -21,6 +21,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 spi = { workspace = true }
+auth = { workspace = true }
 messaging = { workspace = true }
 graph = { workspace = true }
 engine = { workspace = true }

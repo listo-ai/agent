@@ -15,12 +15,15 @@ pub enum Operator {
     Eq,
     Ne,
     Prefix,
+    /// Comma-separated membership test: `field=in=a,b,c`.
+    In,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilterExpr {
     pub field: String,
     pub op: Operator,
+    /// Raw filter value. For `In`, this is a comma-separated list.
     pub value: String,
 }
 

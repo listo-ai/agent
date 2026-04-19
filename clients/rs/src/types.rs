@@ -25,6 +25,11 @@ pub struct NodeSnapshot {
     #[serde(default)]
     pub parent_path: Option<String>,
     pub parent_id: Option<String>,
+    /// Whether the node has at least one child in the store.
+    /// Computed server-side so tree UIs can render expand chevrons
+    /// without issuing a speculative child query.
+    #[serde(default)]
+    pub has_children: bool,
     pub lifecycle: String,
     pub slots: Vec<Slot>,
 }
@@ -529,4 +534,46 @@ pub struct WhoAmIDto {
     pub scopes: Vec<String>,
     /// Provider id, e.g. `"dev_null"`, `"static_token"`.
     pub provider: String,
+}
+
+// ---- flows ----------------------------------------------------------------
+
+/// Mirror of `GET /api/v1/flows` and `GET /api/v1/flows/:id`.
+///
+/// `document` is the raw JSON flow payload — opaque to the client.
+/// `head_revision_id` is `null` only on a brand-new flow before any
+/// edit has been committed (race-safe: it is set by the first
+/// `append_revision` call inside the same transaction as `save_flow`).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FlowDto {
+    pub id: String,
+    pub name: String,
+    pub document: JsonValue,
+    pub head_revision_id: Option<String>,
+    pub head_seq: i64,
+}
+
+/// Mirror of `GET /api/v1/flows/:id/revisions` entries.
+///
+/// `op` is one of `create | edit | undo | redo | revert | import |
+/// duplicate | paste` — stable strings defined in `RevisionOp`.
+/// `target_rev_id` is non-null only for `undo`, `redo`, and `revert`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FlowRevisionDto {
+    pub id: String,
+    pub flow_id: String,
+    pub parent_id: Option<String>,
+    pub seq: i64,
+    pub author: String,
+    pub op: String,
+    pub target_rev_id: Option<String>,
+    pub summary: String,
+    pub created_at: String,
+}
+
+/// Returned by every mutating flow endpoint (`edit`, `undo`, `redo`,
+/// `revert`). Contains the new `head_revision_id` after the operation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FlowMutationResult {
+    pub head_revision_id: String,
 }

@@ -42,6 +42,9 @@ fn parse_filter(segment: &str) -> Result<FilterExpr, QueryError> {
     if let Some((field, value)) = segment.split_once("=prefix=") {
         return build_filter(field, Operator::Prefix, value, segment);
     }
+    if let Some((field, value)) = segment.split_once("=in=") {
+        return build_filter(field, Operator::In, value, segment);
+    }
     if let Some((field, value)) = segment.split_once("!=") {
         return build_filter(field, Operator::Ne, value, segment);
     }

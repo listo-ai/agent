@@ -24,6 +24,7 @@ name = "agent"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "auth",
  "axum",
  "clap",
  "config",
@@ -492,8 +493,10 @@ dependencies = [
 name = "config"
 version = "0.0.1"
 dependencies = [
+ "auth",
  "serde",
  "serde_yml",
+ "spi",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -3768,7 +3771,9 @@ dependencies = [
  "dashboard-nodes",
  "dashboard-runtime",
  "dashboard-transport",
+ "data-sqlite",
  "domain-compute",
+ "domain-flows",
  "domain-logic",
  "engine",
  "extensions-host",

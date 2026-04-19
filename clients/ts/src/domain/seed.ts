@@ -1,5 +1,5 @@
 import type { HttpClient } from "../transport/http.js";
-import { z } from "zod";
+import { SeedResultSchema } from "../schemas/seed.js";
 
 /**
  * `POST /api/v1/seed` `{preset}` — instantiates a pre-wired flow shape
@@ -10,18 +10,7 @@ import { z } from "zod";
 
 export type SeedPreset = "count_chain" | "trigger_demo";
 
-const SeededNodeSchema = z.object({
-  path: z.string(),
-  kind: z.string(),
-});
-
-const SeedResultSchema = z.object({
-  folder: z.string(),
-  nodes: z.array(SeededNodeSchema),
-  links: z.array(z.string()),
-});
-
-export type SeedResult = z.infer<typeof SeedResultSchema>;
+export type SeedResult = ReturnType<typeof SeedResultSchema.parse>;
 
 export interface SeedApi {
   apply(preset: SeedPreset): Promise<SeedResult>;

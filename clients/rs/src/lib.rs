@@ -35,6 +35,7 @@ mod auth;
 mod capabilities;
 mod config;
 mod error;
+mod flows;
 mod health;
 mod http;
 mod kinds;
@@ -143,5 +144,9 @@ impl AgentClient {
 
     pub fn ui(&self) -> ui::Ui<'_> {
         ui::Ui::new(&self.http, API_VERSION)
+    }
+
+    pub fn flows(&self) -> flows::Flows<'_> {
+        flows::Flows::new(&self.http, API_VERSION)
     }
 }

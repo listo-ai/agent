@@ -20,6 +20,23 @@ pub struct AgentConfig {
     pub log: LogConfig,
     pub plugins: PluginsConfig,
     pub fleet: FleetConfig,
+    pub auth: AuthConfig,
+}
+
+/// Resolved identity-provider configuration. See
+/// `docs/sessions/AUTH-SEAM.md` § "Providers live behind Cargo features".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthConfig {
+    /// Dev-only: every request is stamped as `(DevNull, default, Admin)`.
+    /// The agent refuses to boot with this in `role=cloud` + `--release`
+    /// (per AUTH-SEAM.md; guard to be implemented alongside cloud TLS).
+    DevNull,
+    /// Bearer-token table loaded from config. Token material never
+    /// leaves the agent's config file; issuance is out-of-band (`agent
+    /// auth issue-token`, future).
+    StaticToken {
+        tokens: Vec<auth::StaticTokenEntry>,
+    },
 }
 
 /// Resolved fleet-transport configuration. See
@@ -81,6 +98,36 @@ pub struct AgentConfigOverlay {
     /// resolves to `FleetConfig::Null`. `fleet: { backend: zenoh, … }`
     /// parses as `Some(FleetOverlay::Zenoh { … })`.
     pub fleet: Option<FleetOverlay>,
+    /// Identity provider. Absent → `AuthConfig::DevNull`. See
+    /// `docs/sessions/AUTH-SEAM.md`.
+    pub auth: Option<AuthOverlay>,
+}
+
+/// Overlay form for identity-provider config. Tagged on `provider` so
+/// the YAML reads:
+///
+/// ```yaml
+/// auth:
+///   provider: static_token
+///   tokens:
+///     - token: "ed_acme_edge1_xxx"
+///       actor: { kind: machine, id: "00000000-0000-0000-0000-000000000001", label: "edge-1" }
+///       tenant: acme
+///       scopes: [read_nodes, write_slots, manage_fleet]
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AuthOverlay {
+    /// Explicit dev-null. Same as omitting the `auth:` block entirely.
+    DevNull,
+    /// Static token table — see `crates/auth/src/static_token.rs`.
+    StaticToken(StaticTokenOverlay),
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StaticTokenOverlay {
+    pub tokens: Vec<auth::StaticTokenEntry>,
 }
 
 /// Overlay form for fleet transport. Tagged on `backend` so the YAML
@@ -144,6 +191,10 @@ impl AgentConfigOverlay {
             log: merge_log(self.log, other.log),
             plugins: merge_plugins(self.plugins, other.plugins),
             fleet: merge_fleet(self.fleet, other.fleet),
+            // Auth doesn't overlay field-by-field — a higher layer
+            // either specifies a provider or defers to the next layer.
+            // Partial auth configs would hide identity bugs.
+            auth: self.auth.or(other.auth),
         }
     }
 
@@ -175,12 +226,17 @@ impl AgentConfigOverlay {
                 agent_id: z.agent_id.unwrap_or_else(default_agent_id),
             },
         };
+        let auth = match self.auth {
+            None | Some(AuthOverlay::DevNull) => AuthConfig::DevNull,
+            Some(AuthOverlay::StaticToken(t)) => AuthConfig::StaticToken { tokens: t.tokens },
+        };
         AgentConfig {
             role,
             database: DatabaseConfig { path: db_path },
             log: LogConfig { filter: log_filter },
             plugins: PluginsConfig { dir: plugins_dir },
             fleet,
+            auth,
         }
     }
 }

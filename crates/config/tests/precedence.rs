@@ -29,6 +29,7 @@ fn cli_over_env_over_file_over_defaults() {
             dir: Some(PathBuf::from("/from/file/plugins")),
         }),
         fleet: None,
+        auth: None,
     };
     let env = AgentConfigOverlay {
         role: Some(Role::Cloud),
@@ -38,6 +39,7 @@ fn cli_over_env_over_file_over_defaults() {
         }),
         plugins: None,
         fleet: None,
+        auth: None,
     };
     let cli = AgentConfigOverlay {
         role: None,
@@ -49,6 +51,7 @@ fn cli_over_env_over_file_over_defaults() {
             dir: Some(PathBuf::from("/from/cli/plugins")),
         }),
         fleet: None,
+        auth: None,
     };
 
     // Stack: cli over env over file. `role`: only file + env set, env wins.
@@ -155,6 +158,48 @@ fn fleet_zenoh_yaml_parses_and_resolves() {
         }
         other => panic!("expected zenoh, got {other:?}"),
     }
+}
+
+#[test]
+fn auth_static_token_yaml_parses_and_resolves() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(
+        tmp.path(),
+        concat!(
+            "role: cloud\n",
+            "auth:\n",
+            "  provider: static_token\n",
+            "  tokens:\n",
+            "    - token: \"ed_acme_edge1_xxxxx\"\n",
+            "      actor:\n",
+            "        kind: machine\n",
+            "        id: \"00000000-0000-0000-0000-000000000001\"\n",
+            "        label: \"edge-1\"\n",
+            "      tenant: acme\n",
+            "      scopes: [read_nodes, write_slots, manage_fleet]\n",
+        ),
+    )
+    .unwrap();
+    let overlay = from_file(tmp.path()).unwrap();
+    let resolved = overlay.resolve(defaults());
+    match resolved.auth {
+        config::AuthConfig::StaticToken { tokens } => {
+            assert_eq!(tokens.len(), 1);
+            assert_eq!(tokens[0].token, "ed_acme_edge1_xxxxx");
+            assert_eq!(tokens[0].tenant.as_str(), "acme");
+            assert_eq!(tokens[0].scopes.len(), 3);
+        }
+        other => panic!("expected StaticToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn auth_absent_yaml_resolves_to_dev_null() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), "role: standalone\n").unwrap();
+    let overlay = from_file(tmp.path()).unwrap();
+    let resolved = overlay.resolve(defaults());
+    assert_eq!(resolved.auth, config::AuthConfig::DevNull);
 }
 
 #[test]

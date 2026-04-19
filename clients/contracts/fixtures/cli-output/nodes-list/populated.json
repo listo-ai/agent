@@ -6,6 +6,7 @@
       "path": "/",
       "parent_path": null,
       "parent_id": null,
+      "has_children": false,
       "lifecycle": "created",
       "slots": [
         { "name": "notes",    "value": null, "generation": null },

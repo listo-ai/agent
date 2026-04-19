@@ -23,7 +23,9 @@ pub fn validate(schema: &QuerySchema, req: QueryRequest) -> Result<ValidatedQuer
                 op: filter.op,
             });
         }
-        if matches!(filter.op, crate::Operator::Prefix) && spec.ty != FieldType::Text {
+        if matches!(filter.op, crate::Operator::Prefix | crate::Operator::In)
+            && spec.ty != FieldType::Text
+        {
             return Err(QueryError::OperatorTypeMismatch {
                 field: filter.field.clone(),
                 op: filter.op,
