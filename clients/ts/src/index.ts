@@ -44,6 +44,7 @@ export type {
   UiResolveIssue,
   UiResolveRequest,
   UiResolveResponse,
+  UiSubscriptionPlan,
 } from "./schemas/ui.js";
 
 // Domain request shapes.

@@ -19,6 +19,11 @@ pub struct NodeSnapshot {
     pub id: String,
     pub kind: String,
     pub path: String,
+    /// Materialised parent path (`"/"` for depth-1, `null` for root).
+    /// Lets tree UIs fetch direct children via
+    /// `filter=parent_path==/station/floor1`.
+    #[serde(default)]
+    pub parent_path: Option<String>,
     pub parent_id: Option<String>,
     pub lifecycle: String,
     pub slots: Vec<Slot>,
@@ -442,18 +447,29 @@ pub struct UiResolveRequest {
 }
 
 /// Response envelope for `POST /api/v1/ui/resolve`. Serialised
-/// untagged — a successful resolve carries `{render, meta}`; a dry-run
-/// carries `{errors}`. Mirrors the server's `ResolveResponse`.
+/// untagged — a successful resolve carries `{render, subscriptions,
+/// meta}`; a dry-run carries `{errors}`. Mirrors the server's
+/// `ResolveResponse`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum UiResolveResponse {
     Ok {
         render: UiRenderTree,
+        subscriptions: Vec<UiSubscriptionPlan>,
         meta: UiResolveMeta,
     },
     DryRun {
         errors: Vec<UiResolveIssue>,
     },
+}
+
+/// Per-widget subscription plan — mirrors the server's `SubscriptionPlan`.
+/// Subjects follow the `node.<id>.slot.<name>` convention.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiSubscriptionPlan {
+    pub widget_id: String,
+    pub subjects: Vec<String>,
+    pub debounce_ms: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

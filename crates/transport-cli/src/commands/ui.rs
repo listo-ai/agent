@@ -113,7 +113,14 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                         vec![e.location.clone(), e.message.clone()]
                     })?;
                 }
-                (UiResolveResponse::Ok { render, meta }, OutputFormat::Table) => {
+                (
+                    UiResolveResponse::Ok {
+                        render,
+                        meta,
+                        subscriptions: _,
+                    },
+                    OutputFormat::Table,
+                ) => {
                     let rows: Vec<WidgetRow> = render
                         .widgets
                         .iter()

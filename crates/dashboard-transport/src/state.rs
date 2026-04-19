@@ -12,6 +12,7 @@ use dashboard_runtime::NodeReader;
 
 use crate::acl::{AclCheck, AllowAll};
 use crate::audit::{AuditSink, TracingAudit};
+use crate::invalidate::{InvalidateSink, TracingInvalidate};
 use crate::widget_registry::WidgetRegistry;
 
 #[derive(Clone)]
@@ -20,6 +21,7 @@ pub struct DashboardState {
     pub widgets: Arc<WidgetRegistry>,
     pub acl: Arc<dyn AclCheck>,
     pub audit: Arc<dyn AuditSink>,
+    pub invalidate: Arc<dyn InvalidateSink>,
 }
 
 impl DashboardState {
@@ -29,6 +31,7 @@ impl DashboardState {
             widgets: Arc::new(WidgetRegistry::new()),
             acl: Arc::new(AllowAll),
             audit: Arc::new(TracingAudit),
+            invalidate: Arc::new(TracingInvalidate),
         }
     }
 
@@ -44,6 +47,11 @@ impl DashboardState {
 
     pub fn with_audit(mut self, audit: Arc<dyn AuditSink>) -> Self {
         self.audit = audit;
+        self
+    }
+
+    pub fn with_invalidate(mut self, sink: Arc<dyn InvalidateSink>) -> Self {
+        self.invalidate = sink;
         self
     }
 }

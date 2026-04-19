@@ -219,7 +219,7 @@ static NODES_LIST: CommandMeta = CommandMeta {
             name: "--filter",
             required: false,
             type_name: "query-filter",
-            description: "Filter expression, e.g. kind==acme.core.folder",
+            description: "Filter expression. Supported fields: id, kind, path, parent_id, parent_path, lifecycle. Operators: == != =prefix=. E.g. `parent_path==/station` for direct children, `path=prefix=/station/` for the whole subtree.",
         },
         ArgInfo {
             name: "--sort",
@@ -244,6 +244,8 @@ static NODES_LIST: CommandMeta = CommandMeta {
         "agent nodes list",
         "agent nodes list --filter 'kind==acme.core.folder' --sort=-path -o json",
         "agent nodes list --filter 'path=prefix=/demo' --page 2 --size 50",
+        // Direct children only — for tree-view expansion. No subtree walk.
+        "agent nodes list --filter 'parent_path==/station' --sort path",
     ],
     related: &["nodes get", "nodes create"],
     input_schema: || {

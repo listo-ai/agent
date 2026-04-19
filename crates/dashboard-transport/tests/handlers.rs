@@ -96,7 +96,7 @@ async fn resolve_renders_widget_with_bindings() {
 
     let resp = resolve_ok(state(reader), req(page_id, vec![nav_id])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta } => (render, meta),
+        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
         other => panic!("expected Ok variant, got {other:?}"),
     };
     assert_eq!(render.widgets.len(), 1);
@@ -116,6 +116,64 @@ async fn resolve_renders_widget_with_bindings() {
     assert_eq!(meta.forbidden_count, 0);
     assert_eq!(meta.dangling_count, 0);
     assert!(meta.cache_key != 0);
+}
+
+#[tokio::test]
+async fn resolve_emits_subscription_plan_for_each_widget() {
+    let page_id = NodeId::new();
+    let w_id = NodeId::new();
+    let site_id = NodeId::new();
+    let nav_id = NodeId::new();
+
+    let reader = InMemoryReader::new()
+        .with(page(page_id, "P"))
+        .with(widget(
+            w_id,
+            CARD,
+            json!({ "label": "$stack.target.name" }),
+        ))
+        .with(NodeSnapshot::new(site_id, "acme.site").with_slot("name", json!("HQ")))
+        .with(nav(nav_id, "Site", Some("target"), Some(site_id)))
+        .with_child(page_id, w_id);
+
+    let resp = resolve_ok(state(reader), req(page_id, vec![nav_id])).await;
+    let subs = match resp {
+        ResolveResponse::Ok { subscriptions, .. } => subscriptions,
+        other => panic!("expected Ok, got {other:?}"),
+    };
+    assert_eq!(subs.len(), 1);
+    assert_eq!(subs[0].widget_id, w_id);
+    assert_eq!(subs[0].debounce_ms, 250);
+    // The only slot read is site.name.
+    let expected = format!("node.{site_id}.slot.name");
+    assert_eq!(subs[0].subjects, vec![expected]);
+}
+
+#[tokio::test]
+async fn resolve_subscription_plan_deduplicates_slot_reads() {
+    let page_id = NodeId::new();
+    let w_id = NodeId::new();
+    let site_id = NodeId::new();
+    let nav_id = NodeId::new();
+
+    let reader = InMemoryReader::new()
+        .with(page(page_id, "P"))
+        .with(widget(
+            w_id,
+            CARD,
+            // Two bindings both read `name` on the same target.
+            json!({ "a": "$stack.target.name", "b": "$stack.target.name" }),
+        ))
+        .with(NodeSnapshot::new(site_id, "acme.site").with_slot("name", json!("HQ")))
+        .with(nav(nav_id, "Site", Some("target"), Some(site_id)))
+        .with_child(page_id, w_id);
+
+    let resp = resolve_ok(state(reader), req(page_id, vec![nav_id])).await;
+    let subs = match resp {
+        ResolveResponse::Ok { subscriptions, .. } => subscriptions,
+        other => panic!("expected Ok, got {other:?}"),
+    };
+    assert_eq!(subs[0].subjects.len(), 1);
 }
 
 #[tokio::test]
@@ -203,7 +261,7 @@ async fn unknown_widget_type_becomes_forbidden_placeholder_and_audits() {
     // Deliberately don't register the widget type.
     let resp = resolve_ok(s, req(page_id, vec![])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta } => (render, meta),
+        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.forbidden_count, 1);
@@ -240,7 +298,7 @@ async fn acl_denied_bound_node_redacts_widget_and_audits() {
     r.auth_subject = Some("user:ada".to_string());
     let resp = resolve_ok(state, r).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta } => (render, meta),
+        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.forbidden_count, 1);
@@ -303,7 +361,7 @@ async fn acl_page_with_mixed_allowed_denied_widgets() {
 
     let resp = resolve_ok(state, req(page_id, vec![nav_id])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta } => (render, meta),
+        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(render.widgets.len(), 2);
@@ -337,7 +395,7 @@ async fn missing_bound_node_becomes_dangling_placeholder() {
 
     let resp = resolve_ok(s, req(page_id, vec![nav_id])).await;
     let (render, meta) = match resp {
-        ResolveResponse::Ok { render, meta } => (render, meta),
+        ResolveResponse::Ok { render, meta, subscriptions: _ } => (render, meta),
         other => panic!("expected Ok, got {other:?}"),
     };
     assert_eq!(meta.dangling_count, 1);

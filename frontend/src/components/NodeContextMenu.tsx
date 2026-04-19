@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Settings, Trash2 } from "lucide-react";
+import { FolderOpen, PlusCircle, Settings, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface NodeContextMenuItem {
@@ -102,23 +102,26 @@ export function NodeContextMenu({
 // ─── Convenience factory for the standard node items ──────────────────────
 
 export function buildNodeContextItems({
+  onOpen,
+  onAddChild,
   onSettings,
   onDelete,
 }: {
+  /** Navigate into this node so its children are shown on the canvas. */
+  onOpen?: () => void;
+  /** Open the Add-child-node dialog for this node. */
+  onAddChild?: () => void;
   onSettings: () => void;
   onDelete: () => void;
 }): NodeContextMenuItem[] {
-  return [
-    {
-      label: "Settings",
-      icon: <Settings size={14} />,
-      onClick: onSettings,
-    },
-    {
-      label: "Delete",
-      icon: <Trash2 size={14} />,
-      onClick: onDelete,
-      variant: "destructive",
-    },
-  ];
+  const items: NodeContextMenuItem[] = [];
+  if (onOpen) {
+    items.push({ label: "Open", icon: <FolderOpen size={14} />, onClick: onOpen });
+  }
+  if (onAddChild) {
+    items.push({ label: "Add child node", icon: <PlusCircle size={14} />, onClick: onAddChild });
+  }
+  items.push({ label: "Settings", icon: <Settings size={14} />, onClick: onSettings });
+  items.push({ label: "Delete", icon: <Trash2 size={14} />, onClick: onDelete, variant: "destructive" });
+  return items;
 }

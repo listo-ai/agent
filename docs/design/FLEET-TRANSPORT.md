@@ -38,61 +38,63 @@ Why: every subsystem that talks to cloud (audit stream, command receiver, teleme
 
 ## The trait
 
-Lives in [`crates/spi`](../../crates/spi/) so any crate can depend on it without pulling in a specific backend.
+Lives in [`crates/spi/src/fleet.rs`](../../crates/spi/src/fleet.rs) so any crate can depend on it without pulling in a specific backend. Current signature — object-safe so `AppState` can hold `Arc<dyn FleetTransport>`:
 
 ```rust
-pub trait FleetTransport: Send + Sync {
-    /// Publish a one-way message. Delivery semantics per backend's
-    /// `fleet.<backend>.v1` contract (NATS core = at-most-once,
-    /// JetStream = at-least-once, Zenoh put = at-most-once, etc.).
-    async fn publish(&self, subject: &Subject, payload: Bytes) -> Result<(), FleetError>;
+pub type Payload = Vec<u8>;               // alias today; may grow to bytes::Bytes later
 
-    /// Request/reply with a bounded timeout. Subject namespace is
-    /// `fleet.<tenant>.<agent-id>.<kind>.<...>`.
+#[async_trait]
+pub trait FleetTransport: Send + Sync {
+    async fn publish(&self, subject: &Subject, payload: Payload) -> Result<(), FleetError>;
+
     async fn request(
         &self,
         subject: &Subject,
-        payload: Bytes,
+        payload: Payload,
         timeout: Duration,
-    ) -> Result<Bytes, FleetError>;
+    ) -> Result<Payload, FleetError>;
 
-    /// Subscribe to a subject pattern. Returns a stream of inbound
-    /// messages. Wildcards follow the backend's syntax — the `Subject`
-    /// type is opaque and backend-parsed.
     async fn subscribe(&self, pattern: &Subject) -> Result<SubscriptionStream, FleetError>;
 
-    /// Register a request handler on a subject pattern. The agent uses
-    /// this to answer `fleet.<tenant>.<agent-id>.api.v1.*` requests
-    /// from cloud/Studio (one internal fn, two transports — same
-    /// handlers serve both HTTP and fleet callers).
-    async fn serve<H>(&self, pattern: &Subject, handler: H) -> Result<Server, FleetError>
-    where
-        H: FleetHandler + Send + Sync + 'static;
+    /// Register a request handler on a subject pattern. Drop the
+    /// returned `Server` to deregister.
+    async fn serve(
+        &self,
+        pattern: &Subject,
+        handler: Arc<dyn FleetHandler>,
+    ) -> Result<Server, FleetError>;
 
     /// Connection state as a stream. Drives the `acme.agent.fleet` node.
     fn health(&self) -> HealthStream;
+
+    /// Stable backend id — surfaces in capabilities as `fleet.<id>.v1`.
+    fn id(&self) -> &'static str;
 }
 
-pub struct Subject(/* backend-parsed opaque id */);
-pub struct SubscriptionStream(/* pin<box<dyn Stream>> */);
-pub type FleetError = /* structured per VERSIONING.md */;
+pub struct FleetMessage { pub subject: Subject, pub payload: Payload, pub reply_to: Option<Subject> }
+pub type SubscriptionStream = Pin<Box<dyn Stream<Item = FleetMessage> + Send + 'static>>;
+pub type HealthStream       = Pin<Box<dyn Stream<Item = HealthStatus>  + Send + 'static>>;
 ```
+
+The companion [`Subject`](../../crates/spi/src/subject.rs) type is built via `Subject::for_agent(&tenant, agent_id).kind("api.v1.nodes.list").build()` — the canonical dotted form is stored internally, and `subject.render('/')` gives the Zenoh `/`-separated key expression. `FleetHandler` is an object-safe trait with one async `handle(msg) -> Result<Option<Payload>>` method — the same `Arc<dyn FleetHandler>` value feeds both the axum route and the fleet subscription dispatcher.
+
+A zero-config `NullTransport` impl is shipped in `spi` itself — `AppState` holds one by default, every method returns `FleetError::Disabled`, `health()` yields a single `Disabled` status and ends. That's the `fleet: null` deployment shape.
 
 Key points:
 
-1. **`Subject` is opaque.** NATS calls it a subject (`fleet.acme.edge-42.api.v1.nodes.list`); Zenoh calls it a key expression (`fleet/acme/edge-42/api/v1/nodes/list`). The Rust type hides the difference; the construction helper is backend-provided.
-2. **`serve` is symmetric with HTTP routes.** The existing `routes::mount` in `transport-rest` registers HTTP handlers; a parallel `fleet::mount` registers the same handlers on fleet subjects. One handler fn, two surfaces — guaranteed to stay in sync.
+1. **`Subject` is not opaque** — it exposes `as_dotted()` + `render(sep)` so backends map to their native separator without re-implementing escape rules.
+2. **`serve` is symmetric with HTTP routes.** [`routes::mount`](../../crates/transport-rest/src/routes.rs) registers HTTP handlers; [`fleet::mount`](../../crates/transport-rest/src/fleet.rs) wraps the same core fn (`list_nodes_core`, soon `write_slot_core`, …) in a `FleetHandler` and registers it on fleet subjects. One fn, two surfaces — tested by [`fleet::tests::fleet_list_nodes_returns_same_shape_as_http`](../../crates/transport-rest/src/fleet.rs) asserting the JSON reply is byte-identical.
 3. **Health is a stream**, not a poll. The `acme.agent.fleet` graph node has a `status.connection` slot that mirrors it, so flows can react to "cloud dropped" as a first-class event.
 
 ## Backend selection
 
 One crate per backend. Each implements `FleetTransport`. Cargo features gate compile-time inclusion, config picks at runtime.
 
-| Crate | Cargo feature | Provides capability | Positioning |
-|---|---|---|---|
-| `transport-fleet-zenoh` | `fleet-zenoh` | `fleet.zenoh.v1` | **Simple-stack primary.** Pure-Rust library — embeds in-process, no broker sidecar, no separate binary. Right default for developer laptops, standalone appliances, single-tenant clouds, demos. |
-| `transport-fleet-nats` | `fleet-nats` | `fleet.nats.v1` | **SaaS primary.** JetStream for durable buffering, NATS accounts for tenant isolation, first-class WebSocket for browser Studio, years of ops mileage. Right default for multi-tenant cloud at scale and edges with spotty connectivity that need durable command queues. |
-| `transport-fleet-mqtt` | `fleet-mqtt` | `fleet.mqtt.v1` | Future. When integrating with existing MQTT device fleets where the broker already exists. Weaker req/reply semantics. |
+| Crate | Cargo feature | Provides capability | Status | Positioning |
+|---|---|---|---|---|
+| [`transport-fleet-zenoh`](../../crates/transport-fleet-zenoh/) | `fleet-zenoh` | `fleet.zenoh.v1` | ✅ shipped | **Simple-stack primary.** Pure-Rust library — embeds in-process, no broker sidecar, no separate binary. Right default for developer laptops, standalone appliances, single-tenant clouds, demos. |
+| `transport-fleet-nats` | `fleet-nats` | `fleet.nats.v1` | 🔜 planned | **SaaS primary.** JetStream for durable buffering, NATS accounts for tenant isolation, first-class WebSocket for browser Studio, years of ops mileage. Right default for multi-tenant cloud at scale and edges with spotty connectivity that need durable command queues. |
+| `transport-fleet-mqtt` | `fleet-mqtt` | `fleet.mqtt.v1` | ⏳ future | When integrating with existing MQTT device fleets where the broker already exists. Weaker req/reply semantics. |
 
 ### Which backend when
 
@@ -110,32 +112,36 @@ At least one backend must be compiled in when `role != standalone` without `--of
 
 ### Config shape
 
+Owned by [`crates/config/src/model.rs`](../../crates/config/src/model.rs) (`FleetConfig` + `FleetOverlay`). Tagged on `backend` so every variant reads uniformly:
+
 ```yaml
-# Standalone / developer laptop / single-tenant cloud — embedded Zenoh
+# Embedded Zenoh — shipped today.
 fleet:
   backend: zenoh
-  listen: ["tcp/0.0.0.0:7447"]     # leave empty for client-only
-  connect: []                       # peer discovery handles the rest
+  listen:    ["tcp/0.0.0.0:7447"]   # leave empty for client-only
+  connect:   []                     # peers / routers to dial outbound
+  tenant:    acme                   # fleet.<tenant>.<agent-id>.<kind>.<...>
+  agent_id:  edge-1                 # defaults to $HOSTNAME then "local"
+```
 
-# Cloud agent (SaaS)
+```yaml
+# NATS (planned) — same overlay, different backend tag.
 fleet:
-  backend: nats
-  url: tls://fleet.yourcloud.com:4443
-  cluster: true        # this agent is a cluster member
-
-# Edge agent (SaaS)
-fleet:
-  backend: nats        # or: zenoh, mqtt
-  url: tls://fleet.yourcloud.com:4443
+  backend:  nats
+  url:      tls://fleet.yourcloud.com:4443
+  tenant:   acme
   agent_id: edge-42
-  tenant: acme
   jetstream: true
+```
 
-# Standalone — no cloud at all
+```yaml
+# Standalone — no cloud at all. Absent or explicit `null`.
 fleet: null
 ```
 
-`backend` is validated at startup against the compiled-in features. `fleet: null` is accepted regardless of role — an edge that's meant to operate disconnected legitimately needs this.
+`backend` is validated at startup against the compiled-in features. `fleet: null` (or absence) is accepted regardless of role — an edge that's meant to operate disconnected legitimately needs this, and `AppState` just keeps its default `NullTransport`.
+
+CLI flags mirror the overlay and merge into the layered config stack (`cli > env > file > defaults`): `--fleet-zenoh`, `--fleet-zenoh-listen`, `--fleet-zenoh-connect`, `--fleet-tenant`, `--fleet-agent-id`.
 
 ## Subject namespace
 
@@ -170,7 +176,7 @@ The edge agent runs `fleet::mount` at startup — same handlers as the HTTP surf
 
 ## Representing the fleet connection as a node
 
-Per the "no parallel state" rule, the live connection is a node kind in the graph, not hidden state in a subsystem:
+Per the "no parallel state" rule, the live connection is a node kind in the graph, not hidden state in a subsystem. *Manifest drafted; the kind + seeding are not yet registered — added alongside the next fleet handler.*
 
 ```yaml
 kind: acme.agent.fleet
@@ -234,13 +240,26 @@ Credential rotation, revocation, and audit all live in the existing Zitadel + au
 | Hot-swap backend at runtime | Rare need; restart is fine. |
 | Custom auth providers on the fleet fabric itself | Stick with each backend's native auth (NATS accounts, Zenoh ACLs, MQTT usernames). |
 
+## What's shipped today
+
+- Trait + types in [`spi::fleet`](../../crates/spi/src/fleet.rs) — `FleetTransport`, `FleetHandler`, `FleetMessage`, `HealthStatus`, `FleetError`, `NullTransport`.
+- Subject builder in [`spi::subject`](../../crates/spi/src/subject.rs) — `Subject::for_agent(tenant, agent_id).kind("api.v1.nodes.list").build()`, with dot-escape applied per-token.
+- Embedded Zenoh backend in [`transport-fleet-zenoh`](../../crates/transport-fleet-zenoh/) — covers `publish` / `request` / `subscribe` / `serve` / `health`; `Server` drops via `ServerHandle::shutdown`.
+- Handler seam in [`transport_rest::fleet::mount`](../../crates/transport-rest/src/fleet.rs) — currently registers `api.v1.nodes.list` on `fleet.<tenant>.<agent-id>.api.v1.nodes.list`, sharing `list_nodes_core` with the axum route. The `_returns_same_shape_as_http` test locks the contract.
+- Config overlay + CLI flags wired through [`agent run`](../../crates/apps/agent/src/main.rs). `fleet: { backend: zenoh, … }` in YAML opens a `ZenohTransport`, swaps it into `AppState`, and calls `fleet::mount`.
+- End-to-end integration test [`fleet_zenoh_e2e`](../../crates/transport-rest/tests/fleet_zenoh_e2e.rs) spins up two Zenoh peers on loopback and verifies a real req/reply round-trip.
+- [Smoke-test example](../../crates/transport-fleet-zenoh/examples/fleet_get.rs) — one-shot CLI that joins as a third peer and queries any mounted subject.
+
+Verified on [`dev/cloud.yaml`](../../dev/cloud.yaml) + [`dev/edge.yaml`](../../dev/edge.yaml): cloud listens on `tcp/127.0.0.1:17447`, edge connects, each mounts `fleet.acme.<agent-id>.api.v1.*`, and a third peer can query either side and get its node list back.
+
 ## Evolution path
 
 | Today | Stage N | Stage N+1 |
 |---|---|---|
-| `transport-fleet-nats` as primary | + `transport-fleet-zenoh` as alternate | + `transport-fleet-mqtt` for IoT bridges |
-| `api.v1.*` mirrors the whole REST surface | + streaming replies for long-running ops | + server-push subscriptions (live node watch) |
-| Single cloud cluster | + multi-region cloud, leaf chaining | + federated multi-tenant clouds |
+| `transport-fleet-zenoh` shipped, embedded, one handler mounted | + remaining `api.v1.*` handlers (`nodes.get`, `slots.write`, …) on the same seam | + streaming replies for long-running ops |
+| Axum `AuthContext` extractor threaded through first mutating routes | + `AuthContext` threaded into fleet `FleetHandler::handle` via reply-bearing headers | + `StaticTokenProvider` wired from config for real tenant isolation |
+| `transport-fleet-nats` planned | + NATS backend alongside Zenoh, same trait | + NATS-WS client for Studio browser, JetStream durable outbox |
+| Single-process dev topology | + multi-region cloud, leaf chaining | + federated multi-tenant clouds |
 | Object-store URLs for bulk | + content-addressed cache at each edge | + peer caching ("ask my neighbour first") |
 
 Each row is additive; the trait signature never changes.
@@ -258,4 +277,4 @@ Each row is additive; the trait signature never changes.
 
 ## One-line summary
 
-**Fleet transport is a compile-time-selected, runtime-toggleable core subsystem — one trait in `spi`, one crate per backend (NATS first, Zenoh next), a canonical `fleet.<tenant>.<agent-id>.<kind>.<…>` subject namespace, connection state represented as a graph node, bulk artefacts moved via signed HTTPS URLs out of band — giving one wire protocol for cloud-originated commands, cross-agent events, and Studio-to-edge request/reply without edges opening inbound ports or plugins owning load-bearing infrastructure.**
+**Fleet transport is a compile-time-selected, runtime-toggleable core subsystem — one trait in `spi`, one crate per backend (Zenoh shipped embedded first, NATS next), a canonical `fleet.<tenant>.<agent-id>.<kind>.<…>` subject namespace, connection state represented as a graph node, bulk artefacts moved via signed HTTPS URLs out of band — giving one wire protocol for cloud-originated commands, cross-agent events, and Studio-to-edge request/reply without edges opening inbound ports or plugins owning load-bearing infrastructure.**

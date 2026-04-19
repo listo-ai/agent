@@ -18,6 +18,7 @@
 //! naturally: `$stack.target.owner.name` walks `target`'s nodeRef →
 //! `owner` slot (itself a nodeRef) → `name` slot.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use serde_json::Value as JsonValue;
@@ -133,42 +134,55 @@ impl Binding {
         &self,
         ctx: &EvalContext<'_, R>,
     ) -> Result<BindingValue, BindingError> {
-        let mut value = self.seed_value(ctx)?;
+        let (mut value, mut cursor_node) = self.seed_value(ctx)?;
         for segment in &self.path {
-            value = walk_one(&value, segment, ctx.reader)?;
+            let (next_value, next_node) =
+                walk_one(&value, cursor_node, segment, ctx.reader, ctx)?;
+            value = next_value;
+            cursor_node = next_node;
         }
         Ok(value)
     }
 
+    /// Returns `(value, cursor_node)` — where `cursor_node` is the
+    /// node id that further `.slot` walks should read from (None if
+    /// the source is a non-node value like a user claim or page state
+    /// field).
     fn seed_value<R: NodeReader + ?Sized>(
         &self,
         ctx: &EvalContext<'_, R>,
-    ) -> Result<BindingValue, BindingError> {
+    ) -> Result<(BindingValue, Option<NodeId>), BindingError> {
         match &self.source {
             Source::StackAlias(alias) => ctx
                 .stack
                 .by_alias(alias)
-                .map(frame_to_ref)
+                .map(|f| (frame_to_ref(f), Some(f.node_ref)))
                 .ok_or_else(|| BindingError::UnknownAlias(alias.clone())),
             Source::StackIndex(i) => ctx
                 .stack
                 .by_index(*i)
-                .map(frame_to_ref)
+                .map(|f| (frame_to_ref(f), Some(f.node_ref)))
                 .ok_or(BindingError::IndexOutOfRange {
                     index: *i,
                     len: ctx.stack.len(),
                 }),
-            Source::SelfSlot(slot) => read_slot(ctx.reader, &ctx.self_id, slot),
+            Source::SelfSlot(slot) => {
+                let v = read_slot(ctx.reader, &ctx.self_id, slot)?;
+                ctx.record_slot(ctx.self_id, slot);
+                Ok((v, None))
+            }
             Source::UserClaim(claim) => ctx
                 .user_claims
                 .get(claim)
                 .cloned()
+                .map(|v| (v, None))
                 .ok_or_else(|| BindingError::UnknownClaim(claim.clone())),
             Source::PageField(field) => ctx
                 .page_state
                 .as_object()
                 .and_then(|m| m.get(field))
                 .cloned()
+                .map(|v| (v, None))
                 .ok_or_else(|| BindingError::UnknownPageField(field.clone())),
         }
     }
@@ -182,6 +196,18 @@ pub struct EvalContext<'a, R: NodeReader + ?Sized> {
     pub self_id: NodeId,
     pub user_claims: &'a HashMap<String, JsonValue>,
     pub page_state: &'a JsonValue,
+    /// Optional recorder for `(node_id, slot_name)` slot reads — feeds
+    /// the subscription-plan emitter in `dashboard-transport::resolve`.
+    /// Leave `None` when subscriptions aren't needed (e.g. dry-run).
+    pub access_log: Option<&'a RefCell<Vec<(NodeId, String)>>>,
+}
+
+impl<'a, R: NodeReader + ?Sized> EvalContext<'a, R> {
+    fn record_slot(&self, node: NodeId, slot: &str) {
+        if let Some(log) = self.access_log {
+            log.borrow_mut().push((node, slot.to_string()));
+        }
+    }
 }
 
 fn frame_to_ref(f: &Frame) -> JsonValue {
@@ -205,19 +231,28 @@ fn read_slot<R: NodeReader + ?Sized>(
 
 fn walk_one<R: NodeReader + ?Sized>(
     value: &JsonValue,
+    cursor_node: Option<NodeId>,
     segment: &str,
     reader: &R,
-) -> Result<JsonValue, BindingError> {
+    ctx: &EvalContext<'_, R>,
+) -> Result<(JsonValue, Option<NodeId>), BindingError> {
     if let Some(node) = try_as_noderef(value) {
-        return read_slot(reader, &node, segment);
+        let v = read_slot(reader, &node, segment)?;
+        ctx.record_slot(node, segment);
+        // If the slot value is itself a nodeRef, the next walk step
+        // reads from that node; otherwise further walks index JSON
+        // objects.
+        let next_cursor = try_as_noderef(&v).or(Some(node));
+        return Ok((v, next_cursor));
     }
     if let Some(obj) = value.as_object() {
-        return obj
+        let v = obj
             .get(segment)
             .cloned()
             .ok_or_else(|| BindingError::WalkThroughNonObject {
                 slot: segment.to_string(),
-            });
+            })?;
+        return Ok((v, cursor_node));
     }
     Err(BindingError::WalkThroughNonObject {
         slot: segment.to_string(),
@@ -315,6 +350,7 @@ mod tests {
             self_id,
             user_claims: user,
             page_state: page,
+            access_log: None,
         }
     }
 
@@ -501,6 +537,46 @@ mod tests {
             .evaluate(&ctx(&reader, &stack, NodeId::new(), &user, &page))
             .unwrap_err();
         assert_eq!(err, BindingError::UnknownAlias("missing".into()));
+    }
+
+    #[test]
+    fn access_log_captures_slot_reads_across_ref_walks() {
+        let n1 = NodeId::new();
+        let site = NodeId::new();
+        let owner = NodeId::new();
+        let reader = InMemoryReader::new()
+            .with(
+                NodeSnapshot::new(n1, "ui.nav")
+                    .with_slot("frame_alias", json!("t"))
+                    .with_slot("frame_ref", json!({ "id": site.0.to_string() })),
+            )
+            .with(
+                NodeSnapshot::new(site, "acme.site")
+                    .with_slot("owner", json!({ "id": owner.0.to_string() })),
+            )
+            .with(NodeSnapshot::new(owner, "acme.person").with_slot("name", json!("Ada")));
+        let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
+        let empty: HashMap<String, JsonValue> = HashMap::new();
+        let page = json!({});
+
+        let log = RefCell::new(Vec::new());
+        let ctx = EvalContext {
+            reader: &reader,
+            stack: &stack,
+            self_id: NodeId::new(),
+            user_claims: &empty,
+            page_state: &page,
+            access_log: Some(&log),
+        };
+        let _ = Binding::parse("$stack.t.owner.name")
+            .unwrap()
+            .evaluate(&ctx)
+            .unwrap();
+        let entries = log.into_inner();
+        // Walk visits: site.owner (one read), owner.name (second read).
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0], (site, "owner".to_string()));
+        assert_eq!(entries[1], (owner, "name".to_string()));
     }
 
     #[test]

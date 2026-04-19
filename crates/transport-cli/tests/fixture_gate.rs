@@ -279,6 +279,52 @@ async fn nodes_list_query_filters_and_pages() {
 }
 
 #[tokio::test]
+async fn nodes_list_direct_children_via_parent_path() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+
+    // Tree: /, /alpha, /alpha/one, /alpha/two, /beta.
+    c.nodes()
+        .create("/", "acme.core.folder", "alpha")
+        .await
+        .unwrap();
+    c.nodes()
+        .create("/", "acme.core.folder", "beta")
+        .await
+        .unwrap();
+    c.nodes()
+        .create("/alpha", "acme.core.folder", "one")
+        .await
+        .unwrap();
+    c.nodes()
+        .create("/alpha", "acme.core.folder", "two")
+        .await
+        .unwrap();
+
+    let page = c
+        .nodes()
+        .list_page(&NodeListParams {
+            filter: Some("parent_path==/alpha".into()),
+            sort: Some("path".into()),
+            page: None,
+            size: None,
+        })
+        .await
+        .unwrap();
+
+    // Should see only /alpha/one and /alpha/two — not / alpha itself,
+    // not /alpha/*/... descendants, not sibling /beta.
+    assert_eq!(page.meta.total, 2, "direct children only");
+    let paths: Vec<&str> = page.data.iter().map(|n| n.path.as_str()).collect();
+    assert_eq!(paths, vec!["/alpha/one", "/alpha/two"]);
+
+    // Every child reports its parent_path == the filter value.
+    for n in &page.data {
+        assert_eq!(n.parent_path.as_deref(), Some("/alpha"));
+    }
+}
+
+#[tokio::test]
 async fn nodes_create_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);

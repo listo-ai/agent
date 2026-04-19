@@ -71,6 +71,11 @@ pub(crate) struct NodeDto {
     id: String,
     kind: String,
     path: String,
+    /// Materialised parent path (`"/"` for depth-1 nodes, `null` for the
+    /// root). Exposed so tree UIs can filter direct children with
+    /// `?filter=parent_path==/station/floor1` in a single query,
+    /// without walking the full subtree + filtering client-side.
+    parent_path: Option<String>,
     parent_id: Option<String>,
     lifecycle: Lifecycle,
     slots: Vec<SlotDto>,
@@ -88,6 +93,7 @@ impl From<NodeSnapshot> for NodeDto {
         Self {
             id: s.id.to_string(),
             kind: s.kind.as_str().to_string(),
+            parent_path: s.path.parent().map(|p| p.to_string()),
             path: s.path.to_string(),
             parent_id: s.parent.map(|p| p.to_string()),
             lifecycle: s.lifecycle,
@@ -131,6 +137,11 @@ fn node_query_schema() -> QuerySchema {
         )
         .field(
             "parent_id",
+            FieldType::Text,
+            [Operator::Eq, Operator::Ne, Operator::Prefix],
+        )
+        .field(
+            "parent_path",
             FieldType::Text,
             [Operator::Eq, Operator::Ne, Operator::Prefix],
         )

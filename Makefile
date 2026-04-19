@@ -10,6 +10,9 @@ SHELL         := /bin/bash
 BIN           := agent
 CARGO         := cargo
 CROSS         := cross
+# nvm installs node (and pnpm) under ~/.nvm; prepend so make can find them.
+export PATH := $(HOME)/.nvm/versions/node/v22.22.0/bin:$(PATH)
+
 PNPM          := pnpm
 CLIENT_PKG    := @acme/agent-client
 FRONTEND_DIR  := frontend

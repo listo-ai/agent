@@ -49,6 +49,10 @@ interface FlowCanvasProps {
   onDeleteEdges: (edgeIds: string[]) => void;
   onSelectionChange: (params: OnSelectionChangeParams) => void;
   onReady: (instance: ReactFlowInstance<Node<FlowNodeData>, Edge>) => void;
+  /** Navigate to this node path to show its children on the canvas. */
+  onOpenNode?: (nodePath: string) => void;
+  /** Open the add-child-node dialog with this node as the parent. */
+  onAddChildNode?: (nodePath: string) => void;
 }
 
 export function FlowCanvas(props: FlowCanvasProps) {
@@ -76,6 +80,8 @@ function FlowCanvasInner({
   onDeleteEdges,
   onSelectionChange,
   onReady,
+  onOpenNode,
+  onAddChildNode,
 }: FlowCanvasProps) {
   const [canvasNodes, setCanvasNodes] = useState(nodes);
   const [canvasEdges, setCanvasEdges] = useState(edges);
@@ -111,7 +117,7 @@ function FlowCanvasInner({
   const nodeTypes = useMemo(() => ({ flowNode: FlowNodeCard }), []);
 
   // ── Context menu ────────────────────────────────────────────────────────
-  type ContextMenu = { nodeId: string; nodeLabel: string; x: number; y: number } | null;
+  type ContextMenu = { nodeId: string; nodePath: string; nodeLabel: string; x: number; y: number } | null;
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
 
   const selectNodeById = useCallback((nodeId: string) => {
@@ -124,7 +130,8 @@ function FlowCanvasInner({
     (event, node) => {
       event.preventDefault();
       const label = titleForKind(node.data.kind, node.data.snapshot.path.split("/").pop());
-      setContextMenu({ nodeId: node.id, nodeLabel: label, x: event.clientX, y: event.clientY });
+      const nodePath = node.data.snapshot.path;
+      setContextMenu({ nodeId: node.id, nodePath, nodeLabel: label, x: event.clientX, y: event.clientY });
     },
     [],
   ); 
@@ -207,6 +214,8 @@ function FlowCanvasInner({
           nodeLabel={contextMenu.nodeLabel}
           onClose={() => setContextMenu(null)}
           items={buildNodeContextItems({
+            ...(onOpenNode ? { onOpen: () => { onOpenNode(contextMenu.nodePath); setContextMenu(null); } } : {}),
+            ...(onAddChildNode ? { onAddChild: () => { onAddChildNode(contextMenu.nodePath); setContextMenu(null); } } : {}),
             onSettings: () => {
               selectNodeById(contextMenu.nodeId);
               setContextMenu(null);

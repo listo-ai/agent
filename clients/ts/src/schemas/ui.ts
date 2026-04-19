@@ -85,14 +85,23 @@ export const UiResolveIssueSchema = z.object({
 });
 export type UiResolveIssue = z.infer<typeof UiResolveIssueSchema>;
 
+/** Per-widget subscription plan. Subjects are `node.<id>.slot.<name>`. */
+export const UiSubscriptionPlanSchema = z.object({
+  widget_id: z.string(),
+  subjects: z.array(z.string()),
+  debounce_ms: z.number().int().nonnegative(),
+});
+export type UiSubscriptionPlan = z.infer<typeof UiSubscriptionPlanSchema>;
+
 /**
  * Response envelope — untagged. A successful resolve carries
- * `{render, meta}`; a dry run carries `{errors}`. Discriminated by
- * whichever key is present.
+ * `{render, subscriptions, meta}`; a dry run carries `{errors}`.
+ * Discriminated by whichever key is present.
  */
 export const UiResolveResponseSchema = z.union([
   z.object({
     render: UiRenderTreeSchema,
+    subscriptions: z.array(UiSubscriptionPlanSchema),
     meta: UiResolveMetaSchema,
   }),
   z.object({

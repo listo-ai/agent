@@ -18,6 +18,11 @@ export const NodeSnapshotSchema = z.object({
   kind: z.string(),
   /** Slash-separated materialised path, e.g. `/station/floor3/ahu-1`. */
   path: z.string(),
+  /**
+   * Materialised parent path. `"/"` for depth-1 nodes, `null` for root.
+   * Use with `filter=parent_path==<path>` to list direct children only.
+   */
+  parent_path: z.string().nullable(),
   parent_id: z.string().nullable(),
   lifecycle: LifecycleSchema,
   slots: z.array(SlotSchema),

@@ -28,6 +28,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use axum::extract::State;
 use axum::Json;
@@ -40,7 +41,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use spi::{KindId, NodeId};
 
-use crate::acl::AclSubject;
+use crate::acl::{AclCheck, AclSubject};
 use crate::audit::AuditEvent;
 use crate::error::TransportError;
 use crate::limits;
@@ -78,6 +79,7 @@ fn empty_object() -> JsonValue {
 pub enum ResolveResponse {
     Ok {
         render: RenderTree,
+        subscriptions: Vec<SubscriptionPlan>,
         meta: ResolveMeta,
     },
     DryRun {
@@ -91,6 +93,24 @@ pub struct RenderTree {
     pub title: Option<String>,
     pub widgets: Vec<RenderedWidget>,
 }
+
+/// Subscription plan for a single widget — mechanically derived from
+/// the slots its bindings touch during evaluation. Subjects follow the
+/// `node.<id>.slot.<name>` convention the messaging crate expects.
+///
+/// ACL-denied subjects are dropped before emission; a widget whose
+/// bindings touch any denied node is already redacted as a
+/// `ui.widget.forbidden` stub and gets no subscription plan at all.
+#[derive(Debug, Serialize)]
+pub struct SubscriptionPlan {
+    pub widget_id: NodeId,
+    pub subjects: Vec<String>,
+    pub debounce_ms: u32,
+}
+
+/// Per-widget debounce default. The client can override if it cares;
+/// the value feeds the cache-key indirectly via subscription churn.
+const DEFAULT_DEBOUNCE_MS: u32 = 250;
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind")]
@@ -157,9 +177,16 @@ pub async fn handler(
     }
 
     let mut rendered: Vec<RenderedWidget> = Vec::with_capacity(widgets.len());
+    let mut subscriptions: Vec<SubscriptionPlan> = Vec::with_capacity(widgets.len());
     for w in &widgets {
-        rendered.push(resolve_widget(reader, &stack, w, &req, &state));
+        let (r, subs) = resolve_widget(reader, &stack, w, &req, &state);
+        if let Some(s) = subs {
+            subscriptions.push(s);
+        }
+        rendered.push(r);
     }
+
+    enforce_subscription_cap(&subscriptions)?;
 
     let forbidden_count = rendered
         .iter()
@@ -185,7 +212,23 @@ pub async fn handler(
     };
 
     enforce_render_tree_size(&render)?;
-    Ok(Json(ResolveResponse::Ok { render, meta }))
+    Ok(Json(ResolveResponse::Ok {
+        render,
+        subscriptions,
+        meta,
+    }))
+}
+
+fn enforce_subscription_cap(subs: &[SubscriptionPlan]) -> Result<(), TransportError> {
+    let total: usize = subs.iter().map(|p| p.subjects.len()).sum();
+    if total > limits::MAX_SUBSCRIPTIONS_PER_PAGE {
+        return Err(TransportError::LimitExceeded {
+            what: "subscriptions_per_page",
+            value: total,
+            max: limits::MAX_SUBSCRIPTIONS_PER_PAGE,
+        });
+    }
+    Ok(())
 }
 
 fn dry_run(
@@ -230,6 +273,7 @@ fn dry_run(
                     self_id: w.id,
                     user_claims: &req.user_claims,
                     page_state: &req.page_state,
+                    access_log: None,
                 })
             }) {
                 issues.push(ResolveIssue {
@@ -248,22 +292,21 @@ fn resolve_widget<R: NodeReader + ?Sized>(
     w: &NodeSnapshot,
     req: &ResolveRequest,
     state: &DashboardState,
-) -> RenderedWidget {
+) -> (RenderedWidget, Option<SubscriptionPlan>) {
     let subject = AclSubject {
         subject: req.auth_subject.as_deref(),
     };
 
-    // Unknown widget type → forbidden stub tagged unknown_widget_type.
-    // Consistent with the "no dashboard-specific infrastructure beyond
-    // resolution and validation" goal: the caller's authoring path will
-    // catch it in dry-run; production just refuses to render.
     let wtype = match widget_type(w) {
         Ok(t) => t,
         Err(_) => {
-            return RenderedWidget::Forbidden {
-                id: w.id,
-                reason: "malformed_widget",
-            };
+            return (
+                RenderedWidget::Forbidden {
+                    id: w.id,
+                    reason: "malformed_widget",
+                },
+                None,
+            );
         }
     };
     if !state.widgets.contains(&wtype) {
@@ -272,32 +315,42 @@ fn resolve_widget<R: NodeReader + ?Sized>(
             widget_type: &wtype,
             subject: subject.subject,
         });
-        return RenderedWidget::Forbidden {
-            id: w.id,
-            reason: "unknown_widget_type",
-        };
+        return (
+            RenderedWidget::Forbidden {
+                id: w.id,
+                reason: "unknown_widget_type",
+            },
+            None,
+        );
     }
 
     let bindings = match widget_bindings(w) {
         Ok(b) => b,
         Err(_) => {
-            return RenderedWidget::Forbidden {
-                id: w.id,
-                reason: "malformed_widget",
-            };
+            return (
+                RenderedWidget::Forbidden {
+                    id: w.id,
+                    reason: "malformed_widget",
+                },
+                None,
+            );
         }
     };
 
     let recorder = RecordingReader::new(reader);
+    let access_log: RefCell<Vec<(NodeId, String)>> = RefCell::new(Vec::new());
     let mut values: HashMap<String, JsonValue> = HashMap::new();
     for (name, expr) in bindings {
         let binding = match Binding::parse(&expr) {
             Ok(b) => b,
             Err(_) => {
-                return RenderedWidget::Forbidden {
-                    id: w.id,
-                    reason: "malformed_binding",
-                };
+                return (
+                    RenderedWidget::Forbidden {
+                        id: w.id,
+                        reason: "malformed_binding",
+                    },
+                    None,
+                );
             }
         };
         match binding.evaluate(&EvalContext {
@@ -306,6 +359,7 @@ fn resolve_widget<R: NodeReader + ?Sized>(
             self_id: w.id,
             user_claims: &req.user_claims,
             page_state: &req.page_state,
+            access_log: Some(&access_log),
         }) {
             Ok(v) => {
                 values.insert(name, v);
@@ -316,22 +370,20 @@ fn resolve_widget<R: NodeReader + ?Sized>(
                     missing_node: id,
                     subject: subject.subject,
                 });
-                return RenderedWidget::Dangling { id: w.id };
+                return (RenderedWidget::Dangling { id: w.id }, None);
             }
             Err(_) => {
-                // Any other binding error = malformed. Dry-run surfaces
-                // the specific cause; in real resolve we refuse the
-                // widget.
-                return RenderedWidget::Forbidden {
-                    id: w.id,
-                    reason: "malformed_binding",
-                };
+                return (
+                    RenderedWidget::Forbidden {
+                        id: w.id,
+                        reason: "malformed_binding",
+                    },
+                    None,
+                );
             }
         }
     }
 
-    // ACL check across every node we read. One audit event per denied
-    // node — matches DASHBOARD.md "one audit event per redaction".
     let touched = recorder.touched.into_inner();
     let mut denied = false;
     for nid in &touched {
@@ -345,18 +397,49 @@ fn resolve_widget<R: NodeReader + ?Sized>(
         }
     }
     if denied {
-        return RenderedWidget::Forbidden {
-            id: w.id,
-            reason: "acl",
-        };
+        return (
+            RenderedWidget::Forbidden {
+                id: w.id,
+                reason: "acl",
+            },
+            None,
+        );
     }
 
-    RenderedWidget::Rendered {
-        id: w.id,
-        widget_type: wtype,
-        values,
-        layout_hint: w.slots.get("layout_hint").cloned().filter(|v| !v.is_null()),
+    // Build subscription plan. ACL-filter subjects: drop any subject
+    // whose node the caller cannot read (defensive — in practice if
+    // any node were denied we'd have short-circuited above, but the
+    // check keeps the contract explicit).
+    let subjects = derive_subjects(access_log.into_inner(), &state.acl, subject);
+
+    (
+        RenderedWidget::Rendered {
+            id: w.id,
+            widget_type: wtype,
+            values,
+            layout_hint: w.slots.get("layout_hint").cloned().filter(|v| !v.is_null()),
+        },
+        Some(SubscriptionPlan {
+            widget_id: w.id,
+            subjects,
+            debounce_ms: DEFAULT_DEBOUNCE_MS,
+        }),
+    )
+}
+
+fn derive_subjects(
+    log: Vec<(NodeId, String)>,
+    acl: &Arc<dyn AclCheck>,
+    subject: AclSubject<'_>,
+) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for (node, slot) in log {
+        if !acl.can_read(subject, &node) {
+            continue;
+        }
+        seen.insert(format!("node.{node}.slot.{slot}"));
     }
+    seen.into_iter().collect()
 }
 
 /// Reader wrapper that records every `get` call so the caller can ACL

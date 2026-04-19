@@ -2,6 +2,10 @@
 
 A framework-level backend for user-authored dashboards. Domain-agnostic: ships zero concepts about buildings, devices, tickets, CRMs, or anything else. Users and extensions bring the domain; the framework provides structure, reuse, and wiring.
 
+## Current status
+
+M1–M5 are shipped and tested. The resolver, context stack, binding engine, cache-key, ACL redaction, widget-type registry, audit events, and subscription-plan emission are live across three crates (`dashboard-nodes`, `dashboard-runtime`, `dashboard-transport`) and mirrored in the Rust client, CLI, and TS client per [NEW-API.md](NEW-API.md). See the [Milestones](#milestones) table for per-milestone status.
+
 ## Goal
 
 Let users compose navigable, reusable, context-driven dashboards out of nodes — authored by AI, by drag/drop, or by hand — with zero per-dashboard backend code.
@@ -28,6 +32,8 @@ All UI artifacts are nodes in the unified graph. They inherit RBAC, audit, versi
 | `ui.widget` | A placed widget instance with bindings into stack / self / user / page state |
 
 Frames are generic `{ nodeRef, alias }` pairs; aliases are author-chosen strings the framework never interprets.
+
+`ui.nav`, `ui.template`, and `ui.page` carry the `isContainer` facet so the graph's containment validator accepts them under `acme.core.station` and any `isContainer` parent. This is framework wiring, not a domain concept — it leverages the existing facet the node model already uses for placement grouping.
 
 ## The context stack
 
@@ -143,10 +149,11 @@ Templates evolve. Pages must not silently break.
 5. **Query templating integration** — feeds `$stack.*`, `$self.*`, `$user.*`, `$page.*` into the existing template engine used by RSQL.
 6. **Widget-type registry** — extensions register widget types via `contributions.widgets[]`. Backend validates that a `ui.widget.widgetType` references a known type.
 7. **ACL redaction** — per-widget forbidden placeholders with audit events.
-8. **Transport** — REST + gRPC endpoints:
-   - `GET /ui/nav?path=...` → nav tree slice
-   - `POST /ui/resolve` — body `{ pageRef, stack, pageState, dryRun? }`. With `dryRun: true`, the same endpoint performs validation only and returns structured errors (unbound holes, unknown widget types, missing frames) without producing a render tree. Single endpoint, no drift.
+8. **Transport** — REST endpoints (gRPC deferred; the Rust/TS clients + CLI all speak REST):
+   - `GET /api/v1/ui/nav?root=<id>` → nav tree slice rooted at the given `ui.nav` id
+   - `POST /api/v1/ui/resolve` — body `{ page_ref, stack, page_state, dry_run?, auth_subject?, user_claims? }`. With `dry_run: true`, the same endpoint performs validation only and returns structured errors (unbound holes, unknown widget types, missing frames) without producing a render tree. Single endpoint, no drift.
    - Standard node CRUD (already generic) handles authoring.
+   - Paths are versioned under `/api/v1/` per [VERSIONING.md](VERSIONING.md); bumping requires a 12-month deprecation window.
 9. **Subscription plan emission** — mechanical derivation from bindings; ACL-filtered.
 10. **Invalidation signal** — `ui.invalidate` events on page-scoped subjects when bound nodes move / retype / delete.
 11. **Import/export** — a dashboard = a subtree of UI nodes; export uses the existing node subtree exporter.
@@ -204,15 +211,17 @@ No `dashboard-data` crate — persistence goes through the existing node reposit
 
 ## Milestones
 
-| M | Deliverable |
-|---|---|
-| M1 | Node kinds + schemas landed in `dashboard-nodes`; CRUD works through generic node API; query engine finds them; parameter-contract validator with breaking-change rules + tests. |
-| M2 | Context stack (with alias-collision rule) + binding resolver + cache-key derivation in `dashboard-runtime`; unit-tested against synthetic fixtures. |
-| M3 | `/ui/nav` + `/ui/resolve` (with `dryRun`) transports; OpenAPI auto-generated; size/DoS limits enforced with tests. |
-| M4 | Widget-type registry integrated; ACL redaction + forbidden/dangling placeholders + audit events. |
-| M5 | Subscription-plan emission; ACL-filtered subjects wired through messaging; `ui.invalidate` events on move/retype/delete. |
-| M6 | Template version-diff migration protocol end-to-end (auto-upgrade path + breaking signal). |
-| M7 | Subtree import/export; full acceptance suite green; latency budget measured and recorded. |
+| M | Status | Deliverable |
+|---|---|---|
+| M1 | ✅ shipped | Four node kinds + YAML manifests in [`crates/dashboard-nodes`](../../crates/dashboard-nodes); CRUD via generic node API; query engine finds them; parameter-contract validator (`ui.page.bound_args` ↔ `ui.template.requires`) with `ref`/`string`/`number`/`bool` types. |
+| M2 | ✅ shipped | Context stack (innermost-alias-shadowing rule) + binding parser/evaluator (`$stack`/`$self`/`$user`/`$page` + multi-hop ref walks) + cache-key derivation in [`crates/dashboard-runtime`](../../crates/dashboard-runtime); 27 unit tests against `InMemoryReader` fixtures. |
+| M3 | ✅ shipped | `GET /api/v1/ui/nav` + `POST /api/v1/ui/resolve` (with `dry_run`) in [`crates/dashboard-transport`](../../crates/dashboard-transport); all six size/DoS limits enforced (`MAX_WIDGETS_PER_PAGE` etc.); fixture gate covers ok / not-found / payload-too-large / dry-run scenarios. (OpenAPI generation deferred to Stage 9 per repo convention.) |
+| M4 | ✅ shipped | `WidgetRegistry` with version-bumped cache invalidation; `AclCheck` trait seam (`AllowAll` default, `DenyNodes` for tests); per-widget `RecordingReader` ACL check; `RenderedWidget` is a `#[serde(tag = "kind")]` enum with `ui.widget` / `ui.widget.forbidden` / `ui.widget.dangling` variants; `AuditSink` trait (`TracingAudit` default) emits one event per redaction. |
+| M5 | ✅ shipped (emission); 🟡 bridge pending | `SubscriptionPlan { widget_id, subjects, debounce_ms }` emitted in `ResolveResponse::Ok`; subjects (`node.<id>.slot.<name>`) derived mechanically from per-widget slot-access log, deduplicated, ACL-filtered; `InvalidateSink` trait seam with `TracingInvalidate`/`RecordingInvalidate` impls. The graph-event bridge that actually emits `ui.invalidate` on node move/retype/delete lands when the `messaging` crate ships real NATS subjects. |
+| M6 | ⏳ pending | Template version-diff migration protocol end-to-end (auto-upgrade path + breaking signal). |
+| M7 | ⏳ pending | Subtree import/export; full acceptance suite green; latency budget measured and recorded. |
+
+Client-parity per [NEW-API.md](NEW-API.md) is complete for every shipped endpoint: Rust client (`agent-client::ui`), CLI (`agent ui nav`, `agent ui resolve`), TS client (`AgentClient.ui`), CLI `CommandMeta` for `--help-json` / `agent schema`, and pinned fixtures under `clients/contracts/fixtures/cli-output/ui-nav/` + `ui-resolve/`.
 
 ## One-line summary
 
