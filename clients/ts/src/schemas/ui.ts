@@ -39,6 +39,11 @@ export const UiResolveRequestSchema = z.object({
   dry_run: z.boolean().default(false),
   auth_subject: z.string().nullable().optional(),
   user_claims: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * Candidate layout to validate in place of the node's persisted
+   * `layout` slot. Server honours this only when `dry_run` is true.
+   */
+  layout: z.unknown().optional(),
 });
 export type UiResolveRequest = z.infer<typeof UiResolveRequestSchema>;
 

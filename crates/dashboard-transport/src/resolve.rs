@@ -44,6 +44,12 @@ pub struct ResolveRequest {
     /// User claims available as `$user.*` in bindings.
     #[serde(default)]
     pub user_claims: std::collections::HashMap<String, JsonValue>,
+    /// Candidate layout to validate in place of the node's persisted
+    /// `layout` slot. Only honoured when `dry_run` is true — the
+    /// live-resolve path always reads from the graph so subscription
+    /// plans keep their cache-key semantics.
+    #[serde(default)]
+    pub layout: Option<JsonValue>,
 }
 
 fn empty_object() -> JsonValue {
@@ -112,14 +118,18 @@ pub async fn handler(
         .ok_or(TransportError::PageNotFound(req.page_ref))?;
     require_kind(&page, PAGE_KIND)?;
 
-    let layout = page
-        .slots
-        .get("layout")
-        .cloned()
-        .filter(|v| !v.is_null())
-        .ok_or_else(|| {
-            TransportError::MalformedPage(page.id, "page has no `layout` slot".into())
-        })?;
+    // Dry-run may pass an inline `layout` to validate the in-flight
+    // editor buffer before save. Live resolve ignores the override so
+    // subscription plans always reflect persisted state.
+    let persisted = page.slots.get("layout").cloned().filter(|v| !v.is_null());
+    let layout = if req.dry_run {
+        req.layout.clone().or(persisted)
+    } else {
+        persisted
+    };
+    let layout = layout.ok_or_else(|| {
+        TransportError::MalformedPage(page.id, "page has no `layout` slot".into())
+    })?;
 
     if req.dry_run {
         if let Err(e) = serde_json::from_value::<ComponentTree>(layout.clone()) {

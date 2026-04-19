@@ -1290,7 +1290,8 @@ static UI_RESOLVE: CommandMeta = CommandMeta {
                 "stack":        { "type": "string" },
                 "page_state":   { "type": "object" },
                 "dry_run":      { "type": "boolean" },
-                "auth_subject": { "type": "string" }
+                "auth_subject": { "type": "string" },
+                "layout":       { "description": "Optional candidate layout to validate in dry_run mode" }
             }
         })
     },

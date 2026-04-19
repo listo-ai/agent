@@ -1,22 +1,25 @@
 // Split-pane shell for one page-builder session. Mounted at
 // `/pages/:id/edit`. Fetches the ui.page node, hydrates the store,
-// and composes the two pre-existing panels.
+// and composes the panels.
 //
 // This component is the only layer allowed to know about both
-// react-query and the store — that's the persistence seam. In PR 3
-// the fetch + save logic moves into `persistence/` so this shell
-// collapses to just composition.
+// react-query and the store — that's the persistence seam. The
+// validator and autosave hooks do their own side effects against
+// the store; the shell just mounts them.
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { agentPromise } from "@/lib/agent";
 import { useBuilderStore } from "./store/builder-store";
 import { LivePreview } from "./preview/LivePreview";
 import { EditorPane } from "./panels/EditorPane";
 import { ValidationList } from "./panels/ValidationList";
+import { ConflictBanner } from "./panels/ConflictBanner";
+import { SaveStatus } from "./panels/SaveStatus";
 import { useValidator } from "./persistence/use-validator";
+import { useAutosave } from "./persistence/use-autosave";
 import type { DraftPage } from "./model/types";
 import type { NodeSnapshot } from "@sys/agent-client";
 
@@ -24,9 +27,6 @@ const LAYOUT_SLOT = "layout";
 
 async function loadDraft(nodeId: string): Promise<DraftPage> {
   const client = await agentPromise;
-  // Pull the node by id through the list endpoint — `/api/v1/node` is
-  // path-only today, and this path is equally versioned + cheap for
-  // single-row lookups.
   const page = await client.nodes.getNodesPage({
     filter: `id=="${nodeId}"`,
     size: 1,
@@ -51,12 +51,13 @@ function toDraft(snap: NodeSnapshot): DraftPage {
 
 export function PageBuilderPage() {
   const { id } = useParams<{ id: string }>();
+  const queryKey = ["page-builder", id] as const;
+  const queryClient = useQueryClient();
   const hydrate = useBuilderStore((s) => s.hydrate);
   const reset = useBuilderStore((s) => s.reset);
-  useValidator();
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["page-builder", id],
+    queryKey,
     queryFn: () => loadDraft(id!),
     enabled: !!id,
     staleTime: 0,
@@ -66,6 +67,13 @@ export function PageBuilderPage() {
     if (data) hydrate(data);
     return () => reset();
   }, [data, hydrate, reset]);
+
+  useValidator();
+  useAutosave();
+
+  const reload = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey });
+  }, [queryClient, queryKey]);
 
   if (!id) {
     return <div className="p-6 text-sm text-muted-foreground">No page id provided.</div>;
@@ -92,19 +100,22 @@ export function PageBuilderPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-border px-4 py-2">
         <Link to="/pages" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft size={16} />
         </Link>
         <h1 className="text-sm font-semibold">{data.nodePath}</h1>
-        <span className="text-xs text-muted-foreground">gen {data.baseGeneration}</span>
+        <div className="ml-auto flex items-center gap-3">
+          <SaveStatus />
+        </div>
       </header>
       <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border">
         <EditorPane />
         <LivePreview />
       </div>
       <ValidationList />
+      <ConflictBanner onReload={reload} />
     </div>
   );
 }

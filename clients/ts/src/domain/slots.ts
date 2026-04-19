@@ -50,40 +50,37 @@ export function createSlotsApi(http: RequestTransport, apiVersion: number): Slot
         const raw = await http.post<WriteSlotResp>(`${base}/slots`, body);
         return WriteSlotRespSchema.parse(raw).generation;
       } catch (err) {
-        if (isGenerationMismatch(err)) {
-          throw new GenerationMismatchError(err.current);
-        }
+        const current = parseGenerationMismatch(err);
+        if (current !== null) throw new GenerationMismatchError(current);
         throw err;
       }
     },
   };
 }
 
-function isGenerationMismatch(
-  err: unknown,
-): err is { current: number } {
+function parseGenerationMismatch(err: unknown): number | null {
   if (
     typeof err !== "object" ||
     err === null ||
     !("status" in err) ||
     (err as { status: unknown }).status !== 409 ||
-    !("message" in err)
+    !("message" in err) ||
+    typeof (err as { message: unknown }).message !== "string"
   ) {
-    return false;
+    return null;
   }
   try {
-    const parsed = JSON.parse((err as { message: string }).message);
+    const parsed: unknown = JSON.parse((err as { message: string }).message);
     if (
-      parsed &&
       typeof parsed === "object" &&
-      parsed.code === "generation_mismatch" &&
-      typeof parsed.current_generation === "number"
+      parsed !== null &&
+      (parsed as { code?: unknown }).code === "generation_mismatch" &&
+      typeof (parsed as { current_generation?: unknown }).current_generation === "number"
     ) {
-      (err as { current: number }).current = parsed.current_generation;
-      return true;
+      return (parsed as { current_generation: number }).current_generation;
     }
   } catch {
     /* fall through */
   }
-  return false;
+  return null;
 }

@@ -15,26 +15,72 @@
 import { create } from "zustand";
 import type { DraftPage, ValidationIssue } from "../model/types.js";
 
+export type SaveState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved"; at: number }
+  | { kind: "error"; message: string };
+
+export interface ConflictState {
+  /** Generation the server reported when the last write 409'd. */
+  currentGeneration: number;
+}
+
 interface BuilderState {
   /** `null` until the initial node fetch completes. */
   draft: DraftPage | null;
   /** Parse + dry-run issues, newest dry-run wins. */
   issues: ValidationIssue[];
+  /** Autosave state surfaced to the header strip. */
+  saveState: SaveState;
+  /**
+   * Non-`null` when a concurrent write made our baseGeneration stale.
+   * Blocks further edits until the user reloads or exports.
+   */
+  conflict: ConflictState | null;
 
   hydrate(draft: DraftPage): void;
   setLayoutText(text: string): void;
-  /** Replace the issues list — callers compose parse + dry-run sources. */
   setIssues(issues: ValidationIssue[]): void;
+  setSaveState(state: SaveState): void;
+  /** Bump the generation after a successful write. */
+  markSaved(generation: number): void;
+  setConflict(state: ConflictState | null): void;
   reset(): void;
 }
 
 export const useBuilderStore = create<BuilderState>((set) => ({
   draft: null,
   issues: [],
+  saveState: { kind: "idle" },
+  conflict: null,
 
-  hydrate: (draft) => set({ draft, issues: [] }),
+  hydrate: (draft) =>
+    set({
+      draft,
+      issues: [],
+      saveState: { kind: "idle" },
+      conflict: null,
+    }),
   setLayoutText: (text) =>
     set((s) => (s.draft ? { draft: { ...s.draft, layoutText: text } } : s)),
   setIssues: (issues) => set({ issues }),
-  reset: () => set({ draft: null, issues: [] }),
+  setSaveState: (saveState) => set({ saveState }),
+  markSaved: (generation) =>
+    set((s) =>
+      s.draft
+        ? {
+            draft: { ...s.draft, baseGeneration: generation },
+            saveState: { kind: "saved", at: Date.now() },
+          }
+        : s,
+    ),
+  setConflict: (conflict) => set({ conflict }),
+  reset: () =>
+    set({
+      draft: null,
+      issues: [],
+      saveState: { kind: "idle" },
+      conflict: null,
+    }),
 }));

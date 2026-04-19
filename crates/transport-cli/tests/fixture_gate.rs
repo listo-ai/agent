@@ -591,6 +591,7 @@ async fn ui_resolve_ok() {
         dry_run: false,
         auth_subject: None,
         user_claims: Default::default(),
+        layout: None,
     };
     let resp = c.ui().resolve(&req).await.unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
@@ -609,6 +610,7 @@ async fn ui_resolve_dry_run() {
         dry_run: true,
         auth_subject: None,
         user_claims: Default::default(),
+        layout: None,
     };
     let resp = c.ui().resolve(&req).await.unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
@@ -661,6 +663,7 @@ async fn ui_resolve_dry_run_binding_errors() {
         dry_run: true,
         auth_subject: None,
         user_claims: Default::default(),
+        layout: None,
     };
     let resp = c.ui().resolve(&req).await.unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
@@ -729,6 +732,7 @@ async fn ui_resolve_page_not_found() {
         dry_run: false,
         auth_subject: None,
         user_claims: Default::default(),
+        layout: None,
     };
     let err = c.ui().resolve(&req).await.unwrap_err();
     let cli_err = transport_cli::CliError::from_client(&err);

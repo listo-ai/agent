@@ -11,7 +11,7 @@ export { FleetRequestTransport } from "./transport/fleet_request.js";
 export { pathToSubject } from "./transport/request.js";
 
 export type { ClientError, HttpError, CapabilityMismatchError, ParseError, TimeoutError } from "./errors.js";
-export { asClientError } from "./errors.js";
+export { asClientError, GenerationMismatchError } from "./errors.js";
 
 export { CLIENT_VERSION, REST_API_VERSION, REQUIRED_CAPABILITIES } from "./version.js";
 export type { CapabilityRequirement } from "./version.js";

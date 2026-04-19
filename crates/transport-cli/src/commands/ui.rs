@@ -181,6 +181,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                 dry_run: *dry_run,
                 auth_subject: auth_subject.clone(),
                 user_claims: Default::default(),
+                layout: None,
             };
             let resp = client.ui().resolve(&req).await?;
             match (&resp, fmt) {

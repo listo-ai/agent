@@ -537,6 +537,10 @@ pub struct UiResolveRequest {
     pub auth_subject: Option<String>,
     #[serde(default)]
     pub user_claims: std::collections::HashMap<String, JsonValue>,
+    /// Candidate layout JSON to validate in place of the node's
+    /// persisted `layout` slot. Only honoured when `dry_run` is true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<JsonValue>,
 }
 
 /// Response envelope for `POST /api/v1/ui/resolve`. Serialised

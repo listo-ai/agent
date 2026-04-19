@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { NodeSnapshot } from "@sys/agent-client";
 
 import { SmartSlotHistoryPanel } from "@/components/slot-history/SmartSlotHistoryPanel";
@@ -14,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { mergedSlots } from "../flow-model";
 
 /** Slots managed by the canvas that aren't useful to track history for. */
@@ -31,6 +33,9 @@ interface NodeHistoryPanelProps {
  * Layout mirrors FlowPropertyPanel: fixed aside width, scrollable body.
  */
 export function NodeHistoryPanel({ node, onClose }: NodeHistoryPanelProps) {
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
   const slots = node
     ? mergedSlots(node).filter((s) => !HIDE_SLOTS.has(s.name))
     : [];
@@ -66,14 +71,29 @@ export function NodeHistoryPanel({ node, onClose }: NodeHistoryPanelProps) {
           </p>
           <p className="mt-1 text-xs text-muted-foreground">Slot history</p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="ml-3 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-          aria-label="Close history panel"
-        >
-          <X size={14} />
-        </button>
+        <div className="ml-3 flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={async () => {
+              setRefreshing(true);
+              await qc.invalidateQueries({ queryKey: ["slot-history"] });
+              await qc.invalidateQueries({ queryKey: ["slot-telemetry"] });
+              setRefreshing(false);
+            }}
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Refresh history"
+          >
+            <RefreshCw size={14} className={cn(refreshing && "animate-spin")} />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Close history panel"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Slot selector */}
