@@ -124,7 +124,7 @@ impl Historizer {
     }
 
     /// Register (or update) a `HistoryConfig` by its parent node id.
-    /// Called when the graph creates or updates an `acme.core.history.config`
+    /// Called when the graph creates or updates an `sys.core.history.config`
     /// node, after settings have been resolved.
     pub fn register_config(&self, parent_id: Uuid, config: HistoryConfig) {
         let mut map = self.configs.lock().expect("historizer lock poisoned");

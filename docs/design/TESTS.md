@@ -52,8 +52,8 @@ A good test in this codebase has four parts, in this order:
 fn deleting_a_device_cascades_to_points_and_fires_link_broken() {
     //  ── Arrange ──
     let (graph, sink) = setup_with_demo_kinds();
-    let dev  = graph.create_child(station_path(), "demo-device", KindId::new("acme.driver.demo.device"))?;
-    let pt   = graph.create_child(&dev, "temp-1", KindId::new("acme.driver.demo.device.point"))?;
+    let dev  = graph.create_child(station_path(), "demo-device", KindId::new("sys.driver.demo.device"))?;
+    let pt   = graph.create_child(&dev, "temp-1", KindId::new("sys.driver.demo.device.point"))?;
     let link = graph.add_link(slot_ref(&pt, "value"), slot_ref(&sink, "in"))?;
 
     //  ── Act ──
@@ -174,7 +174,7 @@ A lot of the platform's correctness depends on "write fails → in-memory state 
 fn flaky_repo_leaves_memory_clean_on_write_failure() {
     let repo  = FlakyRepo::refuses_writes();
     let store = GraphStore::with_repo(KindRegistry::new(), sink, repo);
-    let err   = store.create_root(KindId::new("acme.core.station"), "s").unwrap_err();
+    let err   = store.create_root(KindId::new("sys.core.station"), "s").unwrap_err();
     assert!(matches!(err, GraphError::Backend(_)));
     assert_eq!(store.len(), 0, "write-through: memory must not mutate on backend failure");
 }

@@ -28,18 +28,18 @@ fn make_state_with_fleet(fleet: Arc<dyn FleetTransport>) -> AppState {
     let kinds = KindRegistry::new();
     graph_seed::register_builtins(&kinds);
     let graph = Arc::new(GraphStore::new(kinds, Arc::new(NullSink)));
-    graph.create_root(KindId::new("acme.core.station")).unwrap();
+    graph.create_root(KindId::new("sys.core.station")).unwrap();
     graph
         .create_child(
             &NodePath::root(),
-            KindId::new("acme.core.folder"),
+            KindId::new("sys.core.folder"),
             "alpha",
         )
         .unwrap();
     graph
         .create_child(
             &NodePath::root(),
-            KindId::new("acme.core.folder"),
+            KindId::new("sys.core.folder"),
             "beta",
         )
         .unwrap();
@@ -54,7 +54,7 @@ fn make_state_with_fleet(fleet: Arc<dyn FleetTransport>) -> AppState {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "opens real zenoh sessions on loopback; run with `cargo test --test fleet_zenoh_e2e -- --ignored`"]
 async fn list_nodes_roundtrip_over_zenoh() {
-    let tenant = TenantId::new("acme");
+    let tenant = TenantId::new("sys");
     let agent_id = "edge-1";
 
     // Peer A — the "edge": listens, mounts fleet handlers.
@@ -69,7 +69,7 @@ async fn list_nodes_roundtrip_over_zenoh() {
     let edge_state = make_state_with_fleet(edge.clone());
 
     // Mount the fleet surface — at least `api.v1.nodes.list` should be
-    // live on `fleet.acme.edge-1.api.v1.nodes.list`.
+    // live on `fleet.sys.edge-1.api.v1.nodes.list`.
     let _servers = transport_rest::fleet::mount(edge_state.clone(), &tenant, agent_id)
         .await
         .expect("mount edge fleet handlers");

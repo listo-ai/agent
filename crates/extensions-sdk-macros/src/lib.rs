@@ -33,7 +33,7 @@ use proc_macro::TokenStream;
 ///
 /// Required:
 ///
-/// - `kind = "acme.domain.name"` — the reverse-DNS kind id (must match
+/// - `kind = "sys.domain.name"` — the reverse-DNS kind id (must match
 ///   the `kind` field in the YAML).
 /// - `manifest = "manifests/name.yaml"` — path to the manifest YAML,
 ///   **relative to `CARGO_MANIFEST_DIR`**.
@@ -51,7 +51,7 @@ use proc_macro::TokenStream;
 ///
 /// #[derive(NodeKind)]
 /// #[node(
-///     kind = "acme.core.folder",
+///     kind = "sys.core.folder",
 ///     manifest = "manifests/folder.yaml",
 ///     behavior = "none"
 /// )]

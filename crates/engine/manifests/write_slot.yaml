@@ -1,4 +1,4 @@
-id: acme.engine.write_slot
+id: sys.engine.write_slot
 display_name: Write Slot
 facets:
   - isCompute

@@ -568,7 +568,7 @@ contributes:
         fs::write(
             pdir.join("kinds/bad.yaml"),
             r#"
-id: acme.core.folder
+id: sys.core.folder
 containment: {}
 "#,
         )
@@ -583,7 +583,7 @@ containment: {}
             .iter()
             .any(|e| e.contains("outside plugin namespace")));
         // Phase 2 never ran for this plugin — shared registry untouched.
-        assert!(!kinds.contains(&spi::KindId::new("acme.core.folder")));
+        assert!(!kinds.contains(&spi::KindId::new("sys.core.folder")));
     }
 
     #[test]

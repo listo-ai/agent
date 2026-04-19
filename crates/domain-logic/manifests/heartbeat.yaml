@@ -1,4 +1,4 @@
-id: acme.logic.heartbeat
+id: sys.logic.heartbeat
 display_name: Heartbeat
 facets:
   - isCompute

@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import type { Kind, NodeSnapshot, Slot } from "@acme/agent-client";
+import type { Kind, NodeSnapshot, Slot } from "@sys/agent-client";
 import { cn } from "@/lib/utils";
 import { useNodeSettings, NodeSettingsForm } from "@/lib/node-settings";
 import { mergedSlots } from "../flow-model";

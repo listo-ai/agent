@@ -11,7 +11,7 @@
     "kind_id": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
-      "description": "Reverse-DNS kind id, e.g. 'acme.driver.bacnet.point'."
+      "description": "Reverse-DNS kind id, e.g. 'sys.driver.bacnet.point'."
     },
     "display_name": { "type": "string" },
     "description": { "type": "string" },

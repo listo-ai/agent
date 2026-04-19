@@ -69,7 +69,7 @@ The repo is a Cargo workspace. Each crate has exactly one job. **This layout sup
   /domain                   # Domain layer — pure business logic. Each crate is in practice a node-kind
                             # registration + rules: it declares its kinds, facets, containment schema,
                             # slot schemas, and business operations on them. Registers them with the graph crate.
-    /domain-flows           #   `acme.core.flow` kind — flow lifecycle, validation, versioning
+    /domain-flows           #   `sys.core.flow` kind — flow lifecycle, validation, versioning
     /domain-devices         #   device kinds — registration, state machine, commissioning rules
     /domain-extensions      #   extension kinds — manifest, capabilities, lifecycle
     /domain-fleet           #   rollouts, deployments, targeting (operates on graph subtrees)

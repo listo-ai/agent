@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn parses_rsql_like_filter_and_sort() {
-        let filters = parse_filters(Some("kind==acme.core.station;path=prefix=/demo")).unwrap();
+        let filters = parse_filters(Some("kind==sys.core.station;path=prefix=/demo")).unwrap();
         assert_eq!(filters.len(), 2);
         assert_eq!(filters[0].field, "kind");
         assert_eq!(filters[0].op, Operator::Eq);

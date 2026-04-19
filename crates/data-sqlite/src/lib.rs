@@ -11,9 +11,11 @@ mod flow_revision_repo;
 mod graph_repo;
 mod history_repo;
 mod migrations;
+mod preferences_repo;
 
 pub use connection::Location;
 pub use error::SqliteError;
 pub use flow_revision_repo::SqliteFlowRevisionRepo;
 pub use graph_repo::SqliteGraphRepo;
 pub use history_repo::SqliteHistoryRepo;
+pub use preferences_repo::SqlitePreferencesRepo;

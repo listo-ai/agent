@@ -69,17 +69,17 @@ mod tests {
     fn register_and_lookup() {
         let r = WidgetRegistry::new();
         assert_eq!(r.version(), 0);
-        r.register("acme.card");
-        assert!(r.contains("acme.card"));
-        assert!(!r.contains("acme.unknown"));
+        r.register("sys.card");
+        assert!(r.contains("sys.card"));
+        assert!(!r.contains("sys.unknown"));
         assert_eq!(r.version(), 1);
     }
 
     #[test]
     fn re_register_is_idempotent_and_does_not_bump_version() {
         let r = WidgetRegistry::new();
-        r.register("acme.card");
-        r.register("acme.card");
+        r.register("sys.card");
+        r.register("sys.card");
         assert_eq!(r.version(), 1);
     }
 

@@ -6,7 +6,7 @@ One directory, one package per language. Same discipline as `/crates/` — small
 
 | Package | Language | npm / crate |
 |---------|----------|-------------|
-| [`/ts`](./ts) | TypeScript | `@acme/agent-client` |
+| [`/ts`](./ts) | TypeScript | `@sys/agent-client` |
 | `/rust` | Rust | _later_ |
 | `/go` | Go | _later_ |
 | `/python` | Python | _later_ |

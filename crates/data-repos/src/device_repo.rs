@@ -6,7 +6,7 @@ use crate::RepoError;
 #[derive(Debug, Clone)]
 pub struct Device {
     pub id: DeviceId,
-    pub kind_id: String, // reverse-DNS, e.g. "acme.driver.bacnet.device"
+    pub kind_id: String, // reverse-DNS, e.g. "sys.driver.bacnet.device"
     pub name: String,
 }
 

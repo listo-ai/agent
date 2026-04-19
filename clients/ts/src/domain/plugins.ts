@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { PluginSummarySchema } from "../schemas/plugin.js";
 import type { PluginSummary } from "../schemas/plugin.js";
 
@@ -23,7 +23,7 @@ export interface PluginsApi {
   reload(): Promise<void>;
 }
 
-export function createPluginsApi(http: HttpClient, apiVersion: number): PluginsApi {
+export function createPluginsApi(http: RequestTransport, apiVersion: number): PluginsApi {
   const base = `/api/v${apiVersion}`;
 
   return {

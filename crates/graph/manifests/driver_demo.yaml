@@ -1,4 +1,4 @@
-id: acme.driver.demo
+id: sys.driver.demo
 display_name: Demo Driver
 facets:
   - isProtocol
@@ -6,10 +6,10 @@ facets:
   - isContainer
 containment:
   must_live_under:
-    - kind: acme.core.station
-    - kind: acme.core.folder
+    - kind: sys.core.station
+    - kind: sys.core.folder
   may_contain:
-    - kind: acme.driver.demo.device
+    - kind: sys.driver.demo.device
   cardinality_per_parent: many_per_parent
   cascade: strict
 slots: []

@@ -35,6 +35,7 @@ dependencies = [
  "data-sqlite",
  "domain-compute",
  "domain-extensions",
+ "domain-fleet",
  "domain-flows",
  "domain-logic",
  "engine",
@@ -878,6 +879,11 @@ dependencies = [
 [[package]]
 name = "domain-fleet"
 version = "0.0.1"
+dependencies = [
+ "extensions-sdk",
+ "graph",
+ "spi",
+]
 
 [[package]]
 name = "domain-flows"
@@ -3830,6 +3836,7 @@ dependencies = [
  "auth",
  "axum",
  "data-entities",
+ "data-repos",
  "domain-flows",
  "engine",
  "extensions-host",

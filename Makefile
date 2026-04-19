@@ -14,7 +14,7 @@ CROSS         := cross
 export PATH := $(HOME)/.nvm/versions/node/v22.22.0/bin:$(PATH)
 
 PNPM          := pnpm
-CLIENT_PKG    := @acme/agent-client
+CLIENT_PKG    := @sys/agent-client
 FRONTEND_DIR  := frontend
 
 # ── release flag ──────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ install: ## Install all JS/TS dependencies (pnpm workspaces)
 	$(PNPM) install
 
 .PHONY: build-client
-build-client: ## Compile @acme/agent-client → clients/ts/dist/
+build-client: ## Compile @sys/agent-client → clients/ts/dist/
 	$(PNPM) --filter $(CLIENT_PKG) build
 
 # ── dev ───────────────────────────────────────────────────────────────────────
@@ -60,11 +60,11 @@ run: ## Run agent in standalone mode (RELEASE=1 for release build)
 
 .PHONY: frontend
 frontend: build-client ## Start the Rsbuild dev server (builds client first)
-	$(PNPM) --filter @acme/studio dev
+	$(PNPM) --filter @sys/studio dev
 
 .PHONY: frontend-build
 frontend-build: build-client ## Production web build of the Studio UI
-	$(PNPM) --filter @acme/studio build:web
+	$(PNPM) --filter @sys/studio build:web
 
 # ── two-agent dev env (cloud + edge side-by-side) ────────────────────────────
 # See dev/README.md for the full port map and rationale.
@@ -89,12 +89,12 @@ run-edge: ## Run the edge agent on 127.0.0.1:8082 (config: dev/edge.yaml)
 .PHONY: studio-cloud
 studio-cloud: build-client ## Start Studio pointed at the cloud agent (http://localhost:3001)
 	PUBLIC_AGENT_URL=http://localhost:8081 \
-	  $(PNPM) --filter @acme/studio dev --port 3001
+	  $(PNPM) --filter @sys/studio dev --port 3001
 
 .PHONY: studio-edge
 studio-edge: build-client ## Start Studio pointed at the edge agent (http://localhost:3002)
 	PUBLIC_AGENT_URL=http://localhost:8082 \
-	  $(PNPM) --filter @acme/studio dev --port 3002
+	  $(PNPM) --filter @sys/studio dev --port 3002
 
 .PHONY: dev-reset
 dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)

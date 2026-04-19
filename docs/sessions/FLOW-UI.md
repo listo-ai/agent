@@ -23,7 +23,7 @@ Replace [FlowsPage.tsx](../../frontend/src/pages/flows/FlowsPage.tsx) (today's r
 |---|
 | React Flow v12 canvas inside Studio ([frontend/src/pages/flows/](../../frontend/src/pages/flows/)) |
 | Palette reads registered kinds from the agent's `GET /api/v1/kinds` (already wired — [crates/transport-rest/src/kinds.rs](../../crates/transport-rest/src/kinds.rs)) |
-| One "flow" = one `acme.core.flow` container node; its children are the compute nodes on the canvas |
+| One "flow" = one `sys.core.flow` container node; its children are the compute nodes on the canvas |
 | CRUD: create node, move node (persisted as `position` slot on the node), delete, connect/disconnect links |
 | Property panel (right side) rendered from the selected node's `settings_schema` via `@rjsf/core` |
 | Live slot display — SSE (`GET /api/v1/events`) updates node badges as values change |
@@ -81,10 +81,10 @@ A flow is a graph subtree. No new REST surface.
 
 ```
 /flows/                          (folder — isContainer)
-  my-flow/                       (acme.core.flow — isFlow, isContainer)
-    ├─ counter-1/                (acme.compute.count)
-    ├─ switch-1/                 (acme.logic.switch)
-    └─ webhook-1/                (acme.io.webhook)
+  my-flow/                       (sys.core.flow — isFlow, isContainer)
+    ├─ counter-1/                (sys.compute.count)
+    ├─ switch-1/                 (sys.logic.switch)
+    └─ webhook-1/                (sys.io.webhook)
 
 links: [counter-1.out → switch-1.in,  switch-1.out_0 → webhook-1.send]
 ```
@@ -118,7 +118,7 @@ No "flow document JSON" alongside the graph — the graph *is* the flow document
 - Searchable list of `KindManifest`s from `GET /api/v1/kinds`.
 - Grouped by first facet (Driver, Compute, Logic, I/O, System).
 - Plugin-contributed kinds show a small badge (plugin id in tooltip) — factual, not a warning.
-- Drag starts a `{type: "kind", id: "acme.compute.count"}` payload.
+- Drag starts a `{type: "kind", id: "sys.compute.count"}` payload.
 
 ### Property panel (right side)
 

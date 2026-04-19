@@ -13,7 +13,7 @@
  * gate its UI on it yet; the `useCapabilities` hook surfaces the
  * manifest so the UI can display it.
  */
-import { AgentClient } from "@acme/agent-client";
+import { AgentClient } from "@sys/agent-client";
 
 const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env;
 

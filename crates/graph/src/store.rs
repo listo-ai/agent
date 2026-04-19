@@ -178,7 +178,7 @@ impl GraphStore {
     }
 
     /// Create the root node (`/`). Must be a kind whose containment is
-    /// *free* — typically `acme.core.station`.
+    /// *free* — typically `sys.core.station`.
     pub fn create_root(&self, kind: KindId) -> Result<NodeId, GraphError> {
         let manifest = self.require_kind(&kind)?;
         let mut g = self.write_inner();

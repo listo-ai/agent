@@ -137,7 +137,7 @@ fn fleet_zenoh_yaml_parses_and_resolves() {
             "  backend: zenoh\n",
             "  listen: [\"tcp/0.0.0.0:7447\"]\n",
             "  connect: []\n",
-            "  tenant: acme\n",
+            "  tenant: sys\n",
             "  agent_id: edge-1\n",
         ),
     )
@@ -153,7 +153,7 @@ fn fleet_zenoh_yaml_parses_and_resolves() {
         } => {
             assert_eq!(listen, vec!["tcp/0.0.0.0:7447"]);
             assert!(connect.is_empty());
-            assert_eq!(tenant, "acme");
+            assert_eq!(tenant, "sys");
             assert_eq!(agent_id, "edge-1");
         }
         other => panic!("expected zenoh, got {other:?}"),
@@ -170,12 +170,12 @@ fn auth_static_token_yaml_parses_and_resolves() {
             "auth:\n",
             "  provider: static_token\n",
             "  tokens:\n",
-            "    - token: \"ed_acme_edge1_xxxxx\"\n",
+            "    - token: \"ed_sys_edge1_xxxxx\"\n",
             "      actor:\n",
             "        kind: machine\n",
             "        id: \"00000000-0000-0000-0000-000000000001\"\n",
             "        label: \"edge-1\"\n",
-            "      tenant: acme\n",
+            "      tenant: sys\n",
             "      scopes: [read_nodes, write_slots, manage_fleet]\n",
         ),
     )
@@ -185,8 +185,8 @@ fn auth_static_token_yaml_parses_and_resolves() {
     match resolved.auth {
         config::AuthConfig::StaticToken { tokens } => {
             assert_eq!(tokens.len(), 1);
-            assert_eq!(tokens[0].token, "ed_acme_edge1_xxxxx");
-            assert_eq!(tokens[0].tenant.as_str(), "acme");
+            assert_eq!(tokens[0].token, "ed_sys_edge1_xxxxx");
+            assert_eq!(tokens[0].tenant.as_str(), "sys");
             assert_eq!(tokens[0].scopes.len(), 3);
         }
         other => panic!("expected StaticToken, got {other:?}"),

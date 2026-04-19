@@ -14,7 +14,7 @@ use dashboard_transport::{DashboardState, TransportError};
 use serde_json::{json, Value as JsonValue};
 use spi::NodeId;
 
-const CARD: &str = "acme.card";
+const CARD: &str = "sys.card";
 
 fn page(id: NodeId, title: &str) -> NodeSnapshot {
     NodeSnapshot::new(id, "ui.page").with_slot("title", json!(title))
@@ -90,7 +90,7 @@ async fn resolve_renders_widget_with_bindings() {
                 "heading": "$self.widget_type",
             }),
         ))
-        .with(NodeSnapshot::new(site_id, "acme.site").with_slot("name", json!("HQ")))
+        .with(NodeSnapshot::new(site_id, "sys.site").with_slot("name", json!("HQ")))
         .with(nav(nav_id, "Site", Some("target"), Some(site_id)))
         .with_child(page_id, w_id);
 
@@ -132,7 +132,7 @@ async fn resolve_emits_subscription_plan_for_each_widget() {
             CARD,
             json!({ "label": "$stack.target.name" }),
         ))
-        .with(NodeSnapshot::new(site_id, "acme.site").with_slot("name", json!("HQ")))
+        .with(NodeSnapshot::new(site_id, "sys.site").with_slot("name", json!("HQ")))
         .with(nav(nav_id, "Site", Some("target"), Some(site_id)))
         .with_child(page_id, w_id);
 
@@ -164,7 +164,7 @@ async fn resolve_subscription_plan_deduplicates_slot_reads() {
             // Two bindings both read `name` on the same target.
             json!({ "a": "$stack.target.name", "b": "$stack.target.name" }),
         ))
-        .with(NodeSnapshot::new(site_id, "acme.site").with_slot("name", json!("HQ")))
+        .with(NodeSnapshot::new(site_id, "sys.site").with_slot("name", json!("HQ")))
         .with(nav(nav_id, "Site", Some("target"), Some(site_id)))
         .with_child(page_id, w_id);
 
@@ -287,7 +287,7 @@ async fn acl_denied_bound_node_redacts_widget_and_audits() {
     let reader = InMemoryReader::new()
         .with(page(page_id, "P"))
         .with(widget(w_id, CARD, json!({ "label": "$stack.target.name" })))
-        .with(NodeSnapshot::new(site_id, "acme.site").with_slot("name", json!("HQ")))
+        .with(NodeSnapshot::new(site_id, "sys.site").with_slot("name", json!("HQ")))
         .with(nav(nav_id, "Site", Some("target"), Some(site_id)))
         .with_child(page_id, w_id);
 
@@ -336,9 +336,9 @@ async fn acl_page_with_mixed_allowed_denied_widgets() {
             json!({ "label": format!("$user.denied_lookup") }),
         ))
         .with(
-            NodeSnapshot::new(allowed_site, "acme.site").with_slot("name", json!("A")),
+            NodeSnapshot::new(allowed_site, "sys.site").with_slot("name", json!("A")),
         )
-        .with(NodeSnapshot::new(denied_site, "acme.site").with_slot("name", json!("B")))
+        .with(NodeSnapshot::new(denied_site, "sys.site").with_slot("name", json!("B")))
         .with_child(page_id, w_ok_id)
         .with_child(page_id, w_bad_id);
 

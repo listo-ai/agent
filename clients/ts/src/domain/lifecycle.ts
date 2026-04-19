@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { LifecycleSchema } from "../schemas/events.js";
 import type { Lifecycle } from "../schemas/events.js";
 
@@ -11,7 +11,7 @@ export interface LifecycleApi {
   transition(path: string, to: Lifecycle): Promise<Lifecycle>;
 }
 
-export function createLifecycleApi(http: HttpClient, apiVersion: number): LifecycleApi {
+export function createLifecycleApi(http: RequestTransport, apiVersion: number): LifecycleApi {
   const base = `/api/v${apiVersion}/lifecycle`;
   return {
     async transition(path: string, to: Lifecycle): Promise<Lifecycle> {

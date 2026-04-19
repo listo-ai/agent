@@ -149,7 +149,7 @@ contributes:
     resources:
       - uri_pattern: "bacnet://{device_id}"
         backing: node
-        kind_filter: acme.driver.bacnet.device
+        kind_filter: sys.driver.bacnet.device
     prompts:
       - id: investigate_bacnet_fault
         template: prompts/investigate.md
@@ -161,7 +161,7 @@ Kind manifests can declare invokable actions; each one becomes a tool named `<ki
 
 ```yaml
 # kinds/bacnet_device.yaml
-id: acme.driver.bacnet.device
+id: sys.driver.bacnet.device
 mcp:
   actions:
     - id: read_point

@@ -2,7 +2,7 @@
 
 Source: `/home/user/code/go/bizzy/frontend` (Vite + React 19 + Tailwind v4 + Shadcn + `@json-render/*`).
 Target: new Studio app under `/apps/studio/` in this repo, per [UI.md](UI.md).
-Existing TS client: [`/clients/ts`](../../clients/ts) — `@acme/agent-client`, the headless REST client; the Studio consumes it, does **not** replace it.
+Existing TS client: [`/clients/ts`](../../clients/ts) — `@sys/agent-client`, the headless REST client; the Studio consumes it, does **not** replace it.
 
 This is a **selective port**, not a lift-and-shift. The Vite build is incompatible with our Module Federation requirement, so we rebuild the shell and harvest components.
 
@@ -41,13 +41,13 @@ Consume [`clients/ts`](../../clients/ts) for REST, add `@connectrpc/connect-web`
 - Preserving bizzy's routes, page structure, or domain model.
 - Porting anything coupled to the Go backend API (`/my/apps`, `/my/tools`, `/users/me`).
 - Supporting the old app in parallel.
-- Replacing `@acme/agent-client` — the Studio imports it.
+- Replacing `@sys/agent-client` — the Studio imports it.
 
 ---
 
 ## Client packages we already have
 
-[`/clients/ts`](../../clients/ts) (`@acme/agent-client`) is the headless REST client. Policy ([clients/README.md](../../clients/README.md)):
+[`/clients/ts`](../../clients/ts) (`@sys/agent-client`) is the headless REST client. Policy ([clients/README.md](../../clients/README.md)):
 
 - Three version numbers (package, `REST_API_VERSION`, `REQUIRED_CAPABILITIES`).
 - Must pass `/contracts/fixtures/` round-trip tests.
@@ -55,10 +55,10 @@ Consume [`clients/ts`](../../clients/ts) for REST, add `@connectrpc/connect-web`
 
 Studio implications:
 
-1. Studio depends on `@acme/agent-client` as a workspace package; never re-implements REST calls inline.
+1. Studio depends on `@sys/agent-client` as a workspace package; never re-implements REST calls inline.
 2. The client is **not** federated — it's a normal dep. Federation is only for **extensions**, not for internal packages.
 3. If we need Connect-RPC in addition to REST, add it alongside the TS client (new `/clients/ts-rpc` or a subpath export), not inside the Studio.
-4. Bizzy's `src/lib/api.ts` is not ported — `@acme/agent-client` replaces it.
+4. Bizzy's `src/lib/api.ts` is not ported — `@sys/agent-client` replaces it.
 
 ---
 
@@ -76,7 +76,7 @@ Studio implications:
 | Local state | Ad hoc (`use-store.ts`) | **Zustand** | **Add / rewrite stores**, singleton |
 | Server state | TanStack Query 5 | TanStack Query | Keep, singleton |
 | Router | react-router-dom 7 | Not pinned | Keep, singleton |
-| REST transport | `fetch` via `lib/api.ts` | **`@acme/agent-client`** | **Replace with existing client** |
+| REST transport | `fetch` via `lib/api.ts` | **`@sys/agent-client`** | **Replace with existing client** |
 | RPC transport | None | `@connectrpc/connect-web` | **Add** |
 | Live transport | None | `nats.ws` | **Add** |
 | Auth | Custom (`use-auth.tsx`) | `oidc-client-ts` + PKCE | **Replace** |
@@ -107,7 +107,7 @@ Studio implications:
 | From bizzy | Why it can't be ported | Replacement |
 |---|---|---|
 | `vite.config.ts`, entry, HTML | Bundler change | New `rsbuild.config.ts` with `tauri` + `web` envs, MF plugin, shared singletons |
-| `lib/api.ts` | REST against Go backend | `@acme/agent-client` from `/clients/ts` |
+| `lib/api.ts` | REST against Go backend | `@sys/agent-client` from `/clients/ts` |
 | `hooks/use-auth.tsx` | Bespoke | `oidc-client-ts` PKCE to Zitadel |
 | `pages/*` | Domain-specific (apps store, workshop, chat) | New Studio pages: Flows, Dashboards, Extensions, Settings |
 | `components/app-builder/*`, `workshop/*`, `live-preview/*`, `chat/*`, `store/*` | App-domain UI | Not ported |
@@ -140,7 +140,7 @@ Studio implications:
 | 1 | New Studio app scaffold | `apps/studio/` builds with Rsbuild for `tauri` and `web` envs; empty shell renders; CI green; MF config copied from M0 POC |
 | 2 | Design system port | Shadcn primitives, Tailwind v4, theme toggle, layout shell (sidebar + topbar + allotment) working on new scaffold |
 | 3 | First real in-tree remote | A real Studio extension (e.g. a trivial "Hello Node" contribution) built as a separate MF remote in the monorepo; loaded by Studio at runtime; consumes host service registry, Zustand, Query; no singleton warnings |
-| 4 | Auth + transport | Zitadel OIDC login; `@acme/agent-client` calling real Control Plane with token; `nats.ws` subscription receiving a heartbeat |
+| 4 | Auth + transport | Zitadel OIDC login; `@sys/agent-client` calling real Control Plane with token; `nats.ws` subscription receiving a heartbeat |
 | 5 | Flow canvas skeleton | React Flow canvas, node palette from registry, property panel frame — no real nodes yet |
 | 6 | First extension end-to-end | One in-tree UI-only extension contributes a node type, property panel (`@rjsf/core` or chosen lib), renders in canvas |
 | 7 | Tauri shell wired | Desktop build launches, IPC to local edge agent, file dialog works, auto-update plugin configured |
@@ -158,7 +158,7 @@ M0 → M1 → M3 are the risky path. M2, M4–M8 are mostly mechanical once the 
 - **Tailwind v4 + Rsbuild integration.** Verify in M0 — remote must render host-themed, not ship its own Tailwind runtime.
 - **`@json-render` vs `@rjsf/core` divergence.** Picking wrong costs a rewrite of every extension panel. Decide before M6.
 - **Suspicious bizzy pins** (`typescript ~6.0.2`, `lucide-react ^1.8.0`). Don't copy blindly; match `/clients/ts` TypeScript 5.x.
-- **Temptation to port `lib/api.ts`.** It's tied to the Go backend. Reject; use `@acme/agent-client`.
+- **Temptation to port `lib/api.ts`.** It's tied to the Go backend. Reject; use `@sys/agent-client`.
 
 ---
 
@@ -168,8 +168,8 @@ M0 → M1 → M3 are the risky path. M2, M4–M8 are mostly mechanical once the 
 2. **Router.** Keep `react-router-dom` (existing in bizzy) or TanStack Router for better loaders? Whichever we pick becomes an MF singleton.
 3. **Icons.** Lucide is used; design doesn't pin. Confirm and pin.
 4. **Storybook / component workshop from day one**, or later?
-5. **RPC alongside REST.** Do we need `@connectrpc/connect-web` in v1, or does `@acme/agent-client` cover it? If both, does the RPC client live at `/clients/ts-rpc` or as a subpath export of the existing client?
-6. **Service registry as its own package.** To be an MF shared singleton it probably needs to be a published package (e.g. `@acme/studio-registry`), not just a file in `apps/studio`. Decide in M0.
+5. **RPC alongside REST.** Do we need `@connectrpc/connect-web` in v1, or does `@sys/agent-client` cover it? If both, does the RPC client live at `/clients/ts-rpc` or as a subpath export of the existing client?
+6. **Service registry as its own package.** To be an MF shared singleton it probably needs to be a published package (e.g. `@sys/studio-registry`), not just a file in `apps/studio`. Decide in M0.
 
 ---
 

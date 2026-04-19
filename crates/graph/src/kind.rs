@@ -135,7 +135,7 @@ mod tests {
     fn register_injects_canvas_slots() {
         let kinds = KindRegistry::new();
         let manifest = KindManifest {
-            id: KindId::new("acme.test.kind"),
+            id: KindId::new("sys.test.kind"),
             display_name: Some("Test".to_string()),
             facets: FacetSet::default(),
             containment: ContainmentSchema::default(),
@@ -148,7 +148,7 @@ mod tests {
 
         kinds.register(manifest);
         let stored = kinds
-            .get(&KindId::new("acme.test.kind"))
+            .get(&KindId::new("sys.test.kind"))
             .expect("kind should be registered");
 
         assert!(stored.slots.iter().any(|slot| slot.name == "position"));

@@ -1,8 +1,8 @@
 import dagre from "dagre";
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import type { Kind, Link, NodeSnapshot, Slot } from "@acme/agent-client";
+import type { Kind, Link, NodeSnapshot, Slot } from "@sys/agent-client";
 
-export const FLOW_KIND = "acme.core.flow";
+export const FLOW_KIND = "sys.core.flow";
 export const POSITION_SLOT = "position";
 export const DEFAULT_NODE_SIZE = { width: 220, height: 112 };
 

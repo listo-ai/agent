@@ -11,7 +11,7 @@
  */
 
 import { useStore } from "zustand";
-import type { NodeSnapshot, Link } from "@acme/agent-client";
+import type { NodeSnapshot, Link } from "@sys/agent-client";
 import type { GraphStore } from "./graph-store";
 export { createGraphStore } from "./graph-store";
 export type { GraphStore };

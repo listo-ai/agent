@@ -32,7 +32,7 @@ The biggest technical bet in the project per Stage 3's "Proves" line: does one `
 - Wasmtime in `extensions-host`; fuel metering + memory caps
 - Host-function allowlist (`emit`, `read_slot`, `update_status`, `log`, `schedule`)
 - Wasm adapter feature in `extensions-sdk`
-- Example kind `acme.wasm.math_expr`
+- Example kind `sys.wasm.math_expr`
 - End-to-end test that fuel exhaustion produces `NodeError`, not a killed agent
 
 Multi-session. Low visibility until the example runs. Highest architectural value.
@@ -43,7 +43,7 @@ Multi-session. Low visibility until the example runs. Highest architectural valu
 
 Both are already-scoped "no parallel state" follow-ups sitting in STEPS.md. Together they're ~300 LOC of graph/engine refactor + log-call migration, no new architectural bets. What you get:
 
-- `acme.agent.self` + `acme.agent.engine` kinds with `state` / `flows_running` / `last_transition_ts` status slots
+- `sys.agent.self` + `sys.agent.engine` kinds with `state` / `flows_running` / `last_transition_ts` status slots
 - Engine writes its own state into the graph — a flow can subscribe to engine transitions via the same `SlotChanged` fabric as everything else
 - `SafeStatePolicy` becomes a config-role slot on each writable output
 - Every `tracing::*!` in `engine` + `graph` + `apps/agent` routes through `observability::prelude` with canonical fields

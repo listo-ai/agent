@@ -3,10 +3,11 @@
 use std::sync::Arc;
 
 use auth::DevNullProvider;
+use data_repos::PreferencesService;
 use domain_flows::FlowService;
 use engine::BehaviorRegistry;
 use extensions_host::PluginRegistry;
-use graph::{GraphStore};
+use graph::GraphStore;
 use spi::{AuthProvider, FleetTransport, NullTransport};
 use tokio::sync::broadcast;
 
@@ -34,6 +35,10 @@ pub struct AppState {
     /// Flow document + revision service.  `None` when the agent runs
     /// without a database path (in-memory, no persistence).
     pub flows: Option<FlowService>,
+    /// User / org preference service. `None` when the agent runs without
+    /// a database (in-memory only). In-memory agents return 400 on
+    /// preference endpoints rather than silently losing writes.
+    pub prefs: Option<PreferencesService>,
 }
 
 impl AppState {
@@ -52,6 +57,7 @@ impl AppState {
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),
             flows: None,
+            prefs: None,
         }
     }
 
@@ -74,6 +80,7 @@ impl AppState {
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),
             flows: None,
+            prefs: None,
         }
     }
 
@@ -93,6 +100,12 @@ impl AppState {
     /// Provide the flow document + revision service.
     pub fn with_flow_service(mut self, svc: FlowService) -> Self {
         self.flows = Some(svc);
+        self
+    }
+
+    /// Provide the user / org preferences service.
+    pub fn with_prefs_service(mut self, svc: PreferencesService) -> Self {
+        self.prefs = Some(svc);
         self
     }
 }

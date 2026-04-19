@@ -18,10 +18,10 @@ use crate::state::AppState;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Preset {
-    /// Folder → count (acme.compute.count) → trigger (acme.logic.trigger),
+    /// Folder → count (sys.compute.count) → trigger (sys.logic.trigger),
     /// `count.out` wired into `trigger.in`.
     CountChain,
-    /// Folder → trigger (acme.logic.trigger) with default config. Write
+    /// Folder → trigger (sys.logic.trigger) with default config. Write
     /// anything to `in` and watch `armed` flip.
     TriggerDemo,
 }
@@ -48,11 +48,11 @@ pub(crate) fn apply(state: &AppState, preset: Preset) -> Result<SeedResult, ApiE
         Preset::CountChain => (
             "count_chain",
             vec![
-                ("count", "acme.compute.count"),
-                ("trigger", "acme.logic.trigger"),
+                ("count", "sys.compute.count"),
+                ("trigger", "sys.logic.trigger"),
             ],
         ),
-        Preset::TriggerDemo => ("trigger_demo", vec![("trigger", "acme.logic.trigger")]),
+        Preset::TriggerDemo => ("trigger_demo", vec![("trigger", "sys.logic.trigger")]),
     };
 
     let graph: &GraphStore = &state.graph;
@@ -60,7 +60,7 @@ pub(crate) fn apply(state: &AppState, preset: Preset) -> Result<SeedResult, ApiE
         NodePath::from_str(&format!("/{folder_name}")).expect("literal path is valid");
     let root = NodePath::root();
     graph
-        .create_child(&root, KindId::new("acme.core.folder"), folder_name)
+        .create_child(&root, KindId::new("sys.core.folder"), folder_name)
         .map_err(ApiError::from_graph)?;
 
     let mut nodes = Vec::new();
@@ -103,10 +103,10 @@ pub(crate) fn apply(state: &AppState, preset: Preset) -> Result<SeedResult, ApiE
 
 fn default_config(kind: &str) -> serde_json::Value {
     match kind {
-        "acme.compute.count" => json!({
+        "sys.compute.count" => json!({
             "initial": 0, "step": 1, "min": null, "max": null, "wrap": false,
         }),
-        "acme.logic.trigger" => json!({
+        "sys.logic.trigger" => json!({
             "mode": "once",
             "trigger_payload": true,
             "reset_payload": null,

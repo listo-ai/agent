@@ -92,11 +92,11 @@ mod tests {
         let kinds = KindRegistry::new();
         graph_seed::register_builtins(&kinds);
         let graph = Arc::new(GraphStore::new(kinds, Arc::new(NullSink)));
-        graph.create_root(KindId::new("acme.core.station")).unwrap();
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
         graph
             .create_child(
                 &NodePath::root(),
-                KindId::new("acme.core.folder"),
+                KindId::new("sys.core.folder"),
                 "alpha",
             )
             .unwrap();

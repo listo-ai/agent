@@ -38,7 +38,7 @@ fn save_then_load_roundtrip<R: GraphRepo>(r: &R) {
     r.save_node(&PersistedNode {
         id: root_id,
         parent_id: None,
-        kind_id: "acme.core.station".into(),
+        kind_id: "sys.core.station".into(),
         path: "/".into(),
         name: "/".into(),
         lifecycle: "created".into(),
@@ -47,7 +47,7 @@ fn save_then_load_roundtrip<R: GraphRepo>(r: &R) {
     r.save_node(&PersistedNode {
         id: child_id,
         parent_id: Some(root_id),
-        kind_id: "acme.core.folder".into(),
+        kind_id: "sys.core.folder".into(),
         path: "/site".into(),
         name: "site".into(),
         lifecycle: "created".into(),
@@ -95,7 +95,7 @@ fn delete_nodes_and_links_reflects_in_snapshot<R: GraphRepo>(r: &R) {
         r.save_node(&PersistedNode {
             id,
             parent_id: None,
-            kind_id: "acme.core.folder".into(),
+            kind_id: "sys.core.folder".into(),
             path: path.into(),
             name: path.trim_start_matches('/').into(),
             lifecycle: "created".into(),
@@ -126,7 +126,7 @@ fn slot_upsert_bumps_generation<R: GraphRepo>(r: &R) {
     r.save_node(&PersistedNode {
         id,
         parent_id: None,
-        kind_id: "acme.core.folder".into(),
+        kind_id: "sys.core.folder".into(),
         path: "/n".into(),
         name: "n".into(),
         lifecycle: "active".into(),

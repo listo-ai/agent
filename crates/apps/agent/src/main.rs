@@ -25,7 +25,9 @@ use config::{
 };
 use data_sqlite::SqliteGraphRepo;
 use data_sqlite::SqliteFlowRevisionRepo;
+use data_sqlite::SqlitePreferencesRepo;
 use domain_flows::FlowService;
+use data_repos::PreferencesService;
 use engine::{kinds as engine_kinds, Engine};
 use extensions_host::PluginRegistry;
 use graph::{seed, GraphStore, KindRegistry};
@@ -265,6 +267,18 @@ async fn run_daemon(
                 tracing::warn!(error = %e, "failed to open flow revision repo — undo/redo unavailable");
             }
         }
+
+        // Wire preferences service from the same DB path.
+        match SqlitePreferencesRepo::open_file(path) {
+            Ok(repo) => {
+                let svc = PreferencesService::new(std::sync::Arc::new(repo));
+                app_state = app_state.with_prefs_service(svc);
+                info!("preferences service attached");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to open preferences repo — preferences endpoints unavailable");
+            }
+        }
     }
 
     // Optional embedded fleet transport. `NullTransport` stays in place
@@ -380,6 +394,7 @@ async fn bootstrap(
     domain_compute::register_kinds(&kinds);
     domain_logic::register_kinds(&kinds);
     domain_extensions::register_kinds(&kinds);
+    domain_fleet::register_kinds(&kinds);
     dashboard_nodes::register_kinds(&kinds);
 
     // Scan plugins *before* opening the graph so plugin-contributed
@@ -411,7 +426,7 @@ async fn bootstrap(
         }
     };
     if graph.is_empty() {
-        graph.create_root(KindId::new("acme.core.station"))?;
+        graph.create_root(KindId::new("sys.core.station"))?;
     }
     seed_plugin_nodes(&graph, &plugins)?;
     if !cfg.role.runs_engine() {
@@ -443,7 +458,7 @@ async fn bootstrap(
     Ok((engine, graph, bcast, ring, plugins))
 }
 
-/// Reflect every loaded plugin as an `acme.agent.plugin` node under
+/// Reflect every loaded plugin as an `sys.agent.plugin` node under
 /// `/agent/plugins/`. Per `docs/design/EVERYTHING-AS-NODE.md` § "The
 /// agent itself is a node too" — plugin state lives in the graph, not
 /// in a parallel registry, so Studio subscribes via the same event
@@ -451,8 +466,8 @@ async fn bootstrap(
 fn seed_plugin_nodes(graph: &GraphStore, plugins: &PluginRegistry) -> Result<()> {
     use std::str::FromStr;
 
-    let folder = KindId::new("acme.core.folder");
-    let plugin_kind = KindId::new("acme.agent.plugin");
+    let folder = KindId::new("sys.core.folder");
+    let plugin_kind = KindId::new("sys.agent.plugin");
     let root = spi::NodePath::root();
 
     let agent_path = spi::NodePath::from_str("/agent").expect("literal path");

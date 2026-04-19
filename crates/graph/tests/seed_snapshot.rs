@@ -28,7 +28,7 @@ fn assert_manifest_eq(actual: KindManifest, expected: KindManifest) {
 #[test]
 fn station_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.core.station"),
+        KindId::new("sys.core.station"),
         ContainmentSchema::default()
             .with_may_contain([
                 ParentMatcher::Facet(Facet::IsContainer),
@@ -46,7 +46,7 @@ fn station_manifest_is_pinned() {
 #[test]
 fn folder_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.core.folder"),
+        KindId::new("sys.core.folder"),
         ContainmentSchema::default().with_may_contain([
             ParentMatcher::Facet(Facet::IsContainer),
             ParentMatcher::Facet(Facet::IsDriver),
@@ -62,7 +62,7 @@ fn folder_manifest_is_pinned() {
 #[test]
 fn math_add_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.compute.math.add"),
+        KindId::new("sys.compute.math.add"),
         ContainmentSchema::free_leaf(),
     )
     .with_display_name("Add")
@@ -78,12 +78,12 @@ fn math_add_manifest_is_pinned() {
 #[test]
 fn driver_demo_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.driver.demo"),
+        KindId::new("sys.driver.demo"),
         ContainmentSchema::bound_under([
-            ParentMatcher::Kind(KindId::new("acme.core.station")),
-            ParentMatcher::Kind(KindId::new("acme.core.folder")),
+            ParentMatcher::Kind(KindId::new("sys.core.station")),
+            ParentMatcher::Kind(KindId::new("sys.core.folder")),
         ])
-        .with_may_contain([ParentMatcher::Kind(KindId::new("acme.driver.demo.device"))])
+        .with_may_contain([ParentMatcher::Kind(KindId::new("sys.driver.demo.device"))])
         .with_cardinality(Cardinality::ManyPerParent),
     )
     .with_display_name("Demo Driver")
@@ -98,9 +98,9 @@ fn driver_demo_manifest_is_pinned() {
 #[test]
 fn driver_demo_device_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.driver.demo.device"),
-        ContainmentSchema::bound_under([ParentMatcher::Kind(KindId::new("acme.driver.demo"))])
-            .with_may_contain([ParentMatcher::Kind(KindId::new("acme.driver.demo.point"))]),
+        KindId::new("sys.driver.demo.device"),
+        ContainmentSchema::bound_under([ParentMatcher::Kind(KindId::new("sys.driver.demo"))])
+            .with_may_contain([ParentMatcher::Kind(KindId::new("sys.driver.demo.point"))]),
     )
     .with_display_name("Demo Device")
     .with_facets(FacetSet::of([Facet::IsDevice, Facet::IsContainer]));
@@ -110,9 +110,9 @@ fn driver_demo_device_manifest_is_pinned() {
 #[test]
 fn driver_demo_point_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.driver.demo.point"),
+        KindId::new("sys.driver.demo.point"),
         ContainmentSchema::bound_under([ParentMatcher::Kind(KindId::new(
-            "acme.driver.demo.device",
+            "sys.driver.demo.device",
         ))]),
     )
     .with_display_name("Demo Point")

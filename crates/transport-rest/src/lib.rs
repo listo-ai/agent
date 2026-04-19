@@ -45,6 +45,7 @@ pub mod fleet;
 pub mod flows;
 pub mod kinds;
 pub mod plugins;
+pub mod preferences;
 pub mod ring;
 pub mod routes;
 pub mod seed;

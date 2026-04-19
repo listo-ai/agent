@@ -2,7 +2,7 @@
   "data": [
     {
       "id": "00000000-0000-0000-0000-000000000000",
-      "kind": "acme.core.station",
+      "kind": "sys.core.station",
       "path": "/",
       "parent_path": null,
       "parent_id": null,

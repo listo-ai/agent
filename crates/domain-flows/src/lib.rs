@@ -499,9 +499,13 @@ impl FlowService {
         actual: Option<RevisionId>,
         expected: Option<RevisionId>,
     ) -> Result<(), FlowError> {
-        if actual != expected {
+        // None means "skip OCC check" — caller doesn't care about concurrency.
+        let Some(expected) = expected else {
+            return Ok(());
+        };
+        if actual != Some(expected) {
             return Err(FlowError::Conflict {
-                expected: expected.unwrap_or(RevisionId(uuid::Uuid::nil())),
+                expected,
                 actual,
             });
         }

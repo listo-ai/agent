@@ -36,8 +36,8 @@ pub trait NodeBehavior: Send + Sync {
 
     /// Fired by the runtime when a timer scheduled via
     /// [`NodeCtx::schedule`] elapses. Default: no-op. Kinds that never
-    /// call `schedule` (like `acme.compute.count`) leave it that way;
-    /// `acme.logic.trigger` overrides to emit its delayed payload.
+    /// call `schedule` (like `sys.compute.count`) leave it that way;
+    /// `sys.logic.trigger` overrides to emit its delayed payload.
     fn on_timer(&self, _ctx: &NodeCtx, _handle: TimerHandle) -> Result<(), NodeError> {
         Ok(())
     }

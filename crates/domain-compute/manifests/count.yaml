@@ -1,4 +1,4 @@
-id: acme.compute.count
+id: sys.compute.count
 display_name: Count
 facets:
   - isCompute

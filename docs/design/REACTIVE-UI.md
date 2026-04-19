@@ -187,7 +187,7 @@ This is the single-biggest reliability win for the frontend. Without it, SSE rec
 └──────────┼─────────────────────────┼──────────────────────┘
            ▼                         ▼
    ┌────────────────────────────────────────────┐
-   │       AgentClient (@acme/agent-client)     │
+   │       AgentClient (@sys/agent-client)     │
    │  - nodes.getNodesPage({ filter: … })       │
    │  - events.subscribe({ sinceSeq, onOpen })  │
    └────────────────────────────────────────────┘

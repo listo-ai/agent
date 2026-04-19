@@ -2,7 +2,7 @@
 //!
 //! Usage:
 //!   cargo run --release -p transport-fleet-zenoh --example fleet_get -- \
-//!       tcp/127.0.0.1:17447 acme edge-1 api.v1.nodes.list
+//!       tcp/127.0.0.1:17447 sys edge-1 api.v1.nodes.list
 //!
 //! Prints the reply as JSON.
 
@@ -16,7 +16,7 @@ use transport_fleet_zenoh::{ZenohConfig, ZenohTransport};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     let connect = args.get(1).cloned().unwrap_or_else(|| "tcp/127.0.0.1:17447".to_string());
-    let tenant = args.get(2).cloned().unwrap_or_else(|| "acme".to_string());
+    let tenant = args.get(2).cloned().unwrap_or_else(|| "sys".to_string());
     let agent_id = args.get(3).cloned().unwrap_or_else(|| "edge-1".to_string());
     let kind = args.get(4).cloned().unwrap_or_else(|| "api.v1.nodes.list".to_string());
 

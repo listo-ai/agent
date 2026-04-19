@@ -97,16 +97,16 @@ data.sqlite            3.45.0
 ```
 agent nodes list                              # table of all nodes
 agent nodes get /station/floor1/ahu-5         # single node detail (JSON)
-agent nodes create /station acme.core.folder floor1   # create child
+agent nodes create /station sys.core.folder floor1   # create child
 ```
 
 Table output for `list`:
 
 ```
 PATH                              KIND                       LIFECYCLE  ID
-/station                          acme.core.station          created    a1b2c3…
-/station/floor1                   acme.core.folder           created    d4e5f6…
-/station/floor1/counter           acme.compute.count         active     789abc…
+/station                          sys.core.station          created    a1b2c3…
+/station/floor1                   sys.core.folder           created    d4e5f6…
+/station/floor1/counter           sys.compute.count         active     789abc…
 ```
 
 ### `agent slots`
@@ -247,11 +247,11 @@ agent nodes create --help-json
   "summary": "Create a child node under a parent path.",
   "args": [
     { "name": "parent", "required": true, "type": "node-path",  "description": "Parent path, e.g. /station/floor1" },
-    { "name": "kind",   "required": true, "type": "kind-id",    "description": "Node kind id, e.g. acme.core.folder" },
+    { "name": "kind",   "required": true, "type": "kind-id",    "description": "Node kind id, e.g. sys.core.folder" },
     { "name": "name",   "required": true, "type": "identifier", "description": "Child name segment" }
   ],
   "examples": [
-    "agent nodes create /station acme.core.folder floor1"
+    "agent nodes create /station sys.core.folder floor1"
   ],
   "related_commands": ["nodes list", "nodes get"],
   "output_schema_ref": "agent schema nodes create"

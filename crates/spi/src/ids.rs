@@ -34,7 +34,7 @@ impl fmt::Display for NodeId {
     }
 }
 
-/// Reverse-DNS kind identifier (e.g. `acme.driver.bacnet.point`).
+/// Reverse-DNS kind identifier (e.g. `sys.driver.bacnet.point`).
 ///
 /// The kind is a *type*; the node path is a *location*. One kind can
 /// have thousands of instances.

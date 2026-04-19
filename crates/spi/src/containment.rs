@@ -20,7 +20,7 @@ use crate::ids::KindId;
 ///
 /// ```yaml
 /// must_live_under:
-///   - kind: acme.core.station
+///   - kind: sys.core.station
 ///   - facet: isContainer
 /// ```
 ///
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn parent_matcher_round_trips_through_yaml() {
         for m in [
-            ParentMatcher::Kind(KindId::new("acme.core.station")),
+            ParentMatcher::Kind(KindId::new("sys.core.station")),
             ParentMatcher::Facet(Facet::IsContainer),
         ] {
             let y = serde_yml::to_string(&m).unwrap();

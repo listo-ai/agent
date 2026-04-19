@@ -21,7 +21,7 @@ use crate::slot_schema::SlotSchema;
 ///
 /// Stage 3a-2 ships only `OnAny` (each trigger slot write fires the
 /// behaviour exactly once). `OnAll` (await every trigger slot first)
-/// arrives with `acme.logic.gate` in a later stage — it's modelled here
+/// arrives with `sys.logic.gate` in a later stage — it's modelled here
 /// so manifests can declare it without a schema bump.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

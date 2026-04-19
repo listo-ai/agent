@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://us.example/schemas/flow.schema.json",
   "title": "Flow",
-  "description": "A flow document. Loaded into an acme.core.flow container node. Stage 0: schema shape only; executor validation lands in Stage 2.",
+  "description": "A flow document. Loaded into a sys.core.flow container node. Stage 0: schema shape only; executor validation lands in Stage 2.",
   "type": "object",
   "required": ["schema_version", "id", "nodes", "links"],
   "additionalProperties": false,
@@ -41,7 +41,7 @@
         "id": { "type": "string" },
         "kind": {
           "type": "string",
-          "description": "Reverse-DNS kind id, e.g. 'acme.compute.math.add'."
+          "description": "Reverse-DNS kind id, e.g. 'sys.compute.math.add'."
         },
         "config": {
           "description": "Kind-specific config, validated against the kind's slot schema by the engine.",

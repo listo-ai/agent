@@ -13,12 +13,12 @@ import { basename, isDirectChildOfFlow, isFlowNode, nextFlowName } from "./flow-
 
 /** Stable empty store used as a fallback before the GraphStore connects. */
 const emptyStore = create(() => ({
-  nodes: new Map() as Map<string, import("@acme/agent-client").NodeSnapshot>,
-  links: new Map() as Map<string, import("@acme/agent-client").Link>,
+  nodes: new Map() as Map<string, import("@sys/agent-client").NodeSnapshot>,
+  links: new Map() as Map<string, import("@sys/agent-client").Link>,
 }));
 
 /**
- * Landing page for /flows — lists every `acme.core.flow` container node
+ * Landing page for /flows — lists every `sys.core.flow` container node
  * with a node/link count and an open-in-editor action. The editor at
  * /flows/edit/:path* handles a single flow at a time.
  */
@@ -78,7 +78,7 @@ export function FlowsListPage() {
       const name = nextFlowName(nodes.filter(isFlowNode).map((f) => f.path));
       const created = await agent.data!.nodes.createNode({
         parent: "/",
-        kind: "acme.core.flow",
+        kind: "sys.core.flow",
         name,
       });
       return created.path;
@@ -121,7 +121,7 @@ export function FlowsListPage() {
         <GitBranch size={18} className="text-primary" />
         <h1 className="text-base font-semibold">Flows</h1>
         <span className="text-xs text-muted-foreground">
-          One row per <code>acme.core.flow</code> container.
+          One row per <code>sys.core.flow</code> container.
         </span>
         <input
           value={filter}

@@ -337,7 +337,7 @@ pub struct SlotSchema {
 /// top level alongside `placement_class`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct KindDto {
-    /// Kind identifier (e.g. `acme.core.station`).
+    /// Kind identifier (e.g. `sys.core.station`).
     pub id: String,
     #[serde(default)]
     pub display_name: Option<String>,

@@ -2,12 +2,12 @@
 //!
 //! The engine owns three kinds that together express "a running flow":
 //!
-//! * `acme.core.flow` — a flow document container. Lives under any
+//! * `sys.core.flow` — a flow document container. Lives under any
 //!   other container; holds the flow's internal nodes. Facet `IsFlow`
 //!   wires it into palette grouping and RBAC.
-//! * `acme.engine.read_slot` — a flow-internal node that subscribes to
+//! * `sys.engine.read_slot` — a flow-internal node that subscribes to
 //!   an external slot and emits its value onto a wire.
-//! * `acme.engine.write_slot` — a flow-internal node that writes a wire
+//! * `sys.engine.write_slot` — a flow-internal node that writes a wire
 //!   value back to an external slot.
 //!
 //! In Stage 2 only the kinds themselves are registered; execution of
@@ -32,7 +32,7 @@ pub fn register(kinds: &KindRegistry) {
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.core.flow",
+    kind = "sys.core.flow",
     manifest = "manifests/flow.yaml",
     behavior = "none"
 )]
@@ -40,7 +40,7 @@ pub struct Flow;
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.engine.read_slot",
+    kind = "sys.engine.read_slot",
     manifest = "manifests/read_slot.yaml",
     behavior = "none"
 )]
@@ -48,7 +48,7 @@ pub struct ReadSlot;
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.engine.write_slot",
+    kind = "sys.engine.write_slot",
     manifest = "manifests/write_slot.yaml",
     behavior = "none"
 )]
@@ -64,9 +64,9 @@ mod tests {
         let kinds = KindRegistry::new();
         register(&kinds);
         for id in [
-            "acme.core.flow",
-            "acme.engine.read_slot",
-            "acme.engine.write_slot",
+            "sys.core.flow",
+            "sys.engine.read_slot",
+            "sys.engine.write_slot",
         ] {
             assert!(kinds.contains(&KindId::new(id)), "missing {id}");
         }

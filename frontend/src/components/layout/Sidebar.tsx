@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate, useMatch } from "react-router-dom";
 import { useStore, create } from "zustand";
 import {
@@ -14,10 +14,13 @@ import {
   Loader2,
   Box,
 } from "lucide-react";
-import type { Link, NodeSnapshot } from "@acme/agent-client";
+import type { Link, NodeSnapshot } from "@sys/agent-client";
 import { useUiStore } from "@/store/ui";
 import { useGraphStoreOptional } from "@/store/graph-hooks";
+import { useAgent } from "@/hooks/useAgent";
 import { isFlowNode } from "@/pages/flows/flow-model";
+import { buildNodeContextItems, NodeContextMenu } from "@/components/NodeContextMenu";
+import { AddChildNodeDialog } from "@/components/AddChildNodeDialog";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +83,17 @@ export function Sidebar() {
 }
 
 // ---------------------------------------------------------------------------
+// Context menu state
+// ---------------------------------------------------------------------------
+
+interface CtxMenu {
+  x: number;
+  y: number;
+  node: NodeSnapshot;
+  flowPath: string;
+}
+
+// ---------------------------------------------------------------------------
 // Flows tree
 // ---------------------------------------------------------------------------
 
@@ -94,11 +108,22 @@ const emptyStore = create(() => ({
 function FlowsTree({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const graphStore = useGraphStoreOptional();
+  const agent = useAgent();
   const active = graphStore ?? emptyStore;
 
   const nodeMap      = useStore(active, (s) => s.nodes);
   const expanded     = useStore(active, (s) => s.expanded);
   const loadingPaths = useStore(active, (s) => s.loadingPaths);
+
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const [addChildPath, setAddChildPath] = useState<string | null>(null);
+  const closeCtx = () => setCtxMenu(null);
+
+  function handleContextMenu(e: React.MouseEvent, node: NodeSnapshot, flowPath: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, node, flowPath });
+  }
 
   const { flows, childrenOf } = useMemo(() => {
     const flows: NodeSnapshot[] = [];
@@ -150,39 +175,71 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
   const rootLoading = loadingPaths.has("/") && flows.length === 0;
 
   return (
-    <div>
-      {/* "Flows" section header */}
-      <NavLink
-        to="/flows"
-        end
-        className={({ isActive }) =>
-          cn(
-            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
-            "hover:bg-accent hover:text-accent-foreground",
-            isActive ? "bg-accent text-accent-foreground" : "text-foreground",
-          )
-        }
-      >
-        <GitBranch size={16} className="shrink-0" />
-        <span>Flows</span>
-        {rootLoading && <Loader2 size={12} className="ml-auto animate-spin text-muted-foreground" />}
-      </NavLink>
-
-      {/* One row per flow, each recursively expandable */}
-      {flows.map((flow) => (
-        <TreeNode
-          key={flow.path}
-          node={flow}
-          depth={0}
-          flowPath={flow.path}
-          childrenOf={childrenOf}
-          expanded={expanded}
-          loadingPaths={loadingPaths}
-          onToggle={toggle}
-          navigate={navigate}
+    <>
+      {/* Portalled overlays: context menu + add-child dialog */}
+      {ctxMenu && (
+        <NodeContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          nodeLabel={nodeName(ctxMenu.node.path)}
+          onClose={closeCtx}
+          items={buildNodeContextItems({
+            onOpen: () => { navigate(`/flows/edit${ctxMenu.flowPath}`); closeCtx(); },
+            onAddChild: () => { setAddChildPath(ctxMenu.node.path); closeCtx(); },
+            onSettings: () => { navigate(`/flows/edit${ctxMenu.flowPath}`); closeCtx(); },
+            onDelete: async () => {
+              closeCtx();
+              if (!agent.data) return;
+              await agent.data.nodes.removeNode(ctxMenu.node.path);
+              // GraphStore updates reactively from the SSE node_removed event.
+            },
+          })}
         />
-      ))}
-    </div>
+      )}
+      {addChildPath && agent.data && (
+        <AddChildNodeDialog
+          parentPath={addChildPath}
+          agent={agent.data}
+          onClose={() => setAddChildPath(null)}
+          onCreated={() => setAddChildPath(null)}
+        />
+      )}
+
+      <div>
+        {/* "Flows" section header */}
+        <NavLink
+          to="/flows"
+          end
+          className={({ isActive }) =>
+            cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+              "hover:bg-accent hover:text-accent-foreground",
+              isActive ? "bg-accent text-accent-foreground" : "text-foreground",
+            )
+          }
+        >
+          <GitBranch size={16} className="shrink-0" />
+          <span>Flows</span>
+          {rootLoading && <Loader2 size={12} className="ml-auto animate-spin text-muted-foreground" />}
+        </NavLink>
+
+        {/* One row per flow, each recursively expandable */}
+        {flows.map((flow) => (
+          <TreeNode
+            key={flow.path}
+            node={flow}
+            depth={0}
+            flowPath={flow.path}
+            childrenOf={childrenOf}
+            expanded={expanded}
+            loadingPaths={loadingPaths}
+            onToggle={toggle}
+            navigate={navigate}
+            onContextMenu={handleContextMenu}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -193,15 +250,16 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
 interface TreeNodeProps {
   node: NodeSnapshot;
   depth: number;
-  flowPath: string;                             // top-level flow path for navigation
+  flowPath: string;
   childrenOf: Map<string, NodeSnapshot[]>;
   expanded: Set<string>;
   loadingPaths: Set<string>;
   onToggle(path: string): void;
   navigate: ReturnType<typeof useNavigate>;
+  onContextMenu(e: React.MouseEvent, node: NodeSnapshot, flowPath: string): void;
 }
 
-function TreeNode({ node, depth, flowPath, childrenOf, expanded, loadingPaths, onToggle, navigate }: TreeNodeProps) {
+function TreeNode({ node, depth, flowPath, childrenOf, expanded, loadingPaths, onToggle, navigate, onContextMenu }: TreeNodeProps) {
   const isOpen    = expanded.has(node.path);
   const isLoading = loadingPaths.has(node.path);
   const children  = childrenOf.get(node.path) ?? [];
@@ -229,6 +287,7 @@ function TreeNode({ node, depth, flowPath, childrenOf, expanded, loadingPaths, o
           textClass,
         )}
         style={{ paddingLeft: depth > 0 ? `${depth * 8}px` : undefined }}
+        onContextMenu={(e) => onContextMenu(e, node, flowPath)}
       >
         {/* chevron / dot */}
         <button
@@ -276,6 +335,7 @@ function TreeNode({ node, depth, flowPath, childrenOf, expanded, loadingPaths, o
               loadingPaths={loadingPaths}
               onToggle={onToggle}
               navigate={navigate}
+              onContextMenu={onContextMenu}
             />
           ))}
           {!isLoading && children.length === 0 && (

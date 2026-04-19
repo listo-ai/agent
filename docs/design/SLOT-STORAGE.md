@@ -22,7 +22,7 @@ Without this, every extension that wants history invents its own table and every
 ## Goals
 
 1. **Uniform slot value shape.** One `SlotValue` tagged union covers `Null | Bool | Number | String | Json | Binary`. Same wire format, same storage, same RBAC.
-2. **Historization as a node.** Record policies are a node kind (`acme.core.history.config`) attached as a child of the node whose slots are being recorded. **One config per node, per-slot policy declared in its settings** — not one config per slot (see "Cardinality" below).
+2. **Historization as a node.** Record policies are a node kind (`sys.core.history.config`) attached as a child of the node whose slots are being recorded. **One config per node, per-slot policy declared in its settings** — not one config per slot (see "Cardinality" below).
 3. **Three write triggers, one implementation.**
    - **COV** — semantics depend on slot type (see "COV semantics per type" below).
    - **Interval** — periodic sample at `period_ms`, optionally aligned to wall-clock multiples of `period_ms` from epoch.
@@ -50,7 +50,7 @@ Without this, every extension that wants history invents its own table and every
 
 | Decision | Choice | Why |
 |---|---|---|
-| Where policy config lives | A child node (`acme.core.history.config`) | Composable, RBAC-uniform, audit-uniform, extensions can add new store kinds |
+| Where policy config lives | A child node (`sys.core.history.config`) | Composable, RBAC-uniform, audit-uniform, extensions can add new store kinds |
 | Cardinality | **One `HistoryConfig` per node**, per-slot policy in its settings | Collapses 500k-slot fan-out by ~20× on typical device trees; keeps everything declarative and queryable |
 | Database topology | One DB per deployment (SQLite on edge, Postgres+Timescale on cloud) | One transaction domain, one backup, one auth, one connection pool |
 | Storage split | Hard contract: `Bool|Number` → time-series tables, `String|Json|Binary` → regular `slot_history` table | Schema-level split in the same DB; authors pick table shape by picking the slot type |
@@ -184,7 +184,7 @@ The slot's *live value* is never affected — only history records in-flight bet
 
 | Surface | Change |
 |---|---|
-| Graph service | New kind `acme.core.history.config`; `SlotValue` union formalised |
+| Graph service | New kind `sys.core.history.config`; `SlotValue` union formalised |
 | Persistence | Regular `slot_history` table + time-series tables (SQLite rolling buckets / Timescale hypertables); `slots.kind` column |
 | REST | `POST /nodes/{path}/slots/{slot}/history/record`; `GET /nodes/{path}/slots/{slot}/history` (RSQL); scalar telemetry endpoint already exists |
 | CLI | `yourapp node history record <path> <slot>`; `yourapp node history list <path> <slot> --from --to` |
@@ -199,7 +199,7 @@ The slot's *live value* is never affected — only history records in-flight bet
 |---|---|---|
 | **0** | **Prerequisites audit + gap-fill.** Confirm outbox (with separate history lane), `data-tsdb` crate (`TelemetryRepo` seam + SQLite/Timescale impls), and RSQL framework are production-grade or produce stage plans for the gaps. Owners assigned per component. Verify TimescaleDB licensing covers the features we plan to use (Apache-2 core only, or TSL features explicitly accepted). **If TSL features are blocked, define a vanilla-Postgres fallback** (partitioned tables + manual bucket management) so Stages 3–4 are not blocked on a licensing decision. | — |
 | 1 | `SlotValue` union + `slots.kind` column + chunked migration | Stage 0 |
-| 2 | `acme.core.history.config` kind with all three variants; validation; placement rules; **one-per-node default, multiple opt-in via platform setting** | 1 |
+| 2 | `sys.core.history.config` kind with all three variants; validation; placement rules; **one-per-node default, multiple opt-in via platform setting** | 1 |
 | 3 | Historizer service — subscribes to slot events, applies policy, **in-memory ring buffer with bulk flush (time/size/shutdown triggers, critical-tier bypass)**, bounded queue, back-pressure health events | 2 |
 | 4 | SQLite and Timescale table impls behind the `TelemetryRepo` trait; edge quota enforcement; Binary blob handling | 3, `data-tsdb` crate (Stage 0) |
 | 5 | REST + RSQL history query path; telemetry path integration | 4, RSQL framework (Stage 0) |
@@ -218,4 +218,4 @@ The slot's *live value* is never affected — only history records in-flight bet
 
 ## One-line summary
 
-**Slots carry a unified `SlotValue`; historization is an `acme.core.history.config` child node — one per parent node, per-slot policy in its settings — with `cov | interval | on_demand` triggers, buffered bulk writes (5 s default flush, critical tier bypasses), platform-default sample caps overridable per slot, and a dedicated history lane on the outbox; one database per deployment (SQLite on edge, Postgres+Timescale on cloud), schema-split at the table level: `Bool`/`Number` in time-series tables, `String`/`Json`/`Binary` in a regular `slot_history` table.**
+**Slots carry a unified `SlotValue`; historization is an `sys.core.history.config` child node — one per parent node, per-slot policy in its settings — with `cov | interval | on_demand` triggers, buffered bulk writes (5 s default flush, critical tier bypasses), platform-default sample caps overridable per slot, and a dedicated history lane on the outbox; one database per deployment (SQLite on edge, Postgres+Timescale on cloud), schema-split at the table level: `Bool`/`Number` in time-series tables, `String`/`Json`/`Binary` in a regular `slot_history` table.**

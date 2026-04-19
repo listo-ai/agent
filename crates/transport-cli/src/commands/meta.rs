@@ -252,7 +252,7 @@ static NODES_LIST: CommandMeta = CommandMeta {
     ],
     examples: &[
         "agent nodes list",
-        "agent nodes list --filter 'kind==acme.core.folder' --sort=-path -o json",
+        "agent nodes list --filter 'kind==sys.core.folder' --sort=-path -o json",
         "agent nodes list --filter 'path=prefix=/demo' --page 2 --size 50",
         // Direct children only — for tree-view expansion. No subtree walk.
         "agent nodes list --filter 'parent_path==/station' --sort path",
@@ -335,7 +335,7 @@ static NODES_CREATE: CommandMeta = CommandMeta {
             name: "kind",
             required: true,
             type_name: "kind-id",
-            description: "Node kind id, e.g. acme.core.folder",
+            description: "Node kind id, e.g. sys.core.folder",
         },
         ArgInfo {
             name: "name",
@@ -344,7 +344,7 @@ static NODES_CREATE: CommandMeta = CommandMeta {
             description: "Child name segment",
         },
     ],
-    examples: &["agent nodes create /station acme.core.folder floor1"],
+    examples: &["agent nodes create /station sys.core.folder floor1"],
     related: &["nodes list", "nodes get"],
     input_schema: || {
         serde_json::json!({
@@ -729,7 +729,7 @@ static KINDS_LIST: CommandMeta = CommandMeta {
     examples: &[
         "agent kinds list",
         "agent kinds list --facet isContainer",
-        "agent kinds list --under acme.core.station",
+        "agent kinds list --under sys.core.station",
     ],
     related: &["nodes create"],
     input_schema: || {

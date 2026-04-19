@@ -1,4 +1,4 @@
-id: acme.core.folder
+id: sys.core.folder
 display_name: Folder
 facets:
   - isContainer

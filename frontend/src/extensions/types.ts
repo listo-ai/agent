@@ -39,7 +39,7 @@ export interface ExtensionContributions {
 }
 
 export interface ExtensionManifest {
-  /** Unique dot-namespaced id, e.g. "acme.bacnet". */
+  /** Unique dot-namespaced id, e.g. "sys.bacnet". */
   id: string;
   name: string;
   version: string;

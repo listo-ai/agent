@@ -1,4 +1,4 @@
-//! `acme.compute.count` — incrementing counter node.
+//! `sys.compute.count` — incrementing counter node.
 //!
 //! Two trigger inputs (`in`, `reset`); one output (`out`); one status
 //! slot (`count`). Step / bounds / wrap configurable.
@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 #[derive(NodeKind)]
 #[node(
-    kind = "acme.compute.count",
+    kind = "sys.compute.count",
     manifest = "manifests/count.yaml",
     behavior = "custom"
 )]

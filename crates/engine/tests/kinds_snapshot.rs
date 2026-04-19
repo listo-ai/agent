@@ -26,13 +26,13 @@ fn assert_manifest_eq(actual: KindManifest, expected: KindManifest) {
 #[test]
 fn flow_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.core.flow"),
+        KindId::new("sys.core.flow"),
         ContainmentSchema::default()
             .with_may_contain([
                 ParentMatcher::Facet(Facet::IsCompute),
-                ParentMatcher::Kind(KindId::new("acme.engine.read_slot")),
-                ParentMatcher::Kind(KindId::new("acme.engine.write_slot")),
-                ParentMatcher::Kind(KindId::new("acme.core.flow")),
+                ParentMatcher::Kind(KindId::new("sys.engine.read_slot")),
+                ParentMatcher::Kind(KindId::new("sys.engine.write_slot")),
+                ParentMatcher::Kind(KindId::new("sys.core.flow")),
             ])
             .with_cardinality(Cardinality::ManyPerParent)
             .with_cascade(CascadePolicy::Strict),
@@ -45,7 +45,7 @@ fn flow_manifest_is_pinned() {
 #[test]
 fn read_slot_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.engine.read_slot"),
+        KindId::new("sys.engine.read_slot"),
         ContainmentSchema::bound_under([ParentMatcher::Facet(Facet::IsFlow)]),
     )
     .with_display_name("Read Slot")
@@ -61,7 +61,7 @@ fn read_slot_manifest_is_pinned() {
 #[test]
 fn write_slot_manifest_is_pinned() {
     let expected = KindManifest::new(
-        KindId::new("acme.engine.write_slot"),
+        KindId::new("sys.engine.write_slot"),
         ContainmentSchema::bound_under([ParentMatcher::Facet(Facet::IsFlow)]),
     )
     .with_display_name("Write Slot")

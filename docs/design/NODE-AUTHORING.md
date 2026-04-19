@@ -32,7 +32,7 @@ A kind is declared by a manifest plus some code. The manifest carries the contra
 
 | Thing | What it declares | Where it lives |
 |---|---|---|
-| **Kind ID** | Reverse-DNS identifier (`acme.io.http.client`) | Manifest |
+| **Kind ID** | Reverse-DNS identifier (`sys.io.http.client`) | Manifest |
 | **Facets** | `isProtocol`, `isCompute`, `isIO`, etc. | Manifest |
 | **Containment** | What parents this kind can live under, what children it can hold | Manifest |
 | **Slots** | Typed ports — inputs, outputs, config, status | Manifest (JSON Schema per slot type) |
@@ -82,7 +82,7 @@ This is deterministic and introspectable: given a msg and a node, you can always
 The manifest says which settings are overridable and where the override reads from on the msg. Keep override field names matching Node-RED conventions where one exists (`msg.url`, `msg.method`, `msg.headers`, `msg.payload`) so imported flows and ported logic keep working.
 
 ```yaml
-# acme.io.http.client — manifest excerpt
+# sys.io.http.client — manifest excerpt
 settings_schema:
   type: object
   properties:
@@ -127,7 +127,7 @@ Putting it together with a concrete node.
 ### Manifest
 
 ```yaml
-kind: acme.io.http.client
+kind: sys.io.http.client
 display_name: "HTTP Request"
 description: "Send an HTTP request. Settings are static; any can be overridden by the incoming message."
 

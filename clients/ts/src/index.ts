@@ -4,6 +4,12 @@
 export { AgentClient } from "./client.js";
 export type { AgentClientOptions } from "./client.js";
 
+// Transport abstraction — consumers that wire their own fleet backend
+// need these to implement `fleetRequestFn` and `RequestTransport`.
+export type { RequestTransport, FleetRequestFn } from "./transport/request.js";
+export { FleetRequestTransport } from "./transport/fleet_request.js";
+export { pathToSubject } from "./transport/request.js";
+
 export type { ClientError, HttpError, CapabilityMismatchError, ParseError, TimeoutError } from "./errors.js";
 export { asClientError } from "./errors.js";
 
@@ -30,6 +36,10 @@ export type { Link, LinkEndpoint } from "./schemas/link.js";
 export type { Kind, Facet, SlotDefinition, SlotRole } from "./schemas/kind.js";
 export type { PluginSummary, PluginLifecycle } from "./schemas/plugin.js";
 export type { WhoAmI, Scope } from "./schemas/auth.js";
+// FleetScope is both a const namespace (constructors/guards) and a discriminated
+// union type — a single export covers both because TS tracks value and type
+// declarations under the same identifier.
+export { FleetScope } from "./schemas/fleet.js";
 export type {
   CapabilityManifest,
   Capability,

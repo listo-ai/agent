@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { SeedResultSchema } from "../schemas/seed.js";
 
 /**
@@ -16,7 +16,7 @@ export interface SeedApi {
   apply(preset: SeedPreset): Promise<SeedResult>;
 }
 
-export function createSeedApi(http: HttpClient, apiVersion: number): SeedApi {
+export function createSeedApi(http: RequestTransport, apiVersion: number): SeedApi {
   const base = `/api/v${apiVersion}/seed`;
   return {
     async apply(preset: SeedPreset): Promise<SeedResult> {

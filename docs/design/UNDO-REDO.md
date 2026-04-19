@@ -10,7 +10,7 @@ Authoritative references: [VERSIONING.md](../design/VERSIONING.md), [EVERYTHING-
 
 | Phase | Scope | State |
 |---|---|---|
-| **Phase 1** | Flow revisions — DB schema, REST API, Rust client, CLI | ✅ **Shipped** |
+| **Phase 1** | Flow revisions — DB schema, REST API, Rust client, CLI | ✅ **Shipped & tested** |
 | **Phase 2** | Node-settings revisions — wire `node_setting_revisions` table, `/nodes/{id}/settings/*` endpoints | 🔲 Pending |
 | **Phase 3** | History UI — revision timeline, diff view, revert button | 🔲 Pending |
 | **Phase 4** | Duplicate / copy / paste (built on Phase 1 revision machinery) | 🔲 Pending |
@@ -450,18 +450,44 @@ The registry hook is a single method on the kind provider: `migrate_settings(fro
 - Contract fixtures in `clients/contracts/fixtures/cli-output/flows-*/`
 - 6 fixture gate tests in `crates/transport-cli/tests/fixture_gate.rs`
 - **Current mode:** full-snapshot per revision (`patch = '[]'`); differential patches are a Phase 2 optimisation, no schema change required
+- **Bug fixed (2026-04-19):** `FlowService::check_head` was comparing `actual != expected` directly, which caused a spurious `409 Conflict` (with a misleading nil-UUID in the message) whenever a caller omitted `expected_head` on a flow that already had revisions. Fixed to treat `expected = None` as "skip OCC check" — the intended semantic per the design. [crates/domain-flows/src/lib.rs]
+- **CLI smoke-tested (2026-04-19):** full create → edit × 3 → undo × 3 → undo-past-start (422) → redo × 3 → redo-past-end (422) → revert-to-create cycle confirmed against a running standalone agent. Append-only log and correct document materialisation verified at every step.
 
 **Phase 2 — node settings revisions 🔲 Pending**
 
-`node_setting_revisions` table already created (migration v4). Work remaining: domain service, REST handlers, client + CLI bindings. Same pattern as Phase 1.
+`node_setting_revisions` table already created (migration v4). Work remaining:
+
+- `NodeSettingRevisionRepo` trait in `crates/data-repos/` and `SqliteNodeSettingRevisionRepo` in `crates/data-sqlite/`
+- `NodeSettingsService` (or extend `NodeService`) in `crates/domain-*` — `undo`, `redo`, `revert`, `list_revisions`, `settings_at`
+- REST handlers in `crates/transport-rest/src/nodes.rs` for the `/nodes/{id}/settings/*` surface (per HTTP table above)
+- Client bindings: `NodeSettings<'c>` module in `clients/rs/src/` with all methods
+- CLI: `agent nodes settings undo/redo/revert/revisions` subcommands in `crates/transport-cli/src/commands/nodes.rs`
+- Same full-snapshot-first pattern as Phase 1; same OCC via `expected_head`
 
 **Phase 3 — history UI 🔲 Pending**
 
-Revision timeline, diff view, revert button in the Studio frontend. No backend work required beyond Phase 1.
+Revision timeline, diff view, and revert button in the Studio frontend. No backend work required beyond Phase 1. Work remaining:
+
+- Revision timeline panel — fetches `/flows/{id}/revisions`, renders chronological list with `op` badges, `author`, `summary`, and relative timestamps
+- Diff view — compares two revision snapshots and renders added/removed nodes and links side-by-side
+- Revert button — calls `POST /flows/{id}/revert` with the selected `target_rev_id`; shows confirmation dialog; handles `409` gracefully
+- Interleaved display of flow + node-settings revisions once Phase 2 is shipped (scope badges per design)
+- Toast on flow-scope undo/redo when a settings-versioned node is in scope (cross-scope undo UX mitigation)
 
 **Phase 4 — duplicate / copy / paste 🔲 Pending**
 
-See design above. Builds on Phase 1 revision machinery — duplicate/paste each write a single revision.
+See design above. Builds on Phase 1 revision machinery — duplicate/paste each write a single revision. Work remaining:
+
+- `POST /api/v1/flows/{id}/duplicate` handler — body: `{ node_ids, include_children, include_links }`; response: `{ head_revision_id, summary, warnings }`
+- `POST /api/v1/flows/{id}/paste` handler — body: `{ clipboard, target_position, rewire, include_children }`; same response shape
+- ID remapping pass: every duplicated/pasted node gets a fresh ULID; internal links rewritten in one pass before the revision is written
+- Link-drop feedback: dropped and rewired links listed in `warnings[]` and persisted in the revision `summary`
+- Clipboard format v1 (`us.clipboard/v1` JSON blob) — serialised and deserialised client-side; version enforcement server-side
+- `rewire` modes: `internal-only` (default) and `dangling-ok`
+- `include_children` / `children_included` contract enforcement (reject `400 missing_children` when clipboard lacks children the paste requests)
+- Client bindings: `flows().duplicate(…)` and `flows().paste(…)` in `clients/rs/src/flows.rs`
+- CLI: `agent flows duplicate <id> --nodes …` and `agent flows paste <id> --clipboard <file>` subcommands
+- Undo of duplicate/paste reverts atomically (one `undo` call — no partial undo needed; standard undo chain handles it)
 
 ---
 

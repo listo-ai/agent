@@ -33,7 +33,7 @@ All UI artifacts are nodes in the unified graph. They inherit RBAC, audit, versi
 
 Frames are generic `{ nodeRef, alias }` pairs; aliases are author-chosen strings the framework never interprets.
 
-`ui.nav`, `ui.template`, and `ui.page` carry the `isContainer` facet so the graph's containment validator accepts them under `acme.core.station` and any `isContainer` parent. This is framework wiring, not a domain concept — it leverages the existing facet the node model already uses for placement grouping.
+`ui.nav`, `ui.template`, and `ui.page` carry the `isContainer` facet so the graph's containment validator accepts them under `sys.core.station` and any `isContainer` parent. This is framework wiring, not a domain concept — it leverages the existing facet the node model already uses for placement grouping.
 
 ## The context stack
 

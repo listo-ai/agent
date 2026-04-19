@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Slot } from "@acme/agent-client";
+import type { Slot } from "@sys/agent-client";
 import type { NodeSettingsState } from "./types";
 
 /**

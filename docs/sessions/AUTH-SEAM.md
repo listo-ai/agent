@@ -20,7 +20,7 @@ Authoritative references: [AUTH.md](../design/AUTH.md) for the long-term Zitadel
 | Axum extractor `FromRequestParts for AuthContext` — every handler that mutates data must declare it as an extractor arg |
 | Every existing `POST`/`PATCH`/`DELETE` route in `transport-rest` takes the extractor and threads `AuthContext` into the store call |
 | Audit events (`graph_events` table today, audit stream later) grow `actor: NodeId` + `tenant: String` columns; migrations included |
-| `acme.auth.user` + `acme.auth.tenant` node kinds registered in `domain-extensions` (or a new `domain-auth` crate) — mirrors Zitadel entities as graph nodes per [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md) |
+| `sys.auth.user` + `sys.auth.tenant` node kinds registered in `domain-extensions` (or a new `domain-auth` crate) — mirrors Zitadel entities as graph nodes per [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md) |
 | Scope enum: `ReadNodes`, `WriteNodes`, `WriteSlots`, `WriteConfig`, `ManagePlugins`, `ManageFleet`, `Admin` — minimal, expandable |
 | Scope check helper: `ctx.require(Scope::WriteSlots)?` returning a structured `AuthError` that serialises to 403 |
 | `AuthContext` flows into `GraphStore` mutations — `create_child_as(ctx, ...)`, `write_slot_as(ctx, ...)`, etc. — not a global |
@@ -51,7 +51,7 @@ Lives in [`crates/spi/src/auth.rs`](../../crates/spi/src/auth.rs). Small, cheap 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthContext {
     /// Stable identifier — usually a `NodeId` pointing at an
-    /// `acme.auth.user` or `acme.auth.service-account` node. For the
+    /// `sys.auth.user` or `sys.auth.service-account` node. For the
     /// dev-null provider: the special id `NodeId::nil()` with actor
     /// string `"local"`.
     pub actor: Actor,
@@ -196,10 +196,10 @@ Per [EVERYTHING-AS-NODE.md § "The agent itself is a node too"](../design/EVERYT
 
 ```yaml
 # crates/domain-auth/manifests/user.yaml
-kind: acme.auth.user
+kind: sys.auth.user
 facets: [isIdentity, isSystem]
 containment:
-  must_live_under: [{ kind: acme.auth.tenant }]
+  must_live_under: [{ kind: sys.auth.tenant }]
 slots:
   display_name: { role: config,   type: string }
   email:        { role: config,   type: string, nullable: true }
@@ -210,13 +210,13 @@ slots:
 
 ```yaml
 # crates/domain-auth/manifests/tenant.yaml
-kind: acme.auth.tenant
+kind: sys.auth.tenant
 facets: [isIdentity, isSystem, isContainer]
 containment:
   must_live_under: []
   may_contain:
-    - { kind: acme.auth.user }
-    - { kind: acme.auth.service_account }
+    - { kind: sys.auth.user }
+    - { kind: sys.auth.service_account }
 ```
 
 Seed one default tenant + one default user at boot when the graph is empty:
@@ -233,7 +233,7 @@ When Zitadel lands, a sync task mirrors Zitadel users/orgs into these kinds; not
 | **1a — Types + provider trait** | `AuthContext`, `Scope`, `ScopeSet`, `AuthProvider`, `AuthError` in `spi`. New `crates/auth` with `DevNullProvider` + `StaticTokenProvider`. Tests only — no wiring yet. | Scope enum grows past ~10 variants → pause and model as a policy DSL instead of a flat enum. |
 | **1b — Wire into REST** | Axum extractor, every mutating route declares `ctx: AuthContext`, `GraphStore::*_as` variants added, old sigs kept for seeds / tests. `AppState` grows `auth_provider: Arc<dyn AuthProvider>`. | `rjsf` property-panel form submit breaks because headers strip in dev → fix extraction to tolerate missing scheme prefix. |
 | **1c — Audit fields** | Migration `002_audit_actor_tenant.sql`; `GraphEvent` struct gains `actor`, `tenant`, `scope_used`; every `_as` writes them; existing event log backfilled with sentinels; SSE stream serialises them. | Migration fails on a production-ish SQLite with existing data → drop-and-recreate is acceptable pre-v1; post-v1 this is a hard stop. |
-| **1d — Auth-as-nodes + seed** | `domain-auth` crate with `acme.auth.tenant` + `acme.auth.user` kinds. Seed `/auth/default` + `/auth/default/local-dev` on first boot. DevNullProvider's `Actor::Local` resolves its `NodeId` from the seeded user. | Containment rules clash with existing `/agent/` subtree → move auth subtree to `/auth/` (decided up-front; included here as reminder). |
+| **1d — Auth-as-nodes + seed** | `domain-auth` crate with `sys.auth.tenant` + `sys.auth.user` kinds. Seed `/auth/default` + `/auth/default/local-dev` on first boot. DevNullProvider's `Actor::Local` resolves its `NodeId` from the seeded user. | Containment rules clash with existing `/agent/` subtree → move auth subtree to `/auth/` (decided up-front; included here as reminder). |
 | **1e — Capability manifest** | `host_capabilities()` adds `auth.dev_null.v1` (or whichever provider is active). Plugins that `require: auth.zitadel.v1` refuse to load on a dev-null build. | No issue foreseen — same mechanism as existing capabilities. |
 
 1a–1e target one shipping increment; 1b + 1c are the most invasive (every mutation handler touched).
@@ -274,7 +274,7 @@ These aren't bugs — they're the boundary of what "ship the seam before fleet" 
 
 - **Does `GraphEvent` on the SSE stream expose `actor`/`tenant` to all subscribers, or filter per-tenant before send?** Filter before send, eventually. First landing: expose — single tenant today, no practical leak. Flag with a TODO tied to the multi-tenant-cloud story.
 - **Where does the `StaticTokenProvider`'s table live?** `crates/config` overlay: `auth: { static_tokens: { <token> → { actor, tenant, scopes } } }`. Never commit tokens to git; dev-fixture file ships as `.gitignored`.
-- **Does the bootstrap "seed default tenant + user" run on every empty boot, or once and then drift is owned by the operator?** Run once when `/auth/` subtree is absent. Subsequent boots respect whatever's there. Matches how `acme.core.station` is seeded.
+- **Does the bootstrap "seed default tenant + user" run on every empty boot, or once and then drift is owned by the operator?** Run once when `/auth/` subtree is absent. Subsequent boots respect whatever's there. Matches how `sys.core.station` is seeded.
 - **Should `Admin` scope include itself as an audit tag** (so you can tell from audit logs "this was an admin override")? Yes — `scope_used` captures whatever the handler `require`d, which is the narrowest scope used. Admin listed in `scopes` but `scope_used` shows the specific action's scope.
 - **How does Studio know whether auth is dev-null and should hide/show the login button?** `GET /api/v1/capabilities` exposes the active provider id. Studio branches on it.
 

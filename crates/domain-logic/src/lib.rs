@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 //! `domain-logic` — control-flow node kinds.
 //!
-//! Stage 3a-3 ships [`Trigger`], the `acme.logic.trigger` node — the
+//! Stage 3a-3 ships [`Trigger`], the `sys.logic.trigger` node — the
 //! first behaviour kind to use the SDK's timer surface
 //! ([`extensions_sdk::TimerScheduler`] + `NodeBehavior::on_timer`).
 

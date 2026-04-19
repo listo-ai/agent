@@ -1,6 +1,6 @@
 // Dashboard UI operations — `GET /api/v1/ui/nav`, `POST /api/v1/ui/resolve`.
 
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import {
   UiNavNodeSchema,
   UiResolveResponseSchema,
@@ -20,7 +20,7 @@ export interface UiApi {
   resolve(req: UiResolveRequest): Promise<UiResolveResponse>;
 }
 
-export function createUiApi(http: HttpClient, apiVersion: number): UiApi {
+export function createUiApi(http: RequestTransport, apiVersion: number): UiApi {
   const base = `/api/v${apiVersion}/ui`;
   return {
     async nav(rootId: string): Promise<UiNavNode> {

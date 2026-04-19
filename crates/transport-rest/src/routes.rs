@@ -21,7 +21,6 @@ use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
 use crate::capabilities::host_capabilities;
-use crate::event::SequencedEvent;
 use crate::seed::{self, Preset, SeedResult};
 use crate::state::AppState;
 use crate::ui;
@@ -55,6 +54,7 @@ pub fn mount(state: AppState) -> Router {
         .merge(crate::kinds::routes())
         .merge(crate::auth_routes::routes())
         .merge(crate::flows::routes())
+        .merge(crate::preferences::routes())
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -608,12 +608,12 @@ mod tests {
         let kinds = KindRegistry::new();
         seed::register_builtins(&kinds);
         let graph = Arc::new(GraphStore::new(kinds, Arc::new(graph::NullSink)));
-        graph.create_root(KindId::new("acme.core.station")).unwrap();
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
         graph
-            .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "alpha")
+            .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "alpha")
             .unwrap();
         graph
-            .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "beta")
+            .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "beta")
             .unwrap();
         let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
         let (events, _) = broadcast::channel(16);
@@ -626,7 +626,7 @@ mod tests {
         let page = list_nodes_core(
             &state,
             ListNodesQuery {
-                filter: Some("kind==acme.core.folder".into()),
+                filter: Some("kind==sys.core.folder".into()),
                 sort: Some("-path".into()),
                 page: Some(1),
                 size: Some(1),

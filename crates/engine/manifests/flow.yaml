@@ -1,4 +1,4 @@
-id: acme.core.flow
+id: sys.core.flow
 display_name: Flow
 facets:
   - isFlow
@@ -7,9 +7,9 @@ containment:
   must_live_under: []
   may_contain:
     - facet: isCompute
-    - kind: acme.engine.read_slot
-    - kind: acme.engine.write_slot
-    - kind: acme.core.flow
+    - kind: sys.engine.read_slot
+    - kind: sys.engine.write_slot
+    - kind: sys.core.flow
   cardinality_per_parent: many_per_parent
   cascade: strict
 slots: []

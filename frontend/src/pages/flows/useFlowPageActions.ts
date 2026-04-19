@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentClient, Kind, NodeSnapshot } from "@acme/agent-client";
+import type { AgentClient, Kind, NodeSnapshot } from "@sys/agent-client";
 import { useMutation } from "@tanstack/react-query";
 import type {
   Connection,

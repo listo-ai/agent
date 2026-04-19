@@ -15,7 +15,7 @@
  */
 
 import { create } from "zustand";
-import type { AgentClient, GraphEvent, Link, NodeSnapshot } from "@acme/agent-client";
+import type { AgentClient, GraphEvent, Link, NodeSnapshot } from "@sys/agent-client";
 
 // ---------------------------------------------------------------------------
 // Types

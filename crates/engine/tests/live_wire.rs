@@ -21,7 +21,7 @@ fn fresh() -> (Arc<GraphStore>, Arc<Engine>) {
     engine_kinds::register(&kinds);
     let graph = Arc::new(GraphStore::new(kinds, sink));
     graph
-        .create_root(KindId::new("acme.core.station"))
+        .create_root(KindId::new("sys.core.station"))
         .expect("root created");
     let engine = Engine::new(graph.clone(), events);
     (graph, engine)
@@ -60,18 +60,18 @@ async fn pause_blocks_propagation() {
     let (graph, engine) = fresh();
     // Two linked demo-points; value propagates src \u{2192} dst.
     graph
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "d")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "d")
         .unwrap();
     let d = NodePath::root().child("d");
     graph
-        .create_child(&d, KindId::new("acme.driver.demo.device"), "dev")
+        .create_child(&d, KindId::new("sys.driver.demo.device"), "dev")
         .unwrap();
     let dev = d.child("dev");
     let src = graph
-        .create_child(&dev, KindId::new("acme.driver.demo.point"), "src")
+        .create_child(&dev, KindId::new("sys.driver.demo.point"), "src")
         .unwrap();
     let dst = graph
-        .create_child(&dev, KindId::new("acme.driver.demo.point"), "dst")
+        .create_child(&dev, KindId::new("sys.driver.demo.point"), "dst")
         .unwrap();
     graph
         .add_link(SlotRef::new(src, "value"), SlotRef::new(dst, "value"))
@@ -107,21 +107,21 @@ async fn live_wire_fan_out_propagates() {
     let (graph, engine) = fresh();
     // One source, two downstream targets.
     graph
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "d")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "d")
         .unwrap();
     let d = NodePath::root().child("d");
     graph
-        .create_child(&d, KindId::new("acme.driver.demo.device"), "dev")
+        .create_child(&d, KindId::new("sys.driver.demo.device"), "dev")
         .unwrap();
     let dev = d.child("dev");
     let src = graph
-        .create_child(&dev, KindId::new("acme.driver.demo.point"), "s")
+        .create_child(&dev, KindId::new("sys.driver.demo.point"), "s")
         .unwrap();
     let a = graph
-        .create_child(&dev, KindId::new("acme.driver.demo.point"), "a")
+        .create_child(&dev, KindId::new("sys.driver.demo.point"), "a")
         .unwrap();
     let b = graph
-        .create_child(&dev, KindId::new("acme.driver.demo.point"), "b")
+        .create_child(&dev, KindId::new("sys.driver.demo.point"), "b")
         .unwrap();
     graph
         .add_link(SlotRef::new(src, "value"), SlotRef::new(a, "value"))
@@ -146,18 +146,18 @@ async fn fixed_point_cycle_does_not_loop_forever() {
     // A \u{2194} B with the same value eventually quiesces.
     let (graph, engine) = fresh();
     graph
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "d")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "d")
         .unwrap();
     let d = NodePath::root().child("d");
     graph
-        .create_child(&d, KindId::new("acme.driver.demo.device"), "dev")
+        .create_child(&d, KindId::new("sys.driver.demo.device"), "dev")
         .unwrap();
     let dev = d.child("dev");
     let a = graph
-        .create_child(&dev, KindId::new("acme.driver.demo.point"), "a")
+        .create_child(&dev, KindId::new("sys.driver.demo.point"), "a")
         .unwrap();
     let b = graph
-        .create_child(&dev, KindId::new("acme.driver.demo.point"), "b")
+        .create_child(&dev, KindId::new("sys.driver.demo.point"), "b")
         .unwrap();
     graph
         .add_link(SlotRef::new(a, "value"), SlotRef::new(b, "value"))
@@ -181,14 +181,14 @@ async fn fixed_point_cycle_does_not_loop_forever() {
 async fn post_shutdown_writes_do_not_explode() {
     let (graph, engine) = fresh();
     graph
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "d")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "d")
         .unwrap();
     let d = NodePath::root().child("d");
     graph
-        .create_child(&d, KindId::new("acme.driver.demo.device"), "dev")
+        .create_child(&d, KindId::new("sys.driver.demo.device"), "dev")
         .unwrap();
     graph
-        .create_child(&d.child("dev"), KindId::new("acme.driver.demo.point"), "p")
+        .create_child(&d.child("dev"), KindId::new("sys.driver.demo.point"), "p")
         .unwrap();
 
     engine.start().await.unwrap();

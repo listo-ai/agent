@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { KindSchema } from "../schemas/kind.js";
 import type { Kind } from "../schemas/kind.js";
 
@@ -8,7 +8,7 @@ export interface KindsApi {
   listPlaceableUnder(parentPath: string): Promise<Kind[]>;
 }
 
-export function createKindsApi(http: HttpClient, apiVersion: number): KindsApi {
+export function createKindsApi(http: RequestTransport, apiVersion: number): KindsApi {
   const base = `/api/v${apiVersion}/kinds`;
 
   return {

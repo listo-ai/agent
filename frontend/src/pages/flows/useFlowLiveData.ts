@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentClient, NodeSnapshot } from "@acme/agent-client";
+import type { AgentClient, NodeSnapshot } from "@sys/agent-client";
 import { queryClient } from "@/providers/query";
 import { slotMap, type LiveNodeState } from "./flow-model";
 

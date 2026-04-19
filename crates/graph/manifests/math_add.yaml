@@ -1,4 +1,4 @@
-id: acme.compute.math.add
+id: sys.compute.math.add
 display_name: Add
 facets:
   - isCompute

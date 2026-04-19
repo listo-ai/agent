@@ -66,10 +66,10 @@ A plugin **owns its id as a namespace prefix**. Every kind id a plugin contribut
 | Plugin id | Contributable kind ids |
 |---|---|
 | `com.acme.hello` | `com.acme.hello`, `com.acme.hello.panel`, `com.acme.hello.anything.deeper` |
-| `com.acme.hello` | ❌ `acme.core.folder` (not under the plugin's namespace — refused) |
+| `com.acme.hello` | ❌ `sys.core.folder` (not under the plugin's namespace — refused) |
 | `com.acme.hello` | ❌ `com.acme.other` (sibling vendor namespace — refused) |
 
-This is enforced in `PluginRegistry::scan` before kinds are registered with `graph::KindRegistry`. Without it, a third-party plugin could shadow a first-party kind (`acme.core.folder`) or squat another vendor's namespace. Violations → plugin `Failed`, structured reason, nothing registered.
+This is enforced in `PluginRegistry::scan` before kinds are registered with `graph::KindRegistry`. Without it, a third-party plugin could shadow a first-party kind (`sys.core.folder`) or squat another vendor's namespace. Violations → plugin `Failed`, structured reason, nothing registered.
 
 ### Path-segment encoding for event subjects
 
@@ -137,7 +137,7 @@ impl PluginRegistry {
 
 ### Plugin state IS a graph node
 
-Per [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) — no parallel state. Kind: `acme.agent.plugin` (registered in `domain-extensions`). Status slots: `lifecycle`, `version`, `last_error`. Config slots: `enabled` — this is the authoritative store for enable/disable state; there is no parallel table. One node per loaded plugin, under `/agent/plugins/`.
+Per [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) — no parallel state. Kind: `sys.agent.plugin` (registered in `domain-extensions`). Status slots: `lifecycle`, `version`, `last_error`. Config slots: `enabled` — this is the authoritative store for enable/disable state; there is no parallel table. One node per loaded plugin, under `/agent/plugins/`.
 
 Consequence: Studio subscribes to plugin state changes through the same event bus it uses for everything else. Given the dot-to-underscore escape above, the subject for plugin `com.acme.hello` is `graph.<tenant>.agent.plugins.com_acme_hello.slot.lifecycle.changed`, and a fleet-wide subscription uses `graph.*.agent.plugins.*.slot.lifecycle.changed` — a single `*` per plugin, as intended. No second channel, no second schema.
 
@@ -229,7 +229,7 @@ contributes:
     resources:
       - uri_pattern: "bacnet://{device_id}"
         backing: node
-        kind_filter: acme.driver.bacnet.device
+        kind_filter: sys.driver.bacnet.device
     prompts:
       - id: investigate_bacnet_fault
         template: prompts/investigate.md
@@ -256,7 +256,7 @@ Once [Stage 7](../sessions/STEPS.md) lands NATS end-to-end, streaming RPCs (`Dis
 | UI bundle served via `/plugins/*` | + Process-plugin supervisor (gRPC over UDS, cgroups) | + Signed plugins (Ed25519 `signature` verified on load; plugins with a `signature` file that fails verification are refused, not silently accepted) |
 | `requires` mismatch = hard fail from day one | (no change — already strict) | + Registry sync from Control Plane (fleet push) |
 | Manual enable/disable via REST | + Process health / restart with exponential backoff | + Kind migration runner on load |
-| Plugin lifecycle as `acme.agent.plugin` nodes | + `acme.agent.plugin.process`, `.wasm`, `.native` children | + Per-plugin permission grants (capability-based RBAC) |
+| Plugin lifecycle as `sys.agent.plugin` nodes | + `sys.agent.plugin.process`, `.wasm`, `.native` children | + Per-plugin permission grants (capability-based RBAC) |
 
 **Not in the first landing, to stay honest:**
 
@@ -274,7 +274,7 @@ Once [Stage 7](../sessions/STEPS.md) lands NATS end-to-end, streaming RPCs (`Dis
 2. **`crates/config`** adds `plugins_dir` to `AgentConfig` + overlay + `Role::default_plugins_dir()`.
 3. **`crates/transport-rest`** adds the 5 routes above. `ServeDir` for `/plugins/*`; `fs` feature enabled in workspace `Cargo.toml` tower-http entry.
 4. **`apps/agent`** threads plugins-dir config through, calls `PluginRegistry::scan` at startup, logs `{id, lifecycle, contributes}` per plugin, passes the registry to `AppState`.
-5. **Register `acme.agent.plugin` kind** in `domain-extensions` (currently a stub) and seed one node per loaded plugin — Studio subscribes via the same graph events it uses for everything else.
+5. **Register `sys.agent.plugin` kind** in `domain-extensions` (currently a stub) and seed one node per loaded plugin — Studio subscribes via the same graph events it uses for everything else.
 6. **Migrate `examples/plugin-hello`** — add `plugin.yaml`, keep the existing rsbuild build. Makefile target builds + copies `dist/` → `plugins/com.acme.hello/ui/`.
 7. **Update `crates/transport-rest/static/index.html`** with a minimal MF host loader (~30 LOC of vanilla JS; Studio-proper in Stage 4 replaces this, but proves the wire end-to-end now).
 
@@ -289,7 +289,7 @@ Deferred seams — each gets a one-line TODO comment pointing at the stage that 
 2. **Plugins own their namespace.** Contributed kind ids must be equal to the plugin id or a dotted descendant. No squatting first-party or sibling-vendor namespaces.
 3. **Dots in path segments are escaped to `_` when building NATS subject tokens.** Keeps wildcard subscriptions meaningful without forcing plugin ids to avoid dots.
 4. **One manifest, forever.** `plugin.yaml` is additive across every stage; no second manifest format will appear.
-5. **Plugin lifecycle is a graph node** (`acme.agent.plugin`), not a parallel registry surface. Enable/disable lives on the node's `config.enabled` slot.
+5. **Plugin lifecycle is a graph node** (`sys.agent.plugin`), not a parallel registry surface. Enable/disable lives on the node's `config.enabled` slot.
 6. **`requires ⊆ host_caps` is a hard fail at load time**, from day one. No warn-now-fail-later transition.
 7. **`scan` is two-phase (validate all, then commit).** Partial failures never leave the shared kind registry half-populated.
 8. **UI bundles are the only plugin-supplied code that runs in the first landing.** Plugin-contributed node kinds are allowed via YAML; their behaviour must be in-tree until Stage 3b/3c.

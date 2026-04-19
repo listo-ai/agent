@@ -105,7 +105,7 @@ Commissioning mode lets operators dry-run the flow with synthetic outdoor temps;
 Because every site is an edge agent talking to one Control Plane, the "deploy to 40 sites" story is the platform's fleet orchestration:
 
 - Each site's agent is a node in the Control Plane's graph.
-- A rollout is a command (via the MCP tool `deploy_flow` or the `yourapp flow deploy` CLI) that targets a subtree (`tenant.acme.sites.*`) and applies the new flow/dashboard/alarm-rule with canary → staged → fleet-wide policy.
+- A rollout is a command (via the MCP tool `deploy_flow` or the `yourapp flow deploy` CLI) that targets a subtree (`tenant.sys.sites.*`) and applies the new flow/dashboard/alarm-rule with canary → staged → fleet-wide policy.
 - Rollback is one command because every version is retained.
 - NATS scatter-gather handles "firmware version on every gateway in city X" as one request with a wildcard subject and a timeout.
 
@@ -288,7 +288,7 @@ A scope is a node. Its `config` slots are the authored content (title, descripti
 ```yaml
 kind: com.example.dev.scope
 facets: [isContainer, isWorkItem]
-must_live_under: [com.example.dev.scope_plan, acme.core.folder]
+must_live_under: [com.example.dev.scope_plan, sys.core.folder]
 may_contain: [com.example.dev.scope_note, com.example.dev.scope_artefact]
 
 slots:
@@ -357,7 +357,7 @@ When the developer is done, they select scopes and hit **Queue**. This writes `s
 
 #### The execution flow — one flow, all scopes
 
-The `scope-execution` flow is a container `acme.core.flow` node in the graph. Its topology:
+The `scope-execution` flow is a container `sys.core.flow` node in the graph. Its topology:
 
 ```
  [subscribe: graph.*.scopes.**.lifecycle.*.queued]

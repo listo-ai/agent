@@ -13,7 +13,7 @@ Things that have contracts, and therefore need independent versioning:
 | **Node manifest schema** (`node.schema.json`) | `crates/spi/schemas/` | Every node kind declaration |
 | **Flow document schema** (`flow.schema.json`) | `crates/spi/schemas/` | Persisted flows |
 | **Host-function ABI** (for Wasm nodes) | `crates/extensions-sdk` | Every Wasm extension |
-| **Node kind** (e.g. `acme.io.http.client`) | The kind's own manifest | Flows that use the kind |
+| **Node kind** (e.g. `sys.io.http.client`) | The kind's own manifest | Flows that use the kind |
 | **Public REST/gRPC API** (`/api/v1/`) | `crates/transport-rest` | External clients, SDKs |
 | **Database schema** | `crates/data-sqlite`, `crates/data-postgres` | Migrations per backend |
 | **Agent binary** | `crates/apps/agent` | Humans reading `yourapp --version` |
@@ -139,7 +139,7 @@ Kinds evolve faster than the platform. A BACnet point kind at version 1 has `ins
 
 Mechanism:
 
-1. Kind manifest carries a `schema_version` field: `acme.driver.bacnet.point@2`.
+1. Kind manifest carries a `schema_version` field: `sys.driver.bacnet.point@2`.
 2. Persisted node config records the schema version it was saved with.
 3. The kind ships **migrations** alongside it — Rust functions that take a v1 config and return a v2 config.
 4. On load, the graph service walks migrations in order (v1 → v2 → v3 → current).

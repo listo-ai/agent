@@ -6,7 +6,7 @@ import type { ExtensionManifest } from "@/extensions/types";
 // Hard-coded manifest for the dev example plugin.
 // In production, manifests come from the Control Plane (Stage 10 / backend).
 const HELLO_MANIFEST: ExtensionManifest = {
-  id: "acme.example.hello",
+  id: "sys.example.hello",
   name: "Hello Plugin",
   version: "0.1.0",
   trust: "first-party",
@@ -45,8 +45,8 @@ export function ExtensionsPage() {
       <section className="rounded-md border border-border p-4">
         <h2 className="text-sm font-medium">Module Federation POC</h2>
         <p className="text-xs text-muted-foreground">
-          Loads <code>@acme/plugin-hello</code> from <code>http://localhost:3001</code>.
-          Run <code>pnpm -F @acme/plugin-hello dev</code> first.
+          Loads <code>@sys/plugin-hello</code> from <code>http://localhost:3001</code>.
+          Run <code>pnpm -F @sys/plugin-hello dev</code> first.
         </p>
         <div className="mt-3 flex items-center gap-3 text-xs">
           <button

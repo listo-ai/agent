@@ -1,4 +1,4 @@
-id: acme.fleet.remote-agent
+id: sys.fleet.remote-agent
 display_name: Remote Agent
 # Not isContainer — the node has no local children.
 # "Expanding" a remote agent is a client-side scope switch that issues
@@ -8,8 +8,8 @@ facets:
   - isSystem
 containment:
   must_live_under:
-    - kind: acme.fleet.group
-    - kind: acme.core.station
+    - kind: sys.fleet.group
+    - kind: sys.core.station
   may_contain: []
   cardinality_per_parent: many_per_parent
   cascade: strict

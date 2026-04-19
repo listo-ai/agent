@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { LinkSchema } from "../schemas/link.js";
 import type { Link } from "../schemas/link.js";
 import { z } from "zod";
@@ -22,7 +22,7 @@ export interface LinksApi {
   remove(id: string): Promise<void>;
 }
 
-export function createLinksApi(http: HttpClient, apiVersion: number): LinksApi {
+export function createLinksApi(http: RequestTransport, apiVersion: number): LinksApi {
   const base = `/api/v${apiVersion}/links`;
   return {
     async list(): Promise<Link[]> {

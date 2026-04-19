@@ -2,7 +2,7 @@
 //!
 //! ## What lives here
 //!
-//! * [`config`] — the `acme.core.history.config` node kind + settings schema.
+//! * [`config`] — the `sys.core.history.config` node kind + settings schema.
 //! * [`policy`] — resolved per-slot policy (COV / Interval / OnDemand) +
 //!   COV change-detection logic per [`SlotValueKind`].
 //! * [`historizer`] — the in-process service that subscribes to

@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { z } from "zod";
 
 /**
@@ -18,7 +18,7 @@ export interface ConfigApi {
   setConfig(path: string, config: NodeConfig): Promise<void>;
 }
 
-export function createConfigApi(http: HttpClient, apiVersion: number): ConfigApi {
+export function createConfigApi(http: RequestTransport, apiVersion: number): ConfigApi {
   const base = `/api/v${apiVersion}`;
   return {
     async setConfig(path: string, config: NodeConfig): Promise<void> {

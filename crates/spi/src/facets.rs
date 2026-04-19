@@ -22,7 +22,7 @@ pub enum Facet {
     IsIdentity,
     IsEphemeral,
     IsWritable,
-    /// Flow document container (`acme.core.flow`).
+    /// Flow document container (`sys.core.flow`).
     IsFlow,
     /// I/O surface (webhooks, HTTP clients, queues).
     IsIO,

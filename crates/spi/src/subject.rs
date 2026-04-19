@@ -187,33 +187,33 @@ mod tests {
 
     #[test]
     fn builder_produces_canonical_form() {
-        let s = Subject::for_agent(&TenantId::new("acme"), "edge-42")
+        let s = Subject::for_agent(&TenantId::new("sys"), "edge-42")
             .kind("api.v1.nodes.list")
             .build();
-        assert_eq!(s.as_dotted(), "fleet.acme.edge-42.api.v1.nodes.list");
+        assert_eq!(s.as_dotted(), "fleet.sys.edge-42.api.v1.nodes.list");
     }
 
     #[test]
     fn builder_escapes_tenant_with_dot() {
         // Tenant names coming from config could legitimately contain dots;
         // they must be escaped so the namespace hierarchy stays intact.
-        let s = Subject::for_agent(&TenantId::new("acme.prod"), "edge-42")
+        let s = Subject::for_agent(&TenantId::new("sys.prod"), "edge-42")
             .kind("cmd.plugin.install")
             .build();
-        assert_eq!(s.as_dotted(), "fleet.acme_prod.edge-42.cmd.plugin.install");
+        assert_eq!(s.as_dotted(), "fleet.sys_prod.edge-42.cmd.plugin.install");
     }
 
     #[test]
     fn render_swaps_separator_for_zenoh_style() {
-        let s = Subject::for_agent(&TenantId::new("acme"), "edge-42")
+        let s = Subject::for_agent(&TenantId::new("sys"), "edge-42")
             .kind("event.graph.slot")
             .build();
-        assert_eq!(s.render('/'), "fleet/acme/edge-42/event/graph/slot");
+        assert_eq!(s.render('/'), "fleet/sys/edge-42/event/graph/slot");
     }
 
     #[test]
     fn tenant_wildcard_matches_everything_in_tenant() {
-        let w = Subject::tenant_wildcard(&TenantId::new("acme"));
-        assert_eq!(w.as_dotted(), "fleet.acme.>");
+        let w = Subject::tenant_wildcard(&TenantId::new("sys"));
+        assert_eq!(w.as_dotted(), "fleet.sys.>");
     }
 }

@@ -1,4 +1,4 @@
-id: acme.logic.trigger
+id: sys.logic.trigger
 display_name: Trigger
 facets:
   - isCompute

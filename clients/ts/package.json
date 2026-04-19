@@ -1,7 +1,7 @@
 {
-  "name": "@acme/agent-client",
+  "name": "@sys/agent-client",
   "version": "0.1.0",
-  "description": "Headless TypeScript client for the acme agent REST API",
+  "description": "Headless TypeScript client for the sys agent REST API",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -2,11 +2,11 @@
 //!
 //! A handful of first-party kinds prove the substrate:
 //!
-//! * `acme.core.station` — the root container (one-per-graph)
-//! * `acme.core.folder` — free container
-//! * `acme.compute.math.add` — free leaf (native compute, placeholder
-//!   until Stage 3a-2 ships `acme.compute.count`)
-//! * `acme.driver.demo`, `.device`, `.point` — a demo bound-kind trio
+//! * `sys.core.station` — the root container (one-per-graph)
+//! * `sys.core.folder` — free container
+//! * `sys.compute.math.add` — free leaf (native compute, placeholder
+//!   until Stage 3a-2 ships `sys.compute.count`)
+//! * `sys.driver.demo`, `.device`, `.point` — a demo bound-kind trio
 //!   that proves placement rules work end-to-end.
 //!
 //! Every kind here is defined by a YAML manifest under `manifests/` in
@@ -31,7 +31,7 @@ pub fn register_builtins(kinds: &KindRegistry) {
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.core.station",
+    kind = "sys.core.station",
     manifest = "manifests/station.yaml",
     behavior = "none"
 )]
@@ -39,7 +39,7 @@ pub struct Station;
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.core.folder",
+    kind = "sys.core.folder",
     manifest = "manifests/folder.yaml",
     behavior = "none"
 )]
@@ -47,7 +47,7 @@ pub struct Folder;
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.compute.math.add",
+    kind = "sys.compute.math.add",
     manifest = "manifests/math_add.yaml",
     behavior = "none"
 )]
@@ -55,7 +55,7 @@ pub struct MathAdd;
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.driver.demo",
+    kind = "sys.driver.demo",
     manifest = "manifests/driver_demo.yaml",
     behavior = "none"
 )]
@@ -63,7 +63,7 @@ pub struct DriverDemo;
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.driver.demo.device",
+    kind = "sys.driver.demo.device",
     manifest = "manifests/driver_demo_device.yaml",
     behavior = "none"
 )]
@@ -71,7 +71,7 @@ pub struct DriverDemoDevice;
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.driver.demo.point",
+    kind = "sys.driver.demo.point",
     manifest = "manifests/driver_demo_point.yaml",
     behavior = "none"
 )]

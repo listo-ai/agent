@@ -1,4 +1,4 @@
-//! `acme.logic.trigger` — Node-RED-style trigger / debounce / arm node.
+//! `sys.logic.trigger` — Node-RED-style trigger / debounce / arm node.
 //!
 //! Three modes:
 //!   * `once`         — first input emits trigger payload, arms the
@@ -19,7 +19,7 @@ use serde_json::{json, Value as JsonValue};
 
 #[derive(NodeKind)]
 #[node(
-    kind = "acme.logic.trigger",
+    kind = "sys.logic.trigger",
     manifest = "manifests/trigger.yaml",
     behavior = "custom"
 )]

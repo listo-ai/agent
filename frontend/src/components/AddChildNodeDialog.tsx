@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AgentClient, Kind } from "@acme/agent-client";
+import type { AgentClient, Kind } from "@sys/agent-client";
 import { cn } from "@/lib/utils";
 
 interface AddChildNodeDialogProps {

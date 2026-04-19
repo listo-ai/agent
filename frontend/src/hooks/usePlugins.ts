@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PluginSummary } from "@acme/agent-client";
+import type { PluginSummary } from "@sys/agent-client";
 
 import { useAgent } from "./useAgent";
 

@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
-//! End-to-end dispatch tests for `acme.compute.count`.
+//! End-to-end dispatch tests for `sys.compute.count`.
 //!
 //! Each test wires a graph store + behaviour registry + SDK behaviour
 //! and exercises the dispatch path that ships in Stage 3a-2 — without
@@ -234,6 +234,6 @@ fn requires_declares_spi_msg() {
 fn count_kind_id_matches_manifest() {
     assert_eq!(
         <domain_compute::Count as NodeKind>::kind_id(),
-        KindId::new("acme.compute.count")
+        KindId::new("sys.compute.count")
     );
 }

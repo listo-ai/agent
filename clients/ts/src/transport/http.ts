@@ -1,4 +1,5 @@
 import type { ClientError } from "../errors.js";
+import type { RequestTransport } from "./request.js";
 
 export interface HttpClientOptions {
   baseUrl: string;
@@ -33,7 +34,7 @@ async function toClientError(res: Response): Promise<ClientError> {
   };
 }
 
-export class HttpClient {
+export class HttpClient implements RequestTransport {
   private readonly opts: Required<HttpClientOptions>;
 
   constructor(opts: HttpClientOptions) {

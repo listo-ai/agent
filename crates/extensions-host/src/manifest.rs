@@ -203,7 +203,7 @@ mod tests {
         assert!(p.owns_kind("com.acme.hello.panel"));
         assert!(p.owns_kind("com.acme.hello.deeper.still"));
         assert!(!p.owns_kind("com.acme.other"));
-        assert!(!p.owns_kind("acme.core.folder"));
+        assert!(!p.owns_kind("sys.core.folder"));
         assert!(!p.owns_kind("com.acme.hellox")); // prefix but not dotted descendant
     }
 

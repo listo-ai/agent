@@ -1,4 +1,4 @@
-id: acme.fleet.group
+id: sys.fleet.group
 display_name: Fleet Group
 # isContainer so station's blanket `may_contain: [facet: isContainer]`
 # accepts fleet groups without amending the station manifest.
@@ -7,12 +7,12 @@ facets:
   - isContainer
 containment:
   must_live_under:
-    - kind: acme.core.station
-    - kind: acme.core.folder
-    - kind: acme.fleet.group
+    - kind: sys.core.station
+    - kind: sys.core.folder
+    - kind: sys.fleet.group
   may_contain:
-    - kind: acme.fleet.remote-agent
-    - kind: acme.fleet.group
+    - kind: sys.fleet.remote-agent
+    - kind: sys.fleet.group
   cardinality_per_parent: many_per_parent
   cascade: strict
 slots:

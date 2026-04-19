@@ -9,7 +9,7 @@ import { AGENT_BASE_URL } from "@/lib/agent";
  * The plugin's container name follows the dot-escape convention from
  * `docs/design/PLUGINS.md` § "Path-segment encoding":
  *
- *   plugin id    `com.acme.hello`
+ *   plugin id    `com.sys.hello`
  *   MF name      `com_acme_hello`
  *
  * So the host can derive the remote name from the plugin id without

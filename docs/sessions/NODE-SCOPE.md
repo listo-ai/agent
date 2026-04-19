@@ -55,7 +55,7 @@ Cargo features on the SDK:
 
 Exactly one feature active per consumer. Mutually exclusive. CI enforces.
 
-### TypeScript — `@acme/extensions-sdk-ts` (`/sdks/sdk-ts`)
+### TypeScript — `@sys/extensions-sdk-ts` (`/sdks/sdk-ts`)
 
 One package. Consumed unchanged by:
 
@@ -68,11 +68,11 @@ Contents (minimum):
 |---|---|---|
 | `Msg` TypeScript types | generated from `spi::msg` | Mirrors the Rust envelope exactly — field names, optionality, serialization |
 | `NodeManifest` type | generated from `spi/schemas/node.schema.json` | Type-safe manifest inspection |
-| `PropertyPanel` component | `@acme/extensions-sdk-ts/forms` | `@rjsf/core` integration with multi-variant settings support |
-| `useSlotValue(path, slot)` | `@acme/extensions-sdk-ts/hooks` | React hook that subscribes to `graph.<tenant>.<path>.slot.<slot>.changed` via NATS-WS |
-| `useNode(path)` | `@acme/extensions-sdk-ts/hooks` | Metadata + lifecycle + all slots |
-| `Widget` registration API | `@acme/extensions-sdk-ts/widgets` | For contributing dashboard widgets |
-| `defineExtension` entry point | `@acme/extensions-sdk-ts/plugin` | Module Federation remote exposes — declares panels, widgets, views, commands |
+| `PropertyPanel` component | `@sys/extensions-sdk-ts/forms` | `@rjsf/core` integration with multi-variant settings support |
+| `useSlotValue(path, slot)` | `@sys/extensions-sdk-ts/hooks` | React hook that subscribes to `graph.<tenant>.<path>.slot.<slot>.changed` via NATS-WS |
+| `useNode(path)` | `@sys/extensions-sdk-ts/hooks` | Metadata + lifecycle + all slots |
+| `Widget` registration API | `@sys/extensions-sdk-ts/widgets` | For contributing dashboard widgets |
+| `defineExtension` entry point | `@sys/extensions-sdk-ts/plugin` | Module Federation remote exposes — declares panels, widgets, views, commands |
 | Capability declaration helpers | mirrors Rust side | For the extension's manifest |
 
 ### What makes it **the** SDK (not **a** SDK)
@@ -102,14 +102,14 @@ Already present in [CODE-LAYOUT.md](../design/CODE-LAYOUT.md); calling them out:
 
 Rust code in `/crates/domain-*` that registers kinds with the graph service via the SDK. Compiled into `apps/agent`. **Cannot crash the agent** — all SDK entry points catch panics and convert to `NodeError`.
 
-### Example — `acme.compute.count`
+### Example — `sys.compute.count`
 
 A classic counter. Two inputs — one to increment, one to reset. Also honours `msg.reset` so upstream can reset without wiring the second input. Step, bounds, and wrap are configurable.
 
 #### Manifest
 
 ```yaml
-kind: acme.compute.count
+kind: sys.compute.count
 display_name: "Count"
 description: "Increments on each input arrival. Emits current count. Resettable via reset input, msg.reset=true, or config change."
 facets: [isCompute]
@@ -153,7 +153,7 @@ use extensions_sdk::prelude::*;
 
 #[derive(NodeKind)]
 #[node(
-    kind = "acme.compute.count",
+    kind = "sys.compute.count",
     manifest = "manifests/count.yaml",   // single source of truth; compile-time validated
     behavior = "custom",
 )]
@@ -211,14 +211,14 @@ fn apply_step(cur: i64, step: i64, min: Option<i64>, max: Option<i64>, wrap: boo
 }
 ```
 
-### Example — `acme.logic.trigger`
+### Example — `sys.logic.trigger`
 
 Node-RED-style trigger. On input, emit a configured payload; after a delay or on the reset port, optionally emit a second payload. Covers debounce, timeout, arm/disarm patterns.
 
 #### Manifest
 
 ```yaml
-kind: acme.logic.trigger
+kind: sys.logic.trigger
 display_name: "Trigger"
 description: "On input: emit trigger payload. After delay or on reset: optionally emit reset payload."
 facets: [isCompute, isLogic]
@@ -271,14 +271,14 @@ Same `NodeBehavior` trait. Crate target is `wasm32-unknown-unknown` (or `wasm32-
 - **Host-function allowlist** — the Wasm module can only call what the SDK provides: `emit`, `read_slot`, `update_status`, `log`, `call_extension`, `schedule`. No ambient FS / net access.
 - **Trap = error outcome**, sandbox continues. A bad module cannot crash the agent.
 
-### Example — `acme.wasm.math_expr`
+### Example — `sys.wasm.math_expr`
 
 Evaluate an arithmetic expression in config against variables from `msg.payload`.
 
 #### Manifest
 
 ```yaml
-kind: acme.wasm.math_expr
+kind: sys.wasm.math_expr
 display_name: "Math Expression"
 description: "Evaluate a math expression against msg.payload variables."
 facets: [isCompute, isWasm]
@@ -311,7 +311,7 @@ use extensions_sdk::prelude::*;
 // SDK is compiled with the `wasm` feature when built for wasm32; same imports.
 
 #[derive(NodeKind)]
-#[node(kind = "acme.wasm.math_expr", manifest = "manifest.yaml")]
+#[node(kind = "sys.wasm.math_expr", manifest = "manifest.yaml")]
 pub struct MathExpr;
 
 #[derive(Deserialize, SettingsSchema)]
@@ -457,7 +457,7 @@ The SDK's `run_process_plugin()` reads the UDS path from the env var set by the 
 
 ```ts
 // /ui/src/index.ts — federated module entry
-import { defineExtension, PropertyPanel } from '@acme/extensions-sdk-ts';
+import { defineExtension, PropertyPanel } from '@sys/extensions-sdk-ts';
 import { SchemaTablePicker } from './schema-table-picker';
 import { ResultsViewer } from './results-viewer';
 
@@ -499,7 +499,7 @@ Built via Rsbuild with Module Federation config exposing `./Extension` as the re
     src/main.rs                 # run_process_plugin()
     target/release/pg_query     # compiled binary (multi-arch)
   /ui/
-    package.json                # depends on @acme/extensions-sdk-ts
+    package.json                # depends on @sys/extensions-sdk-ts
     rsbuild.config.ts
     src/index.ts
     dist/                       # built federated module
@@ -535,8 +535,8 @@ Aligned with [STEPS.md](STEPS.md) Stage 3:
 |---|---|
 | `extensions-sdk` with `NodeBehavior` + `#[derive(NodeKind)]` | Authoring API is real and single-source |
 | `extensions-sdk-ts` with `PropertyPanel`, hooks, MF entry point | Frontend side of the SDK exists and is used by at least one plugin |
-| `acme.compute.count` + `acme.logic.trigger` (native) | Core flavor works end-to-end; count's two-input + `msg.reset` pattern validated |
-| `acme.wasm.math_expr` (Wasm) | Wasm flavor works; fuel + memory limits trigger correctly; host-function ABI is stable |
+| `sys.compute.count` + `sys.logic.trigger` (native) | Core flavor works end-to-end; count's two-input + `msg.reset` pattern validated |
+| `sys.wasm.math_expr` (Wasm) | Wasm flavor works; fuel + memory limits trigger correctly; host-function ABI is stable |
 | `com.example.pg.query` (process plugin + MF UI) | Process flavor + supervised subprocess + signed MF bundle + per-target UI isolation + capability-gated install |
 | Contract test round-tripping `Msg` between Rust and TS fixtures | Shared SDK is not drifting; CI gate in place |
 | `yourapp ext check` dry-run that catches a missing capability | VERSIONING.md install-time match works against real plugins |
@@ -554,4 +554,4 @@ Aligned with [STEPS.md](STEPS.md) Stage 3:
 
 ## One-line summary
 
-**Three node flavors (core native, Wasm, process plugin) sharing one Rust SDK (`extensions-sdk`) and one TypeScript SDK (`@acme/extensions-sdk-ts`); a `NodeBehavior` impl and a manifest YAML look identical across flavors; only the Cargo feature and packaging change; the SDK is the contract that keeps core and plugins from drifting, and it is the key deliverable of this scope.**
+**Three node flavors (core native, Wasm, process plugin) sharing one Rust SDK (`extensions-sdk`) and one TypeScript SDK (`@sys/extensions-sdk-ts`); a `NodeBehavior` impl and a manifest YAML look identical across flavors; only the Cargo feature and packaging change; the SDK is the contract that keeps core and plugins from drifting, and it is the key deliverable of this scope.**

@@ -25,7 +25,7 @@ fn file_backed_survives_reopen() {
         repo.save_node(&PersistedNode {
             id,
             parent_id: None,
-            kind_id: "acme.core.station".into(),
+            kind_id: "sys.core.station".into(),
             path: "/".into(),
             name: "/".into(),
             lifecycle: "active".into(),

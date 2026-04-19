@@ -68,7 +68,7 @@ mod tests {
         let (sink, mut rx) = channel();
         sink.emit(GraphEvent::NodeCreated {
             id: NodeId::new(),
-            kind: KindId::new("acme.core.station"),
+            kind: KindId::new("sys.core.station"),
             path: NodePath::root(),
         });
         let ev = rx.recv().await.expect("event");

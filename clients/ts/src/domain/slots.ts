@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { WriteSlotResponseSchema } from "../schemas/slot.js";
 
 /**
@@ -18,7 +18,7 @@ export interface SlotsApi {
   writeSlot(path: string, slot: string, value: unknown): Promise<number>;
 }
 
-export function createSlotsApi(http: HttpClient, apiVersion: number): SlotsApi {
+export function createSlotsApi(http: RequestTransport, apiVersion: number): SlotsApi {
   const base = `/api/v${apiVersion}`;
   return {
     async writeSlot(path: string, slot: string, value: unknown): Promise<number> {

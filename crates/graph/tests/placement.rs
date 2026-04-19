@@ -16,7 +16,7 @@ fn fresh() -> (Arc<VecSink>, GraphStore) {
     seed::register_builtins(&kinds);
     let store = GraphStore::new(kinds, sink.clone());
     store
-        .create_root(KindId::new("acme.core.station"))
+        .create_root(KindId::new("sys.core.station"))
         .expect("root station must create");
     (sink, store)
 }
@@ -27,7 +27,7 @@ fn free_node_drops_anywhere() {
     store
         .create_child(
             &NodePath::root(),
-            KindId::new("acme.compute.math.add"),
+            KindId::new("sys.compute.math.add"),
             "sum",
         )
         .expect("free compute node can live under the station");
@@ -39,7 +39,7 @@ fn bound_node_rejects_wrong_parent() {
     let err = store
         .create_child(
             &NodePath::root(),
-            KindId::new("acme.driver.demo.point"),
+            KindId::new("sys.driver.demo.point"),
             "p1",
         )
         .expect_err("point cannot live directly under station");
@@ -50,15 +50,15 @@ fn bound_node_rejects_wrong_parent() {
 fn bound_node_accepts_right_parent() {
     let (sink, store) = fresh();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "demo")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "demo")
         .unwrap();
     let demo = NodePath::root().child("demo");
     store
-        .create_child(&demo, KindId::new("acme.driver.demo.device"), "d1")
+        .create_child(&demo, KindId::new("sys.driver.demo.device"), "d1")
         .unwrap();
     let device = demo.child("d1");
     store
-        .create_child(&device, KindId::new("acme.driver.demo.point"), "p1")
+        .create_child(&device, KindId::new("sys.driver.demo.point"), "p1")
         .unwrap();
     // Creation events were emitted in order.
     let events: Vec<&'static str> = sink
@@ -77,16 +77,16 @@ fn bound_node_accepts_right_parent() {
 fn cascade_strict_removes_subtree() {
     let (sink, store) = fresh();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "demo")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "demo")
         .unwrap();
     let demo = NodePath::root().child("demo");
     store
-        .create_child(&demo, KindId::new("acme.driver.demo.device"), "d1")
+        .create_child(&demo, KindId::new("sys.driver.demo.device"), "d1")
         .unwrap();
     store
         .create_child(
             &demo.child("d1"),
-            KindId::new("acme.driver.demo.point"),
+            KindId::new("sys.driver.demo.point"),
             "p1",
         )
         .unwrap();
@@ -118,7 +118,7 @@ fn cascade_deny_refuses_non_empty_delete() {
     let (_sink, store) = fresh();
     // Station has cascade=Deny + a child — refuses delete.
     store
-        .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "site")
+        .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "site")
         .unwrap();
     let err = store
         .delete(&NodePath::root())
@@ -131,24 +131,24 @@ fn deleting_linked_node_emits_link_broken() {
     let (sink, store) = fresh();
     // Build a small tree with two driver subtrees, wire their two points.
     store
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "a")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "a")
         .unwrap();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "b")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "b")
         .unwrap();
     let a = NodePath::root().child("a");
     let b = NodePath::root().child("b");
     store
-        .create_child(&a, KindId::new("acme.driver.demo.device"), "d")
+        .create_child(&a, KindId::new("sys.driver.demo.device"), "d")
         .unwrap();
     store
-        .create_child(&b, KindId::new("acme.driver.demo.device"), "d")
+        .create_child(&b, KindId::new("sys.driver.demo.device"), "d")
         .unwrap();
     let pa_id = store
-        .create_child(&a.child("d"), KindId::new("acme.driver.demo.point"), "p")
+        .create_child(&a.child("d"), KindId::new("sys.driver.demo.point"), "p")
         .unwrap();
     let pb_id = store
-        .create_child(&b.child("d"), KindId::new("acme.driver.demo.point"), "p")
+        .create_child(&b.child("d"), KindId::new("sys.driver.demo.point"), "p")
         .unwrap();
 
     store
@@ -175,36 +175,36 @@ fn deleting_linked_node_emits_link_broken() {
 fn remove_link_emits_link_removed_without_broken() {
     let (sink, store) = fresh();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "a")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "a")
         .unwrap();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "b")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "b")
         .unwrap();
     store
         .create_child(
             &NodePath::root().child("a"),
-            KindId::new("acme.driver.demo.device"),
+            KindId::new("sys.driver.demo.device"),
             "d",
         )
         .unwrap();
     store
         .create_child(
             &NodePath::root().child("b"),
-            KindId::new("acme.driver.demo.device"),
+            KindId::new("sys.driver.demo.device"),
             "d",
         )
         .unwrap();
     let pa = store
         .create_child(
             &NodePath::root().child("a").child("d"),
-            KindId::new("acme.driver.demo.point"),
+            KindId::new("sys.driver.demo.point"),
             "p",
         )
         .unwrap();
     let pb = store
         .create_child(
             &NodePath::root().child("b").child("d"),
-            KindId::new("acme.driver.demo.point"),
+            KindId::new("sys.driver.demo.point"),
             "p",
         )
         .unwrap();
@@ -238,12 +238,12 @@ fn remove_link_emits_link_removed_without_broken() {
 fn slot_write_emits_change_event() {
     let (sink, store) = fresh();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "demo")
+        .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "demo")
         .unwrap();
     store
         .create_child(
             &NodePath::root().child("demo"),
-            KindId::new("acme.driver.demo.device"),
+            KindId::new("sys.driver.demo.device"),
             "d1",
         )
         .unwrap();
@@ -251,7 +251,7 @@ fn slot_write_emits_change_event() {
     store
         .create_child(
             &NodePath::root().child("demo").child("d1"),
-            KindId::new("acme.driver.demo.point"),
+            KindId::new("sys.driver.demo.point"),
             "p1",
         )
         .unwrap();
@@ -291,10 +291,10 @@ fn unknown_kind_is_rejected() {
 fn name_collision_is_rejected() {
     let (_sink, store) = fresh();
     store
-        .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "site")
+        .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "site")
         .unwrap();
     let err = store
-        .create_child(&NodePath::root(), KindId::new("acme.core.folder"), "site")
+        .create_child(&NodePath::root(), KindId::new("sys.core.folder"), "site")
         .unwrap_err();
     assert!(matches!(err, GraphError::NameCollision { .. }));
 }

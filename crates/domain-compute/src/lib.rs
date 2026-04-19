@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 //! `domain-compute` — first concrete behaviour kind.
 //!
-//! Houses [`Count`], the `acme.compute.count` node. The kind is the
+//! Houses [`Count`], the `sys.compute.count` node. The kind is the
 //! end-to-end exercise for Stage 3a-2: a real `NodeBehavior` impl
 //! dispatched through `engine::BehaviorRegistry` against the SDK's
 //! `NodeCtx` surface.
@@ -17,7 +17,7 @@
 //! )?;
 //! ```
 //!
-//! See `docs/sessions/NODE-SCOPE.md` § "Example — `acme.compute.count`".
+//! See `docs/sessions/NODE-SCOPE.md` § "Example — `sys.compute.count`".
 
 use std::sync::Arc;
 

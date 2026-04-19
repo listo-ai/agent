@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { WhoAmISchema } from "../schemas/auth.js";
 import type { WhoAmI } from "../schemas/auth.js";
 
@@ -6,7 +6,7 @@ export interface AuthApi {
   whoami(): Promise<WhoAmI>;
 }
 
-export function createAuthApi(http: HttpClient, apiVersion: number): AuthApi {
+export function createAuthApi(http: RequestTransport, apiVersion: number): AuthApi {
   const base = `/api/v${apiVersion}/auth`;
 
   return {

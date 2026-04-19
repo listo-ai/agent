@@ -164,7 +164,7 @@ Use it as the template for the next endpoint.
 
 1. **One PR, five touchpoints.** No "split the clients into a follow-up". Reviewers enforce this.
 2. **DTOs are mirrored exactly**, not generated. Field order, names, types match. schemars-driven generation is a post-Stage-9 concern; until then, mirroring is manual and checked at review.
-3. **Clients never talk to the agent via raw reqwest / fetch.** `agent-client` (Rust) and `@acme/agent-client` (TS) are the only call paths. CLI, Studio, tests, extensions — all of them.
+3. **Clients never talk to the agent via raw reqwest / fetch.** `agent-client` (Rust) and `@sys/agent-client` (TS) are the only call paths. CLI, Studio, tests, extensions — all of them.
 4. **Fixtures are mandatory**, one per observable scenario. The fixture gate catches shape drift in CI.
 5. **Errors have one shape** (`{error: string}` on the wire, stable `code` enum in the CLI). No per-endpoint exception.
 6. **CLI output never constructs JSON directly** — always funnels through `output::ok*` helpers for the deterministic-output contract.

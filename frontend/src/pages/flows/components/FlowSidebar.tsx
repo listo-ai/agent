@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Kind } from "@acme/agent-client";
+import type { Kind } from "@sys/agent-client";
 import { facetGroup, titleForKind } from "../flow-model";
 
 interface FlowSidebarProps {
@@ -18,7 +18,7 @@ export function FlowSidebar({ kinds, onCreateNode }: FlowSidebarProps) {
   const filteredKinds = useMemo(() => {
     const term = search.trim().toLowerCase();
     return kinds
-      .filter((kind) => kind.id !== "acme.core.flow")
+      .filter((kind) => kind.id !== "sys.core.flow")
       .filter((kind) => {
         if (!term) return true;
         return (

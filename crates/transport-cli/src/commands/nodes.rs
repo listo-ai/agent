@@ -10,7 +10,7 @@ use crate::output::{self, OutputFormat};
 pub enum NodesCmd {
     /// List all nodes.
     List {
-        /// Optional filter expression, e.g. `kind==acme.core.folder`.
+        /// Optional filter expression, e.g. `kind==sys.core.folder`.
         #[arg(long)]
         filter: Option<String>,
         /// Optional sort expression, e.g. `path,-kind`.
@@ -32,7 +32,7 @@ pub enum NodesCmd {
     Create {
         /// Parent path.
         parent: String,
-        /// Kind ID (e.g. `acme.compute.count`).
+        /// Kind ID (e.g. `sys.compute.count`).
         kind: String,
         /// Node name.
         name: String,

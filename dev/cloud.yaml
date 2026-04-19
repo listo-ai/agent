@@ -14,5 +14,5 @@ fleet:
   backend: zenoh
   listen: ["tcp/127.0.0.1:17447"]
   connect: []
-  tenant: acme
+  tenant: sys
   agent_id: cloud

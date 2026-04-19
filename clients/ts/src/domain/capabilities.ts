@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { CapabilityManifestSchema } from "../schemas/capability.js";
 import type { CapabilityManifest } from "../schemas/capability.js";
 import type { CapabilityMismatchError } from "../errors.js";
@@ -15,7 +15,7 @@ export interface CapabilitiesApi {
   assertRequirements(manifest: CapabilityManifest): void;
 }
 
-export function createCapabilitiesApi(http: HttpClient): CapabilitiesApi {
+export function createCapabilitiesApi(http: RequestTransport): CapabilitiesApi {
   return {
     async getManifest(): Promise<CapabilityManifest> {
       const raw = await http.get<unknown>(`/api/v${REST_API_VERSION}/capabilities`);

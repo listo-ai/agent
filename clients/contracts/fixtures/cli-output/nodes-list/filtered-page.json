@@ -2,7 +2,7 @@
   "data": [
     {
       "id": "00000000-0000-0000-0000-000000000000",
-      "kind": "acme.core.folder",
+      "kind": "sys.core.folder",
       "path": "/beta",
       "parent_path": "/",
       "parent_id": "00000000-0000-0000-0000-000000000000",

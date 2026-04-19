@@ -64,7 +64,7 @@ pub trait FleetTransport: Send + Sync {
         handler: Arc<dyn FleetHandler>,
     ) -> Result<Server, FleetError>;
 
-    /// Connection state as a stream. Drives the `acme.agent.fleet` node.
+    /// Connection state as a stream. Drives the `sys.agent.fleet` node.
     fn health(&self) -> HealthStream;
 
     /// Stable backend id — surfaces in capabilities as `fleet.<id>.v1`.
@@ -84,7 +84,7 @@ Key points:
 
 1. **`Subject` is not opaque** — it exposes `as_dotted()` + `render(sep)` so backends map to their native separator without re-implementing escape rules.
 2. **`serve` is symmetric with HTTP routes.** [`routes::mount`](../../crates/transport-rest/src/routes.rs) registers HTTP handlers; [`fleet::mount`](../../crates/transport-rest/src/fleet.rs) wraps the same core fn (`list_nodes_core`, soon `write_slot_core`, …) in a `FleetHandler` and registers it on fleet subjects. One fn, two surfaces — tested by [`fleet::tests::fleet_list_nodes_returns_same_shape_as_http`](../../crates/transport-rest/src/fleet.rs) asserting the JSON reply is byte-identical.
-3. **Health is a stream**, not a poll. The `acme.agent.fleet` graph node has a `status.connection` slot that mirrors it, so flows can react to "cloud dropped" as a first-class event.
+3. **Health is a stream**, not a poll. The `sys.agent.fleet` graph node has a `status.connection` slot that mirrors it, so flows can react to "cloud dropped" as a first-class event.
 
 ## Backend selection
 
@@ -120,7 +120,7 @@ fleet:
   backend: zenoh
   listen:    ["tcp/0.0.0.0:7447"]   # leave empty for client-only
   connect:   []                     # peers / routers to dial outbound
-  tenant:    acme                   # fleet.<tenant>.<agent-id>.<kind>.<...>
+  tenant:    sys                   # fleet.<tenant>.<agent-id>.<kind>.<...>
   agent_id:  edge-1                 # defaults to $HOSTNAME then "local"
 ```
 
@@ -129,7 +129,7 @@ fleet:
 fleet:
   backend:  nats
   url:      tls://fleet.yourcloud.com:4443
-  tenant:   acme
+  tenant:   sys
   agent_id: edge-42
   jetstream: true
 ```
@@ -153,13 +153,13 @@ fleet.<tenant>.<agent-id>.<kind>.<...>
 
 | Kind | Used for | Example |
 |---|---|---|
-| `api.v1.*` | Request/reply matching the local REST surface. Studio (via cloud) → edge. | `fleet.acme.edge-42.api.v1.nodes.list` |
-| `event.graph.*` | Edge → cloud: slot changes, lifecycle transitions, link events. Mirrors the local SSE stream. | `fleet.acme.edge-42.event.graph.slot.temp.changed` |
-| `event.agent.*` | Agent lifecycle, health, version. | `fleet.acme.edge-42.event.agent.health.memory_mb` |
-| `cmd.*` | Cloud → edge: install plugin, pause engine, restart, reload config. | `fleet.acme.edge-42.cmd.plugin.install` |
-| `log.*` | Edge → cloud: audit + operational logs. | `fleet.acme.edge-42.log.audit` |
+| `api.v1.*` | Request/reply matching the local REST surface. Studio (via cloud) → edge. | `fleet.sys.edge-42.api.v1.nodes.list` |
+| `event.graph.*` | Edge → cloud: slot changes, lifecycle transitions, link events. Mirrors the local SSE stream. | `fleet.sys.edge-42.event.graph.slot.temp.changed` |
+| `event.agent.*` | Agent lifecycle, health, version. | `fleet.sys.edge-42.event.agent.health.memory_mb` |
+| `cmd.*` | Cloud → edge: install plugin, pause engine, restart, reload config. | `fleet.sys.edge-42.cmd.plugin.install` |
+| `log.*` | Edge → cloud: audit + operational logs. | `fleet.sys.edge-42.log.audit` |
 
-**Wildcard subscriptions** — a Studio view subscribed to `fleet.acme.*.event.agent.health.*` sees every edge's health in the tenant without per-agent config.
+**Wildcard subscriptions** — a Studio view subscribed to `fleet.sys.*.event.agent.health.*` sees every edge's health in the tenant without per-agent config.
 
 **Dot-escape** rule from [PLUGINS.md § "Path-segment encoding"](PLUGINS.md) applies: any graph path segment containing `.` is encoded with `_` when it enters a subject token. `/agent/plugins/com.acme.hello` → subject segment `com_acme_hello`.
 
@@ -185,15 +185,15 @@ Scope is a **dispatch-time routing concept, not persisted graph state**. It live
 Remote agents are represented as a node kind in the local graph. Selecting a remote-agent node in Studio is the same action as selecting that scope — there's no parallel "agent picker" dropdown backed by hidden state. Per the "no parallel state" rule, the set of known remote agents is a subtree the user browses, not a list in a config file.
 
 ```yaml
-kind: acme.fleet.remote-agent
+kind: sys.fleet.remote-agent
 # Deliberately not isContainer: the node has no children in the local graph.
 # The "expand to see the remote tree" behaviour is client-side redirection
 # (see "How Studio descends into a remote" below), not containment.
 facets: [isSystem]
 containment:
   must_live_under:
-    - { kind: acme.fleet.group }
-    - { kind: acme.core.station }   # the station root — see EVERYTHING-AS-NODE.md § core kinds
+    - { kind: sys.fleet.group }
+    - { kind: sys.core.station }   # the station root — see EVERYTHING-AS-NODE.md § core kinds
   may_contain: []
   cardinality_per_parent: ManyPerParent
 
@@ -207,18 +207,18 @@ slots:
 ```
 
 ```yaml
-kind: acme.fleet.group
+kind: sys.fleet.group
 # Ordinary container — a folder for grouping remote-agents by site/region/tenant.
 facets: [isSystem, isContainer]
 containment:
-  must_live_under: [{ kind: acme.core.folder }, { kind: acme.core.station }]
-  may_contain:     [{ kind: acme.fleet.remote-agent }, { kind: acme.fleet.group }]
+  must_live_under: [{ kind: sys.core.folder }, { kind: sys.core.station }]
+  may_contain:     [{ kind: sys.fleet.remote-agent }, { kind: sys.fleet.group }]
   cardinality_per_parent: ManyPerParent
 slots:
   display_name: { role: config, type: string, nullable: true }
 ```
 
-Nested `acme.fleet.group` is allowed so operators can build region → site → rack hierarchies without inventing a tagging scheme.
+Nested `sys.fleet.group` is allowed so operators can build region → site → rack hierarchies without inventing a tagging scheme.
 
 ### Scope resolution
 
@@ -259,7 +259,7 @@ export type Scope =
 
 ### How Studio descends into a remote
 
-1. User selects an `acme.fleet.remote-agent` node in the tree.
+1. User selects an `sys.fleet.remote-agent` node in the tree.
 2. Studio pushes the scope onto a URL path segment: `/scope/:tenant/:agent_id/...`. The URL is the source of truth; a Zustand store subscribes to the route and exposes the current `Scope` to the `AgentClient`. Back/forward, tab duplication, and deep links all round-trip correctly.
 3. Tree-expansion calls now issue `fleet.<tenant>.<agent-id>.api.v1.nodes.list` via fleet req/reply instead of hitting the local HTTP route. The remote agent's own subtree renders inline under the remote-agent node — one unified tree to the user, scoped fleet calls underneath.
 4. Navigating to a local path (`/` or any non-`/scope/...` route) resets the scope to `Local`.
@@ -274,14 +274,14 @@ The cloud's presence tracking (`fleet.<tenant>.*.event.agent.health.*`) drives t
 
 ### Scope in flows
 
-Flow nodes that touch the graph (`Read Slot`, `Write Slot`, `Watch Lifecycle`) accept an optional `scope` input, defaulting to `Local`. A flow can watch a slot on a remote agent by wiring an `acme.fleet.remote-agent` node into the scope input — the flow engine reads `tenant` + `agent_id` from that node's config slots, constructs `Scope::Remote`, and translates the call into a fleet subscription on `fleet.<tenant>.<agent-id>.event.graph.<path>.slot.<slot>.changed`. From the flow author's perspective, "read a slot on edge-42" and "read a slot on this agent" are the same operation with a different scope.
+Flow nodes that touch the graph (`Read Slot`, `Write Slot`, `Watch Lifecycle`) accept an optional `scope` input, defaulting to `Local`. A flow can watch a slot on a remote agent by wiring an `sys.fleet.remote-agent` node into the scope input — the flow engine reads `tenant` + `agent_id` from that node's config slots, constructs `Scope::Remote`, and translates the call into a fleet subscription on `fleet.<tenant>.<agent-id>.event.graph.<path>.slot.<slot>.changed`. From the flow author's perspective, "read a slot on edge-42" and "read a slot on this agent" are the same operation with a different scope.
 
 ### Discovery
 
 Remote-agent nodes are seeded two ways:
 
 - **Manual (v1)** — operator creates the node and fills in `tenant` + `agent_id`. Fine for small fleets and for the standalone-studio-paired-with-one-edge case.
-- **Cloud-populated (future)** — when Studio is talking to a cloud scope, the cloud publishes `acme.fleet.remote-agent` children under an `acme.fleet.group` for each tenant it knows about. Status slots (`connection`, `last_seen`) are driven by cloud-side presence tracking on `fleet.<tenant>.*.event.agent.health.*`. See the evolution path.
+- **Cloud-populated (future)** — when Studio is talking to a cloud scope, the cloud publishes `sys.fleet.remote-agent` children under an `sys.fleet.group` for each tenant it knows about. Status slots (`connection`, `last_seen`) are driven by cloud-side presence tracking on `fleet.<tenant>.*.event.agent.health.*`. See the evolution path.
 
 Either way, the node is the single source of truth for "what remotes exist" — there's no separate fleet inventory API.
 
@@ -290,10 +290,10 @@ Either way, the node is the single source of truth for "what remotes exist" — 
 Per the "no parallel state" rule, the live connection is a node kind in the graph, not hidden state in a subsystem. *Manifest drafted; the kind + seeding are not yet registered — added alongside the next fleet handler.*
 
 ```yaml
-kind: acme.agent.fleet
+kind: sys.agent.fleet
 facets: [isSystem]
 containment:
-  must_live_under: [{ kind: acme.agent.self }]
+  must_live_under: [{ kind: sys.agent.self }]
   cardinality_per_parent: one_per_parent
 
 slots:
@@ -351,21 +351,25 @@ Credential rotation, revocation, and audit all live in the existing Zitadel + au
 | Hot-swap backend at runtime | Rare need; restart is fine. |
 | Custom auth providers on the fleet fabric itself | Stick with each backend's native auth (NATS accounts, Zenoh ACLs, MQTT usernames). |
 | `Scope::Broadcast` (fan-out across all agents in a tenant) | Partial-reply handling, `AgentFilter` semantics, and timeout aggregation need their own design pass. Revisit once `Remote` is shipped and a real use case lands. |
-| Cloud-populated remote-agent discovery | Depends on cloud-side presence tracking and a mirrored `acme.fleet.group` tree — sequenced after the cloud control plane lands. Manual node creation covers v1. |
+| Cloud-populated remote-agent discovery | Depends on cloud-side presence tracking and a mirrored `sys.fleet.group` tree — sequenced after the cloud control plane lands. Manual node creation covers v1. |
 
 ## What's shipped today
 
 - Trait + types in [`spi::fleet`](../../crates/spi/src/fleet.rs) — `FleetTransport`, `FleetHandler`, `FleetMessage`, `HealthStatus`, `FleetError`, `NullTransport`.
 - Subject builder in [`spi::subject`](../../crates/spi/src/subject.rs) — `Subject::for_agent(tenant, agent_id).kind("api.v1.nodes.list").build()`, with dot-escape applied per-token.
+- **`FleetScope`** in [`spi::fleet`](../../crates/spi/src/fleet.rs) — `Local | Remote { tenant, agent_id }` with `#[serde(tag = "kind", rename_all = "snake_case")]`. `subject(&self, kind)` builds the canonical fleet subject for remote scopes and returns `None` for local (takes the axum router path). Serde JSON contract locked by tests (`fleet_scope_serde_contract`, `fleet_scope_subject_*`).
+- **`FleetScope` TypeScript mirror** in [`clients/ts/src/schemas/fleet.ts`](../../clients/ts/src/schemas/fleet.ts) — `FleetScopeSchema` (zod discriminated union) + `FleetScope` namespace with `local()`, `remote()`, `isLocal()`, `isRemote()` convenience helpers. Exported from the client's public surface.- **`RequestTransport` interface** in [`clients/ts/src/transport/request.ts`](../../clients/ts/src/transport/request.ts) — the five methods (`get`, `post`, `postNoContent`, `put`, `delete`) that every domain module depends on. `HttpClient` implements it directly (no domain code changed). `FleetRequestFn` and `pathToSubject()` live in the same file — `pathToSubject` maps `(method, REST path)` to a fleet subject suffix using an explicit table that mirrors what `transport_rest::fleet::mount` registers on the Rust side.
+- **`FleetRequestTransport`** in [`clients/ts/src/transport/fleet_request.ts`](../../clients/ts/src/transport/fleet_request.ts) — implements `RequestTransport` for remote scopes. Each domain call encodes as `(subject, body)` and calls a caller-supplied `fleetRequestFn`; the subject is derived via `pathToSubject`. The caller owns the fleet WS/NATS connection and injects it as a closure — no NATS dependency inside the client package.
+- **`AgentClient.connect()` scope switching** in [`clients/ts/src/client.ts`](../../clients/ts/src/client.ts) — `AgentClientOptions` gains `scope?: FleetScope` and `fleetRequestFn?: FleetRequestFn`. When scope is `Remote`, `FleetRequestTransport` is used; otherwise `HttpClient`. `AgentClient.scope` is a readable property. `events` for remote scopes returns a no-op iterator (fleet graph-event subscriptions are separate, managed by the caller on their fleet WS).- **`sys.fleet.remote-agent` and `sys.fleet.group` node kinds** in [`crates/domain-fleet`](../../crates/domain-fleet/) — manifests, `register_kinds()`, tests that assert manifest parsing, facet presence, and containment rules. Registered in `agent run` alongside the other domain crates.
 - Embedded Zenoh backend in [`transport-fleet-zenoh`](../../crates/transport-fleet-zenoh/) — covers `publish` / `request` / `subscribe` / `serve` / `health`; `Server` drops via `ServerHandle::shutdown`.
 - Handler seam in [`transport_rest::fleet::mount`](../../crates/transport-rest/src/fleet.rs) — currently registers `api.v1.nodes.list` on `fleet.<tenant>.<agent-id>.api.v1.nodes.list`, sharing `list_nodes_core` with the axum route. The `_returns_same_shape_as_http` test locks the contract.
 - Config overlay + CLI flags wired through [`agent run`](../../crates/apps/agent/src/main.rs). `fleet: { backend: zenoh, … }` in YAML opens a `ZenohTransport`, swaps it into `AppState`, and calls `fleet::mount`.
 - End-to-end integration test [`fleet_zenoh_e2e`](../../crates/transport-rest/tests/fleet_zenoh_e2e.rs) spins up two Zenoh peers on loopback and verifies a real req/reply round-trip.
 - [Smoke-test example](../../crates/transport-fleet-zenoh/examples/fleet_get.rs) — one-shot CLI that joins as a third peer and queries any mounted subject.
 
-Verified on [`dev/cloud.yaml`](../../dev/cloud.yaml) + [`dev/edge.yaml`](../../dev/edge.yaml): cloud listens on `tcp/127.0.0.1:17447`, edge connects, each mounts `fleet.acme.<agent-id>.api.v1.*`, and a third peer can query either side and get its node list back.
+Verified on [`dev/cloud.yaml`](../../dev/cloud.yaml) + [`dev/edge.yaml`](../../dev/edge.yaml): cloud listens on `tcp/127.0.0.1:17447`, edge connects, each mounts `fleet.sys.<agent-id>.api.v1.*`, and a third peer can query either side and get its node list back.
 
-**Not yet shipped (scope selection):** `spi::fleet::Scope`, the `acme.fleet.remote-agent` / `acme.fleet.group` kinds, `AgentClient` scope-aware dispatch (Rust + TS), and the `/scope/:tenant/:agent_id/...` route structure in Studio. Sequenced alongside the next batch of `api.v1.*` fleet handlers.
+**Not yet shipped (fleet connection):** the actual fleet WS/NATS connection that Studio uses as its `fleetRequestFn`. The `AgentClient` scope-switching seam is complete; what remains is wiring up a NATS-WS (or Zenoh equivalent) client in Studio and passing it as `fleetRequestFn` when constructing a `Remote`-scoped `AgentClient`. The URL-based scope routing in Studio (`/scope/:tenant/:agent_id/...`) follows once the connection is live.
 
 ## Evolution path
 
@@ -376,7 +380,7 @@ Verified on [`dev/cloud.yaml`](../../dev/cloud.yaml) + [`dev/edge.yaml`](../../d
 | `transport-fleet-nats` planned | + NATS backend alongside Zenoh, same trait | + NATS-WS client for Studio browser, JetStream durable outbox |
 | Single-process dev topology | + multi-region cloud, leaf chaining | + federated multi-tenant clouds |
 | Object-store URLs for bulk | + content-addressed cache at each edge | + peer caching ("ask my neighbour first") |
-| No scope selection — everything is local | + `spi::fleet::Scope` + `Remote` dispatch in `AgentClient` (Rust + TS), manual `acme.fleet.remote-agent` node creation, Studio `/scope/:tenant/:agent_id/...` routing | + cloud-populated discovery under `acme.fleet.group`, then `Scope::Broadcast` with `AgentFilter` |
+| `FleetScope` type + TS mirror shipped; `sys.fleet.remote-agent` / `sys.fleet.group` kinds registered; `RequestTransport` interface + `FleetRequestTransport` + `AgentClient` scope switching shipped | + Studio fleet WS/NATS-WS connection wired as `fleetRequestFn`; Studio `/scope/:tenant/:agent_id/...` URL routing | + cloud-populated discovery under `sys.fleet.group`, then `Scope::Broadcast` with `AgentFilter` |
 
 Each row is additive; the trait signature never changes.
 
@@ -386,11 +390,11 @@ Each row is additive; the trait signature never changes.
 2. **Single trait (`spi::FleetTransport`)**; multiple backend crates gated by Cargo features.
 3. **Canonical subject namespace** is `fleet.<tenant>.<agent-id>.<kind>.<...>`, enforced regardless of backend wire format.
 4. **Dot-escape rule from PLUGINS.md applies** to every segment that becomes a subject token.
-5. **Connection state is a graph node** (`acme.agent.fleet`) — no parallel status struct.
+5. **Connection state is a graph node** (`sys.agent.fleet`) — no parallel status struct.
 6. **Bulk transfer doesn't go on the bus.** Control message + signed URL + out-of-band HTTPS fetch.
 7. **`fleet: null` is a first-class configuration**, not a degraded mode — standalone agents don't pretend they have cloud.
 8. **Plugins consume `fleet.<backend>.v1` capabilities, never provide them.**
-9. **Scope is dispatch-time routing, never persisted graph state.** `Scope::Local` vs `Scope::Remote { tenant, agent_id }` chooses the transport; the set of known remotes lives as `acme.fleet.remote-agent` nodes, not as a separate inventory.
+9. **Scope is dispatch-time routing, never persisted graph state.** `Scope::Local` vs `Scope::Remote { tenant, agent_id }` chooses the transport; the set of known remotes lives as `sys.fleet.remote-agent` nodes, not as a separate inventory.
 
 ## One-line summary
 

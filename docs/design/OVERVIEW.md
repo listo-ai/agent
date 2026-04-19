@@ -95,6 +95,38 @@ One binary, one codebase. Role selected at startup via `--role` flag or config. 
 - **Edge agent is single-tenant.** One gateway belongs to one tenant. Multi-tenant edge (e.g. MSP hosting multiple customers on one box) is **not supported in v1** — the 350 MB memory budget and shared-process model don't give real isolation, and claiming it would be dishonest. Customers needing hard isolation per tenant on-site get one agent per tenant.
 - **Standalone** appliances are single-tenant by definition (one org owns the box).
 
+## Key libraries
+
+One library per concern. Don't introduce alternatives — if a crate is listed here, use it. If you think you need something not on this list, discuss before adding.
+
+| Concern | Crate(s) | Notes |
+|---|---|---|
+| **Async runtime** | [`tokio`](https://crates.io/crates/tokio) | Multi-thread scheduler everywhere. `#[tokio::main]` only in `apps/agent`. |
+| **HTTP server** | [`axum`](https://crates.io/crates/axum) + [`tower-http`](https://crates.io/crates/tower-http) | Routing in `transport-rest`; CORS, tracing, and static-file middleware via `tower-http`. |
+| **HTTP client** | [`reqwest`](https://crates.io/crates/reqwest) | `rustls-tls`, no OpenSSL dep. Shared via workspace. |
+| **CLI** | [`clap`](https://crates.io/crates/clap) | Derive + env features. Binary-only — domain crates never depend on it. |
+| **Serialization** | [`serde`](https://crates.io/crates/serde) + [`serde_json`](https://crates.io/crates/serde_json) + [`serde_yml`](https://crates.io/crates/serde_yml) | All wire types derive `Serialize`/`Deserialize`. JSON on the wire; YAML for manifests and config files. |
+| **JSON Schema** | [`schemars`](https://crates.io/crates/schemars) | Derives `JsonSchema` on all settings and slot-schema types for Studio property-panel generation. |
+| **Error handling** | [`thiserror`](https://crates.io/crates/thiserror) / [`anyhow`](https://crates.io/crates/anyhow) | `thiserror` in every library crate (typed errors, part of the API). `anyhow` only in `apps/agent` (binary entry point). Never use `anyhow` in a library crate. |
+| **Logging / tracing** | [`tracing`](https://crates.io/crates/tracing) + [`tracing-subscriber`](https://crates.io/crates/tracing-subscriber) | Structured spans and events everywhere. `tracing` in libs; subscriber initialised once in `apps/agent`. See [LOGGING.md](LOGGING.md). |
+| **Async utilities** | [`async-trait`](https://crates.io/crates/async-trait) + [`async-stream`](https://crates.io/crates/async-stream) + [`tokio-stream`](https://crates.io/crates/tokio-stream) + [`futures-util`](https://crates.io/crates/futures-util) | `async-trait` for object-safe async traits; `async-stream` / `tokio-stream` for `Stream` impls; `futures-util` for combinators. |
+| **UUIDs** | [`uuid`](https://crates.io/crates/uuid) | v4 random; serde feature always on. Node IDs, tenant IDs, correlation IDs. |
+| **Semver** | [`semver`](https://crates.io/crates/semver) | Extension capability manifests and kind versioning. See [VERSIONING.md](VERSIONING.md). |
+| **Proc-macro helpers** | [`syn`](https://crates.io/crates/syn) + [`quote`](https://crates.io/crates/quote) + [`proc-macro2`](https://crates.io/crates/proc-macro2) | Used only in `extensions-sdk-macros`. Do not add proc-macro crates elsewhere. |
+| **SQLite** | [`rusqlite`](https://crates.io/crates/rusqlite) (bundled feature) | Edge and standalone persistence. Bundled so the binary has zero system-lib dependencies. Only `data-sqlite` depends on it. |
+| **PostgreSQL** | [`sqlx`](https://crates.io/crates/sqlx) or [`sea-query`](https://crates.io/crates/sea-query) *(planned)* | Cloud persistence. Only `data-postgres` will depend on it — no SQL in domain crates, ever. |
+| **NATS** | [`async-nats`](https://crates.io/crates/async-nats) *(planned)* | JetStream for cloud; leaf-node for edge. Only `transport-nats` and `messaging` depend on it. |
+| **Zenoh** | [`zenoh`](https://crates.io/crates/zenoh) | Fleet transport for edge-to-edge and edge-to-cloud in constrained environments. Only `transport-fleet-zenoh`. |
+| **Wasm host** | [`wasmtime`](https://crates.io/crates/wasmtime) | Sandboxed Wasm extension execution. Only `extensions-host` depends on it. Component model + WASI. |
+| **Datetime / timezone** | [`jiff`](https://crates.io/crates/jiff) | UTC storage, IANA tz conversion, Rust 2024 idioms. No `chrono`/`time` — use `jiff` for all time math. |
+| **Locale / formatting** | [`icu_locale`](https://crates.io/crates/icu_locale) + [`icu_datetime`](https://crates.io/crates/icu_datetime) + [`icu_decimal`](https://crates.io/crates/icu_decimal) (ICU4X) | BCP-47 locale parsing, locale-aware date/number/currency formatting on the presentation edge. |
+| **Unit conversion** | [`uom`](https://crates.io/crates/uom) | Type-safe SI units; compile-time dimensional analysis. Used inside `UnitRegistry` — never hand-write conversion factors. |
+| **Translations** | [`fluent`](https://crates.io/crates/fluent) + [`fluent-bundle`](https://crates.io/crates/fluent-bundle) | Mozilla Fluent for UI strings and backend message codes. `.ftl` bundles ship with Studio. |
+| **ISO 4217 currencies** | [`iso_currency`](https://crates.io/crates/iso_currency) | Static code table. No FX logic — storage and display only. |
+| **Testing** | [`tempfile`](https://crates.io/crates/tempfile) | Temporary directories/files in tests. See [TESTS.md](TESTS.md) for the full test pattern library. |
+
+> **Guiding principle per domain:** `tokio` for async, `axum` for HTTP, `serde` for wire, `thiserror` in libs / `anyhow` in binary, `tracing` for observability, `jiff` for time, ICU4X for presentation formatting, `uom` for units, Fluent for translations. Don't mix, don't wrap unnecessarily, don't write your own.
+
 ## One-line summary
 
 **One Rust binary cross-compiled to ARM64/ARMv7/x86 Linux for engine roles, plus a Tauri Studio built for Windows/macOS/Linux/iOS/Android and a browser SPA — deployment profile (`cloud`, `edge`, `standalone`) selected at runtime via config, not via separate builds.**

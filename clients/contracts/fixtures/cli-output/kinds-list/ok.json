@@ -1,6 +1,6 @@
 [
   {
-    "id": "acme.core.station",
+    "id": "sys.core.station",
     "display_name": null,
     "facets": null,
     "containment": null,

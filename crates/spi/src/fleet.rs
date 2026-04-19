@@ -32,7 +32,7 @@ pub struct FleetMessage {
     pub reply_to: Option<Subject>,
 }
 
-/// Connection health snapshot. Mirrored into the `acme.agent.fleet`
+/// Connection health snapshot. Mirrored into the `sys.agent.fleet`
 /// node's `status.connection` slot so flows can react to fleet
 /// lifecycle as a first-class event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -305,6 +305,44 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         let back: FleetError = serde_json::from_str(&s).unwrap();
         assert_eq!(back, e);
+    }
+
+    /// `FleetScope` JSON contract is shared with the TypeScript client.
+    /// The shape must match `FleetScopeSchema` in `clients/ts/src/schemas/fleet.ts`.
+    #[test]
+    fn fleet_scope_serde_contract() {
+        // Local → `{"kind":"local"}`
+        let local = FleetScope::Local;
+        let json = serde_json::to_string(&local).unwrap();
+        assert_eq!(json, r#"{"kind":"local"}"#);
+        let back: FleetScope = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, local);
+
+        // Remote → `{"kind":"remote","tenant":"sys","agent_id":"edge-42"}`
+        let remote = FleetScope::Remote {
+            tenant: crate::TenantId::new("sys"),
+            agent_id: "edge-42".to_string(),
+        };
+        let json = serde_json::to_string(&remote).unwrap();
+        assert_eq!(json, r#"{"kind":"remote","tenant":"sys","agent_id":"edge-42"}"#);
+        let back: FleetScope = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, remote);
+    }
+
+    #[test]
+    fn fleet_scope_subject_returns_none_for_local() {
+        assert!(FleetScope::Local.subject("api.v1.nodes.list").is_none());
+    }
+
+    #[test]
+    fn fleet_scope_subject_builds_canonical_form_for_remote() {
+        let s = FleetScope::Remote {
+            tenant: crate::TenantId::new("sys"),
+            agent_id: "edge-42".to_string(),
+        }
+        .subject("api.v1.nodes.list")
+        .unwrap();
+        assert_eq!(s.as_dotted(), "fleet.sys.edge-42.api.v1.nodes.list");
     }
 
     /// Compile-time check: trait is object-safe so `Arc<dyn FleetTransport>`

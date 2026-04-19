@@ -30,20 +30,20 @@ fn state_survives_close_and_reopen() {
     {
         let repo = Arc::new(SqliteGraphRepo::open_file(db.path()).unwrap());
         let store = GraphStore::with_repo(fresh_kinds(), Arc::new(NullSink), repo.clone()).unwrap();
-        store.create_root(KindId::new("acme.core.station")).unwrap();
+        store.create_root(KindId::new("sys.core.station")).unwrap();
         store
-            .create_child(&NodePath::root(), KindId::new("acme.driver.demo"), "d")
+            .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "d")
             .unwrap();
         let d = NodePath::root().child("d");
         store
-            .create_child(&d, KindId::new("acme.driver.demo.device"), "dev")
+            .create_child(&d, KindId::new("sys.driver.demo.device"), "dev")
             .unwrap();
         let dev = d.child("dev");
         let p_id = store
-            .create_child(&dev, KindId::new("acme.driver.demo.point"), "p")
+            .create_child(&dev, KindId::new("sys.driver.demo.point"), "p")
             .unwrap();
         let q_id = store
-            .create_child(&dev, KindId::new("acme.driver.demo.point"), "q")
+            .create_child(&dev, KindId::new("sys.driver.demo.point"), "q")
             .unwrap();
         store
             .write_slot(&dev.child("p"), "value", json!(42))
@@ -72,7 +72,7 @@ fn restore_rejects_unknown_kind() {
     repo.save_node(&PersistedNode {
         id: Uuid::new_v4(),
         parent_id: None,
-        kind_id: "acme.unknown.kind".into(),
+        kind_id: "sys.unknown.kind".into(),
         path: "/".into(),
         name: "/".into(),
         lifecycle: "created".into(),
@@ -113,7 +113,7 @@ fn write_through_failure_leaves_memory_clean() {
     let store =
         GraphStore::with_repo(fresh_kinds(), Arc::new(NullSink), Arc::new(FlakyRepo)).unwrap();
     let err = store
-        .create_root(KindId::new("acme.core.station"))
+        .create_root(KindId::new("sys.core.station"))
         .expect_err("backend refused");
     assert!(matches!(err, graph::GraphError::Backend(_)));
     assert_eq!(store.len(), 0, "memory untouched after backend refusal");

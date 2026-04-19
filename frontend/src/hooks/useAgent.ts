@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { AgentClient, Kind, Link, NodeSnapshot } from "@acme/agent-client";
+import type { AgentClient, Kind, Link, NodeSnapshot } from "@sys/agent-client";
 
 import { agentPromise } from "@/lib/agent";
 

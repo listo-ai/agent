@@ -23,7 +23,7 @@ use std::str::FromStr;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use data_entities::{FlowId, RevisionId};
 use domain_flows::{FlowError, FlowService};

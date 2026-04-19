@@ -1,6 +1,6 @@
 //! Extension-related node kinds.
 //!
-//! Currently ships one kind: [`Plugin`] (`acme.agent.plugin`). Per
+//! Currently ships one kind: [`Plugin`] (`sys.agent.plugin`). Per
 //! `docs/design/EVERYTHING-AS-NODE.md` § "The agent itself is a node
 //! too", plugin state lives on graph nodes — not a parallel registry —
 //! so Studio subscribes to `graph.<tenant>.agent.plugins.*` the same
@@ -16,7 +16,7 @@ pub fn register_kinds(kinds: &KindRegistry) {
 
 #[derive(extensions_sdk::NodeKind)]
 #[node(
-    kind = "acme.agent.plugin",
+    kind = "sys.agent.plugin",
     manifest = "manifests/plugin.yaml",
     behavior = "none"
 )]

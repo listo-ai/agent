@@ -1,4 +1,6 @@
 import { HttpClient } from "./transport/http.js";
+import { FleetRequestTransport } from "./transport/fleet_request.js";
+import type { FleetRequestFn, RequestTransport } from "./transport/request.js";
 import { createNodesApi } from "./domain/nodes.js";
 import { createSlotsApi } from "./domain/slots.js";
 import { createConfigApi } from "./domain/config.js";
@@ -23,6 +25,8 @@ import type { KindsApi } from "./domain/kinds.js";
 import type { AuthApi } from "./domain/auth.js";
 import type { UiApi } from "./domain/ui.js";
 import { REST_API_VERSION } from "./version.js";
+import { FleetScope } from "./schemas/fleet.js";
+import type { FleetScope as FleetScopeType } from "./schemas/fleet.js";
 
 export interface AgentClientOptions {
   /** Base URL of the agent, e.g. "http://localhost:8080". */
@@ -36,6 +40,29 @@ export interface AgentClientOptions {
    * Only for testing against agents that don't yet expose /capabilities.
    */
   skipCapabilityCheck?: boolean;
+  /**
+   * Scope for this client. Defaults to `FleetScope.local()`.
+   *
+   * When `FleetScope.remote(tenant, agentId)`: every domain call routes
+   * through `fleetRequestFn` instead of `fetch`. `events.subscribe()`
+   * returns a no-op iterator — fleet graph-event subscriptions for a
+   * remote agent are managed via `FleetScope.subscribeEvents()` on the
+   * caller's fleet connection, not through `AgentClient.events`.
+   */
+  scope?: FleetScopeType;
+  /**
+   * Required when `scope` is `FleetScope.remote(…)`.
+   *
+   * The caller provides this function from their fleet WS/NATS
+   * connection. It receives the fully-qualified fleet subject and the
+   * request body, performs a req/reply round-trip, and returns the
+   * parsed JSON response.
+   *
+   * The subject prefix (`fleet.<tenant>.<agent-id>`) is derived from
+   * `scope`; the suffix is mapped from the REST path by
+   * `pathToSubject()` in `transport/request.ts`.
+   */
+  fleetRequestFn?: FleetRequestFn;
 }
 
 /**
@@ -45,10 +72,17 @@ export interface AgentClientOptions {
  * private; `connect` performs the capability handshake before
  * returning.
  *
- * Dependency direction: client → domain → transport → schemas.
+ * Dependency direction: client → domain → RequestTransport → schemas.
  * domain/* never imports fetch directly; transport/* never imports domain.
+ *
+ * Two transports are available:
+ *   - `HttpClient`            — default; `fetch` against `baseUrl`.
+ *   - `FleetRequestTransport` — used when `scope` is `Remote`.
  */
 export class AgentClient {
+  /** Which agent this client is targeting. */
+  readonly scope: FleetScopeType;
+
   readonly nodes: NodesApi;
   readonly slots: SlotsApi;
   readonly config: ConfigApi;
@@ -61,36 +95,74 @@ export class AgentClient {
   readonly auth: AuthApi;
   readonly ui: UiApi;
 
-  private constructor(http: HttpClient, opts: AgentClientOptions) {
-    this.nodes = createNodesApi(http, REST_API_VERSION);
-    this.slots = createSlotsApi(http, REST_API_VERSION);
-    this.config = createConfigApi(http, REST_API_VERSION);
-    this.events = createEventsApi(opts.baseUrl, REST_API_VERSION, opts.token);
-    this.links = createLinksApi(http, REST_API_VERSION);
-    this.lifecycle = createLifecycleApi(http, REST_API_VERSION);
-    this.seed = createSeedApi(http, REST_API_VERSION);
-    this.plugins = createPluginsApi(http, REST_API_VERSION);
-    this.kinds = createKindsApi(http, REST_API_VERSION);
-    this.auth = createAuthApi(http, REST_API_VERSION);
-    this.ui = createUiApi(http, REST_API_VERSION);
+  private constructor(
+    transport: RequestTransport,
+    opts: AgentClientOptions,
+    scope: FleetScopeType,
+  ) {
+    this.scope = scope;
+    this.nodes = createNodesApi(transport, REST_API_VERSION);
+    this.slots = createSlotsApi(transport, REST_API_VERSION);
+    this.config = createConfigApi(transport, REST_API_VERSION);
+    this.links = createLinksApi(transport, REST_API_VERSION);
+    this.lifecycle = createLifecycleApi(transport, REST_API_VERSION);
+    this.seed = createSeedApi(transport, REST_API_VERSION);
+    this.plugins = createPluginsApi(transport, REST_API_VERSION);
+    this.kinds = createKindsApi(transport, REST_API_VERSION);
+    this.auth = createAuthApi(transport, REST_API_VERSION);
+    this.ui = createUiApi(transport, REST_API_VERSION);
+
+    if (FleetScope.isLocal(scope)) {
+      // Local: real SSE stream against baseUrl.
+      this.events = createEventsApi(opts.baseUrl, REST_API_VERSION, opts.token);
+    } else {
+      // Remote: fleet graph-event subscriptions are managed by the
+      // caller on their fleet connection, not through AgentClient.events.
+      // Return a no-op that completes immediately so call sites don't
+      // break — they should not use AgentClient.events for remote scopes.
+      this.events = makeRemoteEventsStub();
+    }
   }
 
   /**
    * Create a connected AgentClient.
-   * Fetches GET /api/v1/capabilities and asserts all required caps are
-   * met before returning — throws CapabilityMismatchError on failure.
+   *
+   * When `opts.scope` is `FleetScope.remote(…)`, `opts.fleetRequestFn`
+   * must also be supplied. The capability check runs against the remote
+   * agent via fleet req/reply in that case.
    */
   static async connect(opts: AgentClientOptions): Promise<AgentClient> {
-    const httpOpts = {
-      baseUrl: opts.baseUrl,
-      ...(opts.token !== undefined && { token: opts.token }),
-      ...(opts.timeoutMs !== undefined && { timeoutMs: opts.timeoutMs }),
-    };
-    const http = new HttpClient(httpOpts);
-    const client = new AgentClient(http, opts);
+    const scope = opts.scope ?? FleetScope.local();
+    const timeoutMs = opts.timeoutMs ?? 10_000;
+
+    let transport: RequestTransport;
+
+    if (FleetScope.isLocal(scope)) {
+      transport = new HttpClient({
+        baseUrl: opts.baseUrl,
+        ...(opts.token !== undefined && { token: opts.token }),
+        timeoutMs,
+      });
+    } else {
+      // Remote scope — fleet req/reply.
+      if (!opts.fleetRequestFn) {
+        throw new Error(
+          "AgentClient.connect: `fleetRequestFn` is required when scope is Remote. " +
+            "Provide a fleet request function from your fleet WS/NATS connection.",
+        );
+      }
+      const subjectPrefix = `fleet.${scope.tenant}.${scope.agent_id}`;
+      transport = new FleetRequestTransport(
+        subjectPrefix,
+        opts.fleetRequestFn,
+        timeoutMs,
+      );
+    }
+
+    const client = new AgentClient(transport, opts, scope);
 
     if (!opts.skipCapabilityCheck) {
-      const capsApi = createCapabilitiesApi(http);
+      const capsApi = createCapabilitiesApi(transport);
       const manifest = await capsApi.getManifest();
       capsApi.assertRequirements(manifest);
     }
@@ -98,3 +170,34 @@ export class AgentClient {
     return client;
   }
 }
+
+/** EventsApi stub returned for remote-scoped clients. */
+function makeRemoteEventsStub(): EventsApi {
+  return {
+    subscribe() {
+      let _closed = false;
+      const iterable: AsyncIterable<never> & {
+        close: () => void;
+        readonly lastSeq: number;
+      } = {
+        lastSeq: 0,
+        close() {
+          _closed = true;
+        },
+        [Symbol.asyncIterator]() {
+          return {
+            async next() {
+              return { value: undefined as never, done: true };
+            },
+            async return() {
+              _closed = true;
+              return { value: undefined as never, done: true };
+            },
+          };
+        },
+      };
+      return iterable;
+    },
+  };
+}
+

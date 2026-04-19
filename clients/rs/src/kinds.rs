@@ -20,7 +20,7 @@ impl<'c> Kinds<'c> {
     /// List all registered kinds, optionally filtered by facet or placeable-under constraint.
     ///
     /// `facet` is a camelCase string such as `"isContainer"` or `"isCompute"`.
-    /// `placeable_under` is a kind id such as `"acme.core.station"`.
+    /// `placeable_under` is a kind id such as `"sys.core.station"`.
     pub async fn list(
         &self,
         facet: Option<&str>,

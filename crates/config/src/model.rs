@@ -110,9 +110,9 @@ pub struct AgentConfigOverlay {
 /// auth:
 ///   provider: static_token
 ///   tokens:
-///     - token: "ed_acme_edge1_xxx"
+///     - token: "ed_sys_edge1_xxx"
 ///       actor: { kind: machine, id: "00000000-0000-0000-0000-000000000001", label: "edge-1" }
-///       tenant: acme
+///       tenant: sys
 ///       scopes: [read_nodes, write_slots, manage_fleet]
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,7 +138,7 @@ pub struct StaticTokenOverlay {
 ///   backend: zenoh
 ///   listen: ["tcp/0.0.0.0:7447"]
 ///   connect: []
-///   tenant: acme
+///   tenant: sys
 ///   agent_id: edge-1
 /// ```
 ///

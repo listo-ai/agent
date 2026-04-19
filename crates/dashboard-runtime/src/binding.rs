@@ -450,7 +450,7 @@ mod tests {
                     .with_slot("frame_alias", json!("target"))
                     .with_slot("frame_ref", json!({ "id": t1.0.to_string() })),
             )
-            .with(NodeSnapshot::new(t1, "acme.whatever").with_slot("name", json!("Site A")));
+            .with(NodeSnapshot::new(t1, "sys.whatever").with_slot("name", json!("Site A")));
         let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
         let empty: HashMap<String, JsonValue> = HashMap::new();
         let page = json!({});
@@ -473,10 +473,10 @@ mod tests {
                     .with_slot("frame_ref", json!({ "id": site.0.to_string() })),
             )
             .with(
-                NodeSnapshot::new(site, "acme.site")
+                NodeSnapshot::new(site, "sys.site")
                     .with_slot("owner", json!({ "id": owner.0.to_string() })),
             )
-            .with(NodeSnapshot::new(owner, "acme.person").with_slot("name", json!("Ada")));
+            .with(NodeSnapshot::new(owner, "sys.person").with_slot("name", json!("Ada")));
         let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
         let empty: HashMap<String, JsonValue> = HashMap::new();
         let page = json!({});
@@ -507,7 +507,7 @@ mod tests {
         let reader = InMemoryReader::new();
         let stack = ContextStack::empty();
         let mut user: HashMap<String, JsonValue> = HashMap::new();
-        user.insert("orgId".into(), json!("acme"));
+        user.insert("orgId".into(), json!("sys"));
         let page = json!({ "selectedRow": 3 });
         let self_id = NodeId::new();
         assert_eq!(
@@ -515,7 +515,7 @@ mod tests {
                 .unwrap()
                 .evaluate(&ctx(&reader, &stack, self_id, &user, &page))
                 .unwrap(),
-            json!("acme")
+            json!("sys")
         );
         assert_eq!(
             Binding::parse("$page.selectedRow")
@@ -551,10 +551,10 @@ mod tests {
                     .with_slot("frame_ref", json!({ "id": site.0.to_string() })),
             )
             .with(
-                NodeSnapshot::new(site, "acme.site")
+                NodeSnapshot::new(site, "sys.site")
                     .with_slot("owner", json!({ "id": owner.0.to_string() })),
             )
-            .with(NodeSnapshot::new(owner, "acme.person").with_slot("name", json!("Ada")));
+            .with(NodeSnapshot::new(owner, "sys.person").with_slot("name", json!("Ada")));
         let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
         let empty: HashMap<String, JsonValue> = HashMap::new();
         let page = json!({});

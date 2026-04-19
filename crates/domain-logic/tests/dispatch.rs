@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
-//! End-to-end dispatch tests for `acme.logic.trigger`.
+//! End-to-end dispatch tests for `sys.logic.trigger`.
 //!
 //! Timer-dependent paths run under `#[tokio::test(start_paused = true)]`
 //! so they advance virtual time deterministically — no wall-clock waits.

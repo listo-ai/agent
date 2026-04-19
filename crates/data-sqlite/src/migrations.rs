@@ -145,6 +145,53 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_nsr_node_seq ON node_setting_revisions(node_id, seq DESC);
     CREATE INDEX idx_nsr_flow     ON node_setting_revisions(flow_id);
     "#,
+
+    // v5 — User / org preferences. Implements docs/design/USER-PREFERENCES.md.
+    //
+    // Design notes:
+    //   • `org_preferences` is keyed by `org_id` (today always "default").
+    //   • `user_preferences` is keyed by `(user_id, org_id)` — a user has
+    //     one row per org they belong to.
+    //   • All preference columns are nullable; NULL = "inherit from next layer".
+    //   • `updated_at` is UTC epoch *milliseconds* (INTEGER), consistent with
+    //     the platform-wide convention of INTEGER timestamps in ms.
+    //   • `theme` is user-only — intentionally absent from `org_preferences`.
+    r#"
+    CREATE TABLE org_preferences (
+        org_id              TEXT PRIMARY KEY,
+        timezone            TEXT,
+        locale              TEXT,
+        language            TEXT,
+        unit_system         TEXT,
+        temperature_unit    TEXT,
+        pressure_unit       TEXT,
+        date_format         TEXT,
+        time_format         TEXT,
+        week_start          TEXT,
+        number_format       TEXT,
+        currency            TEXT,
+        updated_at          INTEGER
+    );
+
+    CREATE TABLE user_preferences (
+        user_id             TEXT NOT NULL,
+        org_id              TEXT NOT NULL,
+        timezone            TEXT,
+        locale              TEXT,
+        language            TEXT,
+        unit_system         TEXT,
+        temperature_unit    TEXT,
+        pressure_unit       TEXT,
+        date_format         TEXT,
+        time_format         TEXT,
+        week_start          TEXT,
+        number_format       TEXT,
+        currency            TEXT,
+        theme               TEXT,
+        updated_at          INTEGER,
+        PRIMARY KEY (user_id, org_id)
+    );
+    "#,
 ];
 
 pub fn apply(conn: &Connection) -> Result<(), SqliteError> {

@@ -51,7 +51,7 @@ async fn start_with_flows() -> (SocketAddr, tokio::task::JoinHandle<()>) {
     dashboard_nodes::register_kinds(&kinds);
 
     let graph = Arc::new(GraphStore::new(kinds, sink));
-    graph.create_root(KindId::new("acme.core.station")).unwrap();
+    graph.create_root(KindId::new("sys.core.station")).unwrap();
 
     let engine = Engine::new(graph.clone(), events_rx);
     engine.start().await.unwrap();
@@ -100,7 +100,7 @@ where
     dashboard_nodes::register_kinds(&kinds);
 
     let graph = Arc::new(GraphStore::new(kinds, sink));
-    graph.create_root(KindId::new("acme.core.station")).unwrap();
+    graph.create_root(KindId::new("sys.core.station")).unwrap();
     seed_fn(&graph);
 
     let engine = Engine::new(graph.clone(), events_rx);
@@ -304,18 +304,18 @@ async fn nodes_list_query_filters_and_pages() {
     let c = client(addr);
 
     c.nodes()
-        .create("/", "acme.core.folder", "alpha")
+        .create("/", "sys.core.folder", "alpha")
         .await
         .unwrap();
     c.nodes()
-        .create("/", "acme.core.folder", "beta")
+        .create("/", "sys.core.folder", "beta")
         .await
         .unwrap();
 
     let page = c
         .nodes()
         .list_page(&NodeListParams {
-            filter: Some("kind==acme.core.folder".into()),
+            filter: Some("kind==sys.core.folder".into()),
             sort: Some("-path".into()),
             page: Some(1),
             size: Some(1),
@@ -335,19 +335,19 @@ async fn nodes_list_direct_children_via_parent_path() {
 
     // Tree: /, /alpha, /alpha/one, /alpha/two, /beta.
     c.nodes()
-        .create("/", "acme.core.folder", "alpha")
+        .create("/", "sys.core.folder", "alpha")
         .await
         .unwrap();
     c.nodes()
-        .create("/", "acme.core.folder", "beta")
+        .create("/", "sys.core.folder", "beta")
         .await
         .unwrap();
     c.nodes()
-        .create("/alpha", "acme.core.folder", "one")
+        .create("/alpha", "sys.core.folder", "one")
         .await
         .unwrap();
     c.nodes()
-        .create("/alpha", "acme.core.folder", "two")
+        .create("/alpha", "sys.core.folder", "two")
         .await
         .unwrap();
 
@@ -381,7 +381,7 @@ async fn nodes_create_ok() {
 
     let created = c
         .nodes()
-        .create("/", "acme.core.folder", "fixture_test")
+        .create("/", "sys.core.folder", "fixture_test")
         .await
         .unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&created).unwrap());
@@ -400,7 +400,7 @@ async fn nodes_create_bad_path() {
     // " bad path" has a leading space — NodePath::from_str rejects it
     let err = c
         .nodes()
-        .create("bad path", "acme.core.folder", "x")
+        .create("bad path", "sys.core.folder", "x")
         .await
         .unwrap_err();
     let cli_err = transport_cli::CliError::from_client(&err);
@@ -416,7 +416,7 @@ async fn slots_write_ok() {
     let c = client(addr);
 
     c.nodes()
-        .create("/", "acme.compute.count", "counter")
+        .create("/", "sys.compute.count", "counter")
         .await
         .unwrap();
     let gen = c
@@ -626,13 +626,13 @@ async fn kinds_list_by_system_facet() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    // Only acme.core.station carries the "isSystem" facet in the test server.
+    // Only sys.core.station carries the "isSystem" facet in the test server.
     let kinds = c.kinds().list(Some("isSystem"), None).await.unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&kinds).unwrap());
     let fixture = load_fixture("kinds-list/ok.json");
     assert_shape_match(&actual, &fixture, "$");
     assert_eq!(kinds.len(), 1);
-    assert_eq!(kinds[0].id, "acme.core.station");
+    assert_eq!(kinds[0].id, "sys.core.station");
 }
 
 // ---- health ---------------------------------------------------------------
@@ -657,7 +657,7 @@ async fn config_set_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    c.nodes().create("/", "acme.compute.count", "cfg_node").await.unwrap();
+    c.nodes().create("/", "sys.compute.count", "cfg_node").await.unwrap();
     c.config()
         .set("/cfg_node", &serde_json::json!({ "initial": 5 }))
         .await
@@ -675,7 +675,7 @@ async fn lifecycle_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    c.nodes().create("/", "acme.compute.count", "lc_ok").await.unwrap();
+    c.nodes().create("/", "sys.compute.count", "lc_ok").await.unwrap();
     let new_state = c.lifecycle().transition("/lc_ok", "active").await.unwrap();
     let out = serde_json::json!({ "to": new_state });
     let actual = parse_json_output(&serde_json::to_string_pretty(&out).unwrap());
@@ -691,7 +691,7 @@ async fn nodes_delete_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    c.nodes().create("/", "acme.compute.count", "del_node").await.unwrap();
+    c.nodes().create("/", "sys.compute.count", "del_node").await.unwrap();
     c.nodes().delete("/del_node").await.unwrap();
     let out = serde_json::json!({ "status": "deleted /del_node" });
     let actual = parse_json_output(&serde_json::to_string_pretty(&out).unwrap());
@@ -731,8 +731,8 @@ async fn links_create_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    c.nodes().create("/", "acme.compute.count", "lnk_a").await.unwrap();
-    c.nodes().create("/", "acme.compute.count", "lnk_b").await.unwrap();
+    c.nodes().create("/", "sys.compute.count", "lnk_a").await.unwrap();
+    c.nodes().create("/", "sys.compute.count", "lnk_b").await.unwrap();
 
     let source = agent_client::types::LinkEndpointRef::by_path("/lnk_a", "out");
     let target = agent_client::types::LinkEndpointRef::by_path("/lnk_b", "in");
@@ -749,8 +749,8 @@ async fn links_remove_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    c.nodes().create("/", "acme.compute.count", "rm_a").await.unwrap();
-    c.nodes().create("/", "acme.compute.count", "rm_b").await.unwrap();
+    c.nodes().create("/", "sys.compute.count", "rm_a").await.unwrap();
+    c.nodes().create("/", "sys.compute.count", "rm_b").await.unwrap();
 
     let source = agent_client::types::LinkEndpointRef::by_path("/rm_a", "out");
     let target = agent_client::types::LinkEndpointRef::by_path("/rm_b", "in");

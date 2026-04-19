@@ -11,7 +11,7 @@ Authoritative references: [NODE-AUTHORING.md](NODE-AUTHORING.md), [CODE-LAYOUT.m
 **One log event format, one set of canonical fields, one transport shape — from edge extensions to cloud Control Plane to the browser Studio.**
 
 - Structured JSON, one event per line. Human pretty-print only in `dev` mode; machine parsing is the default.
-- Canonical fields are declared in `spi`, used by `observability`, mirrored in `@acme/sdk-ts/log`. No hand-maintained parallels.
+- Canonical fields are declared in `spi`, used by `observability`, mirrored in `@sys/sdk-ts/log`. No hand-maintained parallels.
 - The shared primitive is the only primitive. Extensions that bypass it get rejected in review.
 - Log events and audit events are distinct streams, both structured, both governed by the same contract rules.
 
@@ -87,7 +87,7 @@ Edge agents optionally ship logs to the Control Plane. Same outbox pattern as cl
 - **Sampling** at the edge for `trace`/`debug` — configurable ratio per subject prefix so a misbehaving noisy extension doesn't exhaust the outbox.
 - **Backpressure** — if the outbox is full and ship-rate is saturated, the logger falls back to file-only locally. The system never blocks on log delivery.
 
-## The shared primitive — `crates/observability` + `@acme/sdk-ts/log`
+## The shared primitive — `crates/observability` + `@sys/sdk-ts/log`
 
 ### Rust — `observability` (already in the workspace)
 
@@ -109,12 +109,12 @@ Thin wrapper over `tracing` + `tracing-subscriber`. What the crate provides:
 | `observability::span` | Span creation with mandatory `trace_id` / `span_id` fields, OpenTelemetry-compatible. |
 | `observability::shipper` | NATS forwarder, outbox-backed. Wired in only when the deployment's config enables it. |
 
-### TypeScript — `@acme/sdk-ts/log`
+### TypeScript — `@sys/sdk-ts/log`
 
 Same surface, same field names, same levels:
 
 ```ts
-import { log } from '@acme/extensions-sdk-ts';
+import { log } from '@sys/extensions-sdk-ts';
 
 log.info({ node_path: path, msg_id: msg.id }, 'queued retry');
 log.warn({ 'ctx.retry_count': 3 }, 'backoff limit exceeded');

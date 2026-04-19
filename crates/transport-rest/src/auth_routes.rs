@@ -94,7 +94,7 @@ mod tests {
         let kinds = KindRegistry::new();
         graph_seed::register_builtins(&kinds);
         let graph = Arc::new(GraphStore::new(kinds, Arc::new(NullSink)));
-        graph.create_root(KindId::new("acme.core.station")).unwrap();
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
         let (events, _) = broadcast::channel(16);
         let (behaviors, _) = BehaviorRegistry::new(graph.clone());
         let _ = NodePath::root(); // keep import used

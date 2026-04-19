@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 //! Repository trait *definitions*.
 //!
-//! Implementations live in `data-sqlite` and `data-postgres` \u{2014} one per
+//! Implementations live in `data-sqlite` and `data-postgres` — one per
 //! backend, using each backend's native strengths. Domain crates depend
 //! on these traits, never on a concrete backend.
 
@@ -11,6 +11,7 @@ mod flow_repo;
 mod flow_revision_repo;
 mod graph_repo;
 mod history_repo;
+mod preferences_repo;
 
 #[cfg(feature = "testing")]
 pub mod testing;
@@ -21,3 +22,4 @@ pub use flow_repo::{Flow, FlowQuery, FlowRepo};
 pub use flow_revision_repo::FlowRevisionRepo;
 pub use graph_repo::{GraphRepo, GraphSnapshot, PersistedLink, PersistedNode, PersistedSlot};
 pub use history_repo::{HistoryQuery, HistoryRecord, HistoryRepo, HistorySlotKind};
+pub use preferences_repo::{PreferencesRepo, PreferencesService};

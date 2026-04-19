@@ -46,7 +46,7 @@ Every entity in the system — no exceptions — implements the same base interf
 | Slots (typed properties) | Subscribable, writable or read-only, each with its own type |
 | A lifecycle | Created → Active → Disabled → Removed, with events for each transition |
 | An event stream | Anything can subscribe to "this node changed" / "this slot's value changed" |
-| Tags / metadata | For filtering and discovery (`critical`, `hvac`, `tenant:acme`) |
+| Tags / metadata | For filtering and discovery (`critical`, `hvac`, `tenant:sys`) |
 
 The node is a trait/interface in Rust. Specific kinds (`DeviceNode`, `UserNode`, `ExtensionNode`) are implementations.
 
@@ -172,12 +172,12 @@ Node kinds are dotted identifiers, not an enum. The enum above is only a *catego
 
 | Namespace | Owner | Examples |
 |---|---|---|
-| `acme.*` | Platform (first-party) | `acme.core.folder`, `acme.auth.user`, `acme.compute.math.add` |
-| `acme.driver.*` | Platform protocol drivers | `acme.driver.bacnet`, `acme.driver.modbus`, `acme.driver.mqtt` |
-| `acme.driver.<proto>.*` | Children of a driver | `acme.driver.bacnet.device`, `acme.driver.bacnet.point` |
+| `sys.*` | Platform (first-party) | `sys.core.folder`, `sys.auth.user`, `sys.compute.math.add` |
+| `sys.driver.*` | Platform protocol drivers | `sys.driver.bacnet`, `sys.driver.modbus`, `sys.driver.mqtt` |
+| `sys.driver.<proto>.*` | Children of a driver | `sys.driver.bacnet.device`, `sys.driver.bacnet.point` |
 | `com.<vendor>.*` | Third-party extensions | `com.acme.weather.forecast` |
 
-The kind ID is a **type**. The node's path in the tree is a **location**. Two different things — a `acme.driver.bacnet.point` kind might appear at thousands of paths.
+The kind ID is a **type**. The node's path in the tree is a **location**. Two different things — a `sys.driver.bacnet.point` kind might appear at thousands of paths.
 
 ## Facets — declarative flags on a kind
 
@@ -185,21 +185,21 @@ Each node kind declares a set of boolean facets. These are not the kind itself �
 
 | Facet | Meaning | Example kinds |
 |---|---|---|
-| `isProtocol` | Implements a comms protocol | `acme.driver.bacnet`, `acme.driver.modbus` |
-| `isDriver` | An I/O driver container | All `acme.driver.*` roots |
-| `isDevice` | Represents a physical or virtual device | `acme.driver.bacnet.device`, `acme.driver.modbus.device` |
-| `isPoint` | Readable/writable data value | `acme.driver.bacnet.point` |
-| `isCompute` | Generic logic/transform node | `acme.compute.math.add`, `acme.compute.logic.and` |
-| `isContainer` | Exists only to hold other nodes | `acme.core.folder`, `acme.core.flow` |
-| `isSystem` | Platform-managed, not user-created | `acme.agent.self`, `acme.agent.health` |
-| `isIdentity` | Identity / auth node | `acme.auth.user`, `acme.auth.role`, `acme.auth.service-account` |
-| `isEphemeral` | Not persisted — lives in memory only | `acme.auth.session`, `acme.rpc.in-flight` |
+| `isProtocol` | Implements a comms protocol | `sys.driver.bacnet`, `sys.driver.modbus` |
+| `isDriver` | An I/O driver container | All `sys.driver.*` roots |
+| `isDevice` | Represents a physical or virtual device | `sys.driver.bacnet.device`, `sys.driver.modbus.device` |
+| `isPoint` | Readable/writable data value | `sys.driver.bacnet.point` |
+| `isCompute` | Generic logic/transform node | `sys.compute.math.add`, `sys.compute.logic.and` |
+| `isContainer` | Exists only to hold other nodes | `sys.core.folder`, `sys.core.flow` |
+| `isSystem` | Platform-managed, not user-created | `sys.agent.self`, `sys.agent.health` |
+| `isIdentity` | Identity / auth node | `sys.auth.user`, `sys.auth.role`, `sys.auth.service-account` |
+| `isEphemeral` | Not persisted — lives in memory only | `sys.auth.session`, `sys.rpc.in-flight` |
 | `isWritable` | Slot values can be written externally | Most device points, most config slots |
 
 Facets are multi-bool — a BACnet driver is `{isProtocol, isDriver, isContainer}`. Uses:
 
 - **UI palette** filters by facet: "show me all `isProtocol` nodes" populates the driver picker.
-- **Placement rules** can express "an `isDriver` node must live under `acme.core.folder` or `acme.core.station`."
+- **Placement rules** can express "an `isDriver` node must live under `sys.core.folder` or `sys.core.station`."
 - **Generic queries** via RSQL: `kind.facets==isDevice` lists every device in the tenant regardless of driver family.
 - **Permissions** can be facet-scoped: "grant operator role read access to `isPoint` nodes but not `isIdentity` nodes."
 
@@ -211,31 +211,31 @@ Every node kind declares a **containment schema**:
 |---|---|
 | `must_live_under` | List of parent kinds (or facet predicates). Empty = free placement, can live anywhere. |
 | `may_contain` | List of child kinds (or facet predicates) this node can hold. Empty = leaf node. |
-| `cardinality_per_parent` | `ManyPerParent` (default), `OnePerParent` (e.g. one `acme.agent.self` under the station), `ExactlyOne` (required, e.g. station must contain exactly one `acme.auth.realm`) |
+| `cardinality_per_parent` | `ManyPerParent` (default), `OnePerParent` (e.g. one `sys.agent.self` under the station), `ExactlyOne` (required, e.g. station must contain exactly one `sys.auth.realm`) |
 | `cascade` | `strict` (default — delete subtree), `deny` (refuse delete if non-empty, for critical system nodes), `orphan` (rare — subtree detached to lost-and-found) |
 
 Example schemas for the user's BACnet hierarchy:
 
 ```yaml
-kind: acme.driver.bacnet
+kind: sys.driver.bacnet
 facets: [isProtocol, isDriver, isContainer]
-must_live_under: [acme.core.folder, acme.core.station]   # drivers live at top levels
-may_contain:     [acme.driver.bacnet.device, acme.core.folder]
+must_live_under: [sys.core.folder, sys.core.station]   # drivers live at top levels
+may_contain:     [sys.driver.bacnet.device, sys.core.folder]
 cardinality_per_parent: ManyPerParent   # allow multiple BACnet drivers per folder (e.g. per network segment)
 
-kind: acme.driver.bacnet.device
+kind: sys.driver.bacnet.device
 facets: [isDevice, isContainer]
-must_live_under: [acme.driver.bacnet]    # BOUND — only under a BACnet driver
-may_contain:     [acme.driver.bacnet.point, { facets: [isCompute] }]   # points AND any compute node
+must_live_under: [sys.driver.bacnet]    # BOUND — only under a BACnet driver
+may_contain:     [sys.driver.bacnet.point, { facets: [isCompute] }]   # points AND any compute node
 cardinality_per_parent: ManyPerParent
 
-kind: acme.driver.bacnet.point
+kind: sys.driver.bacnet.point
 facets: [isPoint, isWritable]
-must_live_under: [acme.driver.bacnet.device]    # BOUND — only under a BACnet device
+must_live_under: [sys.driver.bacnet.device]    # BOUND — only under a BACnet device
 may_contain:     []                             # leaf
 cardinality_per_parent: ManyPerParent
 
-kind: acme.compute.math.add
+kind: sys.compute.math.add
 facets: [isCompute]
 must_live_under: []    # FREE — can be dropped anywhere
 may_contain:     []
@@ -280,13 +280,13 @@ No orphan children, no dangling links, no silent data loss.
 
 ## Flow documents are nodes too
 
-A `Flow` is a node kind (`acme.core.flow`, facets `{isContainer}`). Its children are the flow's internal nodes — all subject to the same Node trait, same placement rules, same events. Wires between internal slots are Links, the same as wires anywhere else.
+A `Flow` is a node kind (`sys.core.flow`, facets `{isContainer}`). Its children are the flow's internal nodes — all subject to the same Node trait, same placement rules, same events. Wires between internal slots are Links, the same as wires anywhere else.
 
 This unifies two models that are usually separate:
 
 | Authoring style | What it means in our model | When to use |
 |---|---|---|
-| **Live wiring in the tree** (unified-graph style) | Drop a `acme.compute.math.add` directly into a folder, wire its inputs to other node slots, wire its output somewhere. No flow document. | Simple reactive logic: three nodes and two wires. Good for "value X should follow value Y" style behaviour. |
+| **Live wiring in the tree** (unified-graph style) | Drop a `sys.compute.math.add` directly into a folder, wire its inputs to other node slots, wire its output somewhere. No flow document. | Simple reactive logic: three nodes and two wires. Good for "value X should follow value Y" style behaviour. |
 | **Flow document container** (document-based, Node-RED style) | Create a `Flow` node, add compute nodes as its children, wire them inside, wire the flow's own input/output slots to slots elsewhere in the tree. | Complex logic, reusable subflows, versioned deployment units, things you want to pause/restart as one unit. |
 
 One node model, two idioms. Users pick based on complexity — not forced to use one or the other. The flow engine executes the Flow container by discovering its internal topology; live wires are executed directly by the graph's reactive layer.
@@ -312,11 +312,11 @@ Slots aren't all the same thing. Every slot has a **role** that tells the system
 
 A node kind declares whatever input and output slots it needs — those are its **ports** on the canvas. Examples:
 
-- `acme.compute.math.add` has inputs `operand_a`, `operand_b`, output `result` (2 in, 1 out)
-- `acme.logic.switch` has inputs `signal`, `selector`, outputs `out_0`, `out_1`, `out_2` (2 in, many out)
-- `acme.io.webhook` has output `received` (0 in, 1 out — it's a source)
+- `sys.compute.math.add` has inputs `operand_a`, `operand_b`, output `result` (2 in, 1 out)
+- `sys.logic.switch` has inputs `signal`, `selector`, outputs `out_0`, `out_1`, `out_2` (2 in, many out)
+- `sys.io.webhook` has output `received` (0 in, 1 out — it's a source)
 
-**Many wires can connect to the same input port (fan-in).** Default semantics are **per-message interleaved** — each arrival fires the target node independently, like Node-RED. Synchronised "wait for all sources" or "combine-latest" semantics are explicit via dedicated kinds (`acme.compute.join`, `acme.compute.combine-latest`), not hidden on every input — the right policy depends on intent.
+**Many wires can connect to the same input port (fan-in).** Default semantics are **per-message interleaved** — each arrival fires the target node independently, like Node-RED. Synchronised "wait for all sources" or "combine-latest" semantics are explicit via dedicated kinds (`sys.compute.join`, `sys.compute.combine-latest`), not hidden on every input — the right policy depends on intent.
 
 ### Trigger policies on multi-input nodes
 
@@ -396,7 +396,7 @@ GET    /api/v1/nodes/{path}/settings-schema/list          # all schema variants 
 GET    /api/v1/nodes/{path}/settings-schema/{variant}     # a specific variant by name
 ```
 
-**Listing nodes** uses the generic RSQL path (see [QUERY-LANG.md](QUERY-LANG.md)): `GET /api/v1/nodes?filter=kind.facets==isDevice;tenant_id==acme&sort=path`. Subtree queries via path prefix: `?filter=path=prefix=/acme/devices/floor3`.
+**Listing nodes** uses the generic RSQL path (see [QUERY-LANG.md](QUERY-LANG.md)): `GET /api/v1/nodes?filter=kind.facets==isDevice;tenant_id==sys&sort=path`. Subtree queries via path prefix: `?filter=path=prefix=/sys/devices/floor3`.
 
 **Writes are RBAC-checked against the slot's role** — an operator might be allowed to write `config` on devices they own but not on protocol-level nodes; a flow might be allowed to write `output` but never `config`. The check is uniform because slot role is declared on the kind's schema.
 
@@ -413,7 +413,7 @@ Every node kind declares a **settings schema** describing its `config`-role slot
 Most kinds declare one flat schema:
 
 ```yaml
-kind: acme.compute.math.add
+kind: sys.compute.math.add
 settings_schema:
   type: object
   properties:
@@ -430,9 +430,9 @@ Some kinds have meaningfully different configurations depending on a top-level c
 The kind declares multiple named schemas and a default. At node-creation time the user picks a variant; the chosen variant drives the form and validates the config. The variant name is stored on the node so the runtime knows which code path to execute.
 
 ```yaml
-kind: acme.driver.modbus.network
+kind: sys.driver.modbus.network
 facets: [isProtocol, isDriver, isContainer]
-must_live_under: [acme.core.folder, acme.core.station]
+must_live_under: [sys.core.folder, sys.core.station]
 
 settings_schemas:
   supports_multiple: true
@@ -465,7 +465,7 @@ settings_schemas:
 
 **Studio flow:**
 
-1. User drops a `acme.driver.modbus.network` into the tree.
+1. User drops a `sys.driver.modbus.network` into the tree.
 2. Studio calls `GET /settings-schema/list`, sees `supports_multiple: true`, shows the selection dialog:
    ```
    ┌─────────────────────────────────────┐
@@ -543,9 +543,9 @@ graph.<tenant>.<path>.lifecycle.<from>.<to>
 
 Wildcards let flows subscribe to:
 
-- All events on a subtree: `graph.acme.devices.>`
-- A specific slot across all devices: `graph.acme.devices.*.slot.health.changed`
-- All lifecycle transitions fleet-wide: `graph.acme.>.lifecycle.>`
+- All events on a subtree: `graph.sys.devices.>`
+- A specific slot across all devices: `graph.sys.devices.*.slot.health.changed`
+- All lifecycle transitions fleet-wide: `graph.sys.>.lifecycle.>`
 
 This is the substrate that makes "send an email when a plugin crashes" work as a flow.
 
@@ -584,7 +584,7 @@ The graph needs to land in the database cleanly. Proposed schema:
 | `tags` | `node_id, key, value` |
 | `node_events` | Append-only event log for audit and replay |
 
-With indexes on `parent_id`, `(tenant_id, path)`, `(node_id, name)`. Subtree queries use the materialized path (`path LIKE '/acme/devices/%'`) — or `ltree` on Postgres for real graph queries.
+With indexes on `parent_id`, `(tenant_id, path)`, `(node_id, name)`. Subtree queries use the materialized path (`path LIKE '/sys/devices/%'`) — or `ltree` on Postgres for real graph queries.
 
 Materialized-path approach keeps it SQLite-portable. SQL-heavy graph traversals stay simple and fast.
 
@@ -608,14 +608,14 @@ Concretely, the agent contributes these kinds on boot:
 
 | Kind | Purpose | Slots (non-exhaustive) |
 |---|---|---|
-| `acme.agent.self` | One per running agent — root of agent-owned subtree. `isSystem`, `isContainer`, `cardinality_per_parent: ExactlyOne` under its station. | `agent_id`, `version`, `role`, `boot_ts` (all `status`) |
-| `acme.agent.engine` | The flow engine's state. Under `acme.agent.self`. | `state` (`status`, string: `Starting`/`Running`/`Paused`/`Stopping`/`Stopped`), `last_transition_ts`, `flows_running`, `flows_paused` |
-| `acme.agent.health` | Process + host metrics. | `memory_mb`, `cpu_pct`, `fd_count`, `disk_free_mb` — all `status`, throttled per the high-frequency-telemetry rule above |
-| `acme.agent.supervisor` | Extension-process supervisor state, one child per supervised extension. | `extension_id`, `state`, `pid`, `restart_count` |
+| `sys.agent.self` | One per running agent — root of agent-owned subtree. `isSystem`, `isContainer`, `cardinality_per_parent: ExactlyOne` under its station. | `agent_id`, `version`, `role`, `boot_ts` (all `status`) |
+| `sys.agent.engine` | The flow engine's state. Under `sys.agent.self`. | `state` (`status`, string: `Starting`/`Running`/`Paused`/`Stopping`/`Stopped`), `last_transition_ts`, `flows_running`, `flows_paused` |
+| `sys.agent.health` | Process + host metrics. | `memory_mb`, `cpu_pct`, `fd_count`, `disk_free_mb` — all `status`, throttled per the high-frequency-telemetry rule above |
+| `sys.agent.supervisor` | Extension-process supervisor state, one child per supervised extension. | `extension_id`, `state`, `pid`, `restart_count` |
 
 **The engine does not own its state in a private struct.** The engine owns **execution** (the async worker, the scheduler, the extension supervisor, the safe-state walker). State representation lives in the graph:
 
-- `Engine::transition(new)` writes to the `acme.agent.engine.state` slot via `GraphStore::write_slot`. The `SlotChanged` event *is* the notification.
+- `Engine::transition(new)` writes to the `sys.agent.engine.state` slot via `GraphStore::write_slot`. The `SlotChanged` event *is* the notification.
 - Private `EngineState` fields, where they exist in the code, are derived reads from the graph, not a parallel cache.
 - Safe-state policies are **config-role slots on the writable point's own node**, not entries in an engine-local registry. The engine walks the graph at shutdown (`kind.facets == IsWritable && config.safe_state.policy != null`) to find what to apply.
 

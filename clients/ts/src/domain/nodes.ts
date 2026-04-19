@@ -1,4 +1,4 @@
-import type { HttpClient } from "../transport/http.js";
+import type { RequestTransport } from "../transport/request.js";
 import { NodeListResponseSchema, NodeSnapshotSchema } from "../schemas/node.js";
 import type { NodeListResponse, NodeSnapshot } from "../schemas/node.js";
 
@@ -27,7 +27,7 @@ export interface NodesApi {
   removeNode(path: string): Promise<void>;
 }
 
-export function createNodesApi(http: HttpClient, apiVersion: number): NodesApi {
+export function createNodesApi(http: RequestTransport, apiVersion: number): NodesApi {
   const base = `/api/v${apiVersion}`;
   const getNodesPage = async (params: {
     filter?: string;

@@ -1,4 +1,4 @@
-id: acme.engine.read_slot
+id: sys.engine.read_slot
 display_name: Read Slot
 facets:
   - isCompute

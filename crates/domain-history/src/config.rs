@@ -1,4 +1,4 @@
-//! `acme.core.history.config` kind — declaration and settings types.
+//! `sys.core.history.config` kind — declaration and settings types.
 //!
 //! **Cardinality rule (one per node):** The placement validator enforces
 //! that at most one `HistoryConfig` exists per parent node by default.
@@ -16,7 +16,7 @@ use serde_json::{json, Value as JsonValue};
 use spi::{Cardinality, ContainmentSchema, Facet, FacetSet};
 use spi::{KindManifest, SlotRole, SlotSchema, SlotValueKind};
 
-pub const KIND_ID: &str = "acme.core.history.config";
+pub const KIND_ID: &str = "sys.core.history.config";
 
 /// Per-slot policy variant declared in `HistoryConfigSettings::slots`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +80,7 @@ impl Default for RetentionSettings {
     }
 }
 
-/// Full deserialized settings blob for an `acme.core.history.config` node.
+/// Full deserialized settings blob for an `sys.core.history.config` node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryConfigSettings {
     /// Map of slot_name → policy.
@@ -118,7 +118,7 @@ pub struct HistoryConfig {
     pub settings: HistoryConfigSettings,
 }
 
-/// Return the [`KindManifest`] for `acme.core.history.config`.
+/// Return the [`KindManifest`] for `sys.core.history.config`.
 ///
 /// Registered at startup alongside other first-party kinds.
 pub fn manifest() -> KindManifest {

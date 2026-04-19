@@ -152,42 +152,42 @@ mod tests {
 
     #[test]
     fn placement_class_free_when_no_parent_constraint() {
-        let k = kind("acme.foo", FacetSet::default(), schema(vec![], vec![]));
+        let k = kind("sys.foo", FacetSet::default(), schema(vec![], vec![]));
         assert_eq!(KindDto::from_manifest(k).placement_class, "free");
     }
 
     #[test]
     fn placement_class_bound_when_must_live_under_present() {
         let k = kind(
-            "acme.foo.point",
+            "sys.foo.point",
             FacetSet::default(),
-            schema(vec![ParentMatcher::Kind(KindId::new("acme.foo"))], vec![]),
+            schema(vec![ParentMatcher::Kind(KindId::new("sys.foo"))], vec![]),
         );
         assert_eq!(KindDto::from_manifest(k).placement_class, "bound");
     }
 
     #[test]
     fn placement_allowed_honours_both_sides() {
-        // Parent only accepts `acme.driver.demo.device` children.
+        // Parent only accepts `sys.driver.demo.device` children.
         let parent = kind(
-            "acme.driver.demo",
+            "sys.driver.demo",
             FacetSet::of([Facet::IsDriver]),
             schema(
                 vec![],
-                vec![ParentMatcher::Kind(KindId::new("acme.driver.demo.device"))],
+                vec![ParentMatcher::Kind(KindId::new("sys.driver.demo.device"))],
             ),
         );
 
         let bound = kind(
-            "acme.driver.demo.device",
+            "sys.driver.demo.device",
             FacetSet::default(),
             schema(
-                vec![ParentMatcher::Kind(KindId::new("acme.driver.demo"))],
+                vec![ParentMatcher::Kind(KindId::new("sys.driver.demo"))],
                 vec![],
             ),
         );
         let free = kind(
-            "acme.core.folder",
+            "sys.core.folder",
             FacetSet::default(),
             schema(vec![], vec![]),
         );

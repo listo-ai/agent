@@ -1,4 +1,4 @@
-//! `acme.logic.heartbeat` — self-driven boolean toggle with a counter.
+//! `sys.logic.heartbeat` — self-driven boolean toggle with a counter.
 //!
 //! Source node: no inputs. On `on_init` it emits `start_state` on the
 //! `state` output and arms a timer. Each timer fire flips the state,
@@ -19,7 +19,7 @@ use serde_json::{json, Value as JsonValue};
 
 #[derive(NodeKind)]
 #[node(
-    kind = "acme.logic.heartbeat",
+    kind = "sys.logic.heartbeat",
     manifest = "manifests/heartbeat.yaml",
     behavior = "custom"
 )]
