@@ -2,13 +2,15 @@
  * Lists every `ui.page` node in the graph. Pages are nodes — this is a
  * filtered view over `/api/v1/nodes`, not a dedicated endpoint.
  *
- * Each card links to `/ui/:nodeId` (read-only SDUI render). The builder
- * edit link at `/pages/:nodeId/edit` lands with Stage 1 of
- * DASHBOARD-BUILDER.md.
+ * The list intentionally re-queries on every mount (`staleTime: 0`)
+ * and exposes a manual refresh — SSE-driven live invalidation will
+ * land when the graph store becomes the authoritative source for this
+ * surface.
  */
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { FileText, ArrowRight, Pencil } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { FileText, ArrowRight, Pencil, Plus, RefreshCw } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -19,9 +21,27 @@ import {
 import { agentPromise } from "@/lib/agent";
 import type { NodeSnapshot } from "@sys/agent-client";
 
+const UI_PAGE_KIND = "ui.page";
+const LAYOUT_SLOT = "layout";
+
 function nameFromPath(path: string) {
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+function startingLayout(name: string): unknown {
+  return {
+    ir_version: 1,
+    root: {
+      type: "page",
+      id: "root",
+      title: name,
+      children: [
+        { type: "heading", level: 2, content: name },
+        { type: "text", content: "Edit this layout to build your page." },
+      ],
+    },
+  };
 }
 
 function useUiPages() {
@@ -30,23 +50,75 @@ function useUiPages() {
     queryFn: async () => {
       const client = await agentPromise;
       const resp = await client.nodes.getNodesPage({
-        filter: 'kind=="ui.page"',
+        filter: `kind=="${UI_PAGE_KIND}"`,
         size: 200,
       });
       return resp.data;
     },
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 
 export function PagesListPage() {
-  const { data: pages, isLoading, isError } = useUiPages();
+  const { data: pages, isLoading, isError, isFetching } = useUiPages();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["ui-pages"] });
+
+  const createPage = async () => {
+    const raw = window.prompt("New page name (letters, digits, hyphen, underscore):");
+    const name = raw?.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      const client = await agentPromise;
+      const { id, path } = await client.nodes.createNode({
+        parent: "/",
+        kind: UI_PAGE_KIND,
+        name,
+      });
+      await client.slots.writeSlot(path, LAYOUT_SLOT, startingLayout(name));
+      queryClient.invalidateQueries({ queryKey: ["ui-pages"] });
+      navigate(`/pages/${encodeURIComponent(id)}/edit`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Failed to create page: ${msg}`);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center gap-3">
         <FileText size={18} className="text-primary" />
         <h1 className="text-base font-semibold">Pages</h1>
+        <span className="text-xs text-muted-foreground">
+          {pages ? `${pages.length} ui.page node${pages.length === 1 ? "" : "s"}` : ""}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={refresh}
+            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+            title="Refresh"
+          >
+            <RefreshCw size={12} className={isFetching ? "animate-spin" : ""} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={createPage}
+            disabled={creating}
+            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Plus size={12} />
+            New page
+          </button>
+        </div>
       </header>
 
       {isLoading && (
@@ -61,12 +133,19 @@ export function PagesListPage() {
         <Card className="max-w-md">
           <CardHeader>
             <CardTitle>No pages yet</CardTitle>
-            <CardDescription>Create your first ui.page via the CLI</CardDescription>
+            <CardDescription>
+              Click <strong>New page</strong> above, or create one via the CLI:
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <pre className="rounded bg-muted p-2 text-xs leading-relaxed">
               {`agent nodes create / ui.page my-page\nagent slots write /my-page layout \\\n  '{"ir_version":1,"root":{"type":"page","id":"root","title":"Hello","children":[{"type":"text","content":"Hello from SDUI!"}]}}'`}
             </pre>
+            <p className="mt-2 text-xs text-muted-foreground">
+              If you expected a page to appear here, make sure its kind is
+              exactly <code>ui.page</code> — the list filters on kind, not
+              name.
+            </p>
           </CardContent>
         </Card>
       )}
