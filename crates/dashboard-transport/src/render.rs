@@ -499,7 +499,12 @@ fn emit_query_subjects(
         .list_all()
         .into_iter()
         .map(|snap| TableRow {
-            id: snap.id.0.to_string(),
+            // NodeId::Display uses the un-hyphenated `simple()` form
+            // (see `spi::ids::NodeId`). Using `.0.to_string()` here
+            // would emit the hyphenated Uuid default form — the SSE
+            // slot_changed events carry the un-hyphenated form, so
+            // subjects built from hyphenated ids never matched.
+            id: snap.id.to_string(),
             kind: snap.kind.as_str().to_string(),
             path: snap.path.unwrap_or_default(),
             parent_id: snap.parent_id,

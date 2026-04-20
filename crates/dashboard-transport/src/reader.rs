@@ -40,7 +40,7 @@ impl NodeReader for GraphReader {
             version,
             slots,
             path: Some(snap.path.to_string()),
-            parent_id: snap.parent.map(|p| p.0.to_string()),
+            parent_id: snap.parent.map(|p| p.to_string()),
         })
     }
 
@@ -75,7 +75,7 @@ impl NodeReader for GraphReader {
                     version,
                     slots,
                     path: Some(snap.path.to_string()),
-                    parent_id: snap.parent.map(|p| p.0.to_string()),
+                    parent_id: snap.parent.map(|p| p.to_string()),
                 }
             })
             .collect()
