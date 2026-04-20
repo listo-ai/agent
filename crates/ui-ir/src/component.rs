@@ -244,6 +244,27 @@ pub enum Component {
         placeholder: Option<String>,
     },
 
+    /// Time-range picker with preset buttons. Writes
+    /// `{from, to}` (Unix ms) into `$page[page_state_key]` on every
+    /// click. `to` is "now" at click time for presets; `null/null`
+    /// means "all time". Any component reading the same
+    /// `page_state_key` (typically a `chart`) automatically retunes.
+    ///
+    /// A preset with `duration_ms: null` is "all" / unbounded — the
+    /// component writes `null` for `from` (and `to`) so the consumer
+    /// understands "no window clamp."
+    DateRange {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        /// `$page` key to write `{from, to}` into. Consumers read the
+        /// same key. No default — authors must name it explicitly to
+        /// avoid accidental cross-widget coupling on shared pages.
+        page_state_key: String,
+        /// Ordered preset buttons; the first one is applied on mount
+        /// when `$page[page_state_key]` is unset.
+        presets: Vec<DateRangePreset>,
+    },
+
     /// Multi-step form. Each step has a nested child tree rendered
     /// one at a time; `submit` fires when the last step is confirmed.
     Wizard {
@@ -450,6 +471,16 @@ pub struct TimelineEvent {
     /// `"info"` | `"ok"` | `"warn"` | `"danger"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intent: Option<String>,
+}
+
+/// One preset button on a [`Component::DateRange`]. `duration_ms` of
+/// `None` means "unbounded / all time" — consumers should drop any
+/// time clamp when this preset is selected.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DateRangePreset {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
 }
 
 /// One step of a [`Component::Wizard`].

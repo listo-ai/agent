@@ -28,7 +28,7 @@ const DEFAULT_WINDOW_MS = 60 * 60 * 1000; // last hour
 const DEFAULT_LIMIT = 500;
 
 export function ChartComponent({ node }: { node: ChartNode }) {
-  const { setPageState } = useSdui();
+  const { pageState, setPageState } = useSdui();
   const stateKey = node.page_state_key ?? "chart_range";
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
@@ -37,10 +37,15 @@ export function ChartComponent({ node }: { node: ChartNode }) {
   const authoredSeries = node.series ?? [];
   const hasAuthored = authoredSeries.some((s) => s.points.length > 0);
 
-  const fetched = useChartFetch(node, hasAuthored);
+  // Effective range: page-state takes precedence (driven by a
+  // date-range picker, drag-zoom, or any external writer), falling
+  // back to the authored `range` on the component.
+  const effectiveRange = resolveRange(pageState, stateKey, node.range);
+
+  const fetched = useChartFetch(node, hasAuthored, effectiveRange);
   const series = hasAuthored ? authoredSeries : fetched.series;
 
-  const bounds = computeBounds(series, node.range);
+  const bounds = computeBounds(series, effectiveRange);
   if (!bounds) {
     return (
       <div className="rounded border border-dashed border-muted-foreground/30 px-3 py-6 text-center text-xs text-muted-foreground">
@@ -100,9 +105,9 @@ export function ChartComponent({ node }: { node: ChartNode }) {
 function useChartFetch(
   node: ChartNode,
   hasAuthored: boolean,
+  range: { from: number; to: number } | undefined,
 ): { series: ChartSeries[]; isLoading: boolean; isError: boolean } {
   const { node_id, slot } = node.source;
-  const range = node.range;
   const widgetId = node.id ?? `${node_id}.${slot}`;
   const from = range?.from;
   const to = range?.to;
@@ -181,6 +186,33 @@ function useChartFetch(
     isLoading: pathQuery.isLoading || query.isLoading,
     isError: pathQuery.isError || query.isError,
   };
+}
+
+/**
+ * Resolve the effective `{from, to}` for the chart.
+ *
+ * Priority: `$page[page_state_key]` → authored `node.range` → `undefined`.
+ * The picker writes `{from: null, to: null}` for "all time" — we treat
+ * that as "no clamp" by returning `undefined` so the fetch window falls
+ * back to its default and `computeBounds` uses the actual data extent.
+ */
+function resolveRange(
+  pageState: unknown,
+  key: string,
+  authored: { from: number; to: number } | undefined,
+): { from: number; to: number } | undefined {
+  const state =
+    pageState && typeof pageState === "object"
+      ? (pageState as Record<string, unknown>)[key]
+      : undefined;
+  if (state && typeof state === "object" && state !== null && "from" in state && "to" in state) {
+    const s = state as { from: unknown; to: unknown };
+    if (typeof s.from === "number" && typeof s.to === "number") {
+      return { from: s.from, to: s.to };
+    }
+    if (s.from === null && s.to === null) return undefined; // "all time"
+  }
+  return authored;
 }
 
 function coerceNumber(v: unknown): number | null {

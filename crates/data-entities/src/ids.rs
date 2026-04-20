@@ -16,6 +16,12 @@ impl DeviceId {
     }
 }
 
+impl std::fmt::Display for DeviceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.simple())
+    }
+}
+
 /// Identity of a node (graph node, not just a flow node).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -34,7 +40,7 @@ impl NodeId {
 
 impl std::fmt::Display for NodeId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.0.simple())
     }
 }
 
@@ -63,7 +69,7 @@ impl RevisionId {
 
 impl std::fmt::Display for RevisionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.0.simple())
     }
 }
 
@@ -87,7 +93,7 @@ impl FlowId {
 
 impl std::fmt::Display for FlowId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.0.simple())
     }
 }
 

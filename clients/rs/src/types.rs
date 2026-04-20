@@ -739,6 +739,12 @@ pub enum UiComponent {
         #[serde(skip_serializing_if = "Option::is_none")]
         submit: Option<UiAction>,
     },
+    DateRange {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        page_state_key: String,
+        presets: Vec<UiDateRangePreset>,
+    },
     Drawer {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
@@ -886,6 +892,15 @@ pub struct UiWizardStep {
     pub label: String,
     #[serde(default)]
     pub children: Vec<UiComponent>,
+}
+
+/// Date-range preset — mirrors `ui_ir::DateRangePreset`. A `None`
+/// `duration_ms` means "all time / unbounded."
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiDateRangePreset {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
 }
 
 /// Tab entry — mirrors `ui_ir::Tab`.

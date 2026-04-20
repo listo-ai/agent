@@ -65,7 +65,7 @@ impl FlowRevisionRepo for SqliteFlowRevisionRepo {
 
     fn delete_flow(&self, id: FlowId) -> Result<(), RepoError> {
         self.with_conn(|c| {
-            c.execute("DELETE FROM flows WHERE id = ?1", params![id.0.to_string()])?;
+            c.execute("DELETE FROM flows WHERE id = ?1", params![id.0.simple().to_string()])?;
             Ok(())
         })
     }
@@ -116,13 +116,13 @@ fn get_flow_row(conn: &mut Connection, id: FlowId) -> Result<Option<FlowDocument
         "SELECT id, name, document, head_revision_id, head_seq \
          FROM flows WHERE id = ?1",
     )?;
-    let mut rows = stmt.query_map(params![id.0.to_string()], map_flow_row)?;
+    let mut rows = stmt.query_map(params![id.0.simple().to_string()], map_flow_row)?;
     rows.next().transpose().map_err(Into::into)
 }
 
 fn upsert_flow_row(conn: &mut Connection, flow: &FlowDocument) -> Result<(), SqliteError> {
     let doc_text = serde_json::to_string(&flow.document).map_err(|e| SqliteError::Json(e))?;
-    let head_rev = flow.head_revision_id.map(|r| r.0.to_string());
+    let head_rev = flow.head_revision_id.map(|r| r.0.simple().to_string());
     conn.execute(
         "INSERT INTO flows (id, name, document, head_revision_id, head_seq, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -133,7 +133,7 @@ fn upsert_flow_row(conn: &mut Connection, flow: &FlowDocument) -> Result<(), Sql
              head_seq         = excluded.head_seq,
              updated_at       = excluded.updated_at",
         params![
-            flow.id.0.to_string(),
+            flow.id.0.simple().to_string(),
             flow.name,
             doc_text,
             head_rev,
@@ -200,13 +200,13 @@ fn append_revision_tx(
          (id, flow_id, parent_id, seq, author, op, target_rev_id, summary, patch, snapshot) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
-            rev.id.0.to_string(),
-            rev.flow_id.0.to_string(),
-            rev.parent_id.map(|r| r.0.to_string()),
+            rev.id.0.simple().to_string(),
+            rev.flow_id.0.simple().to_string(),
+            rev.parent_id.map(|r| r.0.simple().to_string()),
             rev.seq,
             rev.author,
             rev.op.to_string(),
-            rev.target_rev_id.map(|r| r.0.to_string()),
+            rev.target_rev_id.map(|r| r.0.simple().to_string()),
             rev.summary,
             patch_text,
             snapshot_text,
@@ -220,9 +220,9 @@ fn append_revision_tx(
          WHERE id = ?4",
         params![
             doc_text,
-            rev.id.0.to_string(),
+            rev.id.0.simple().to_string(),
             rev.seq,
-            rev.flow_id.0.to_string(),
+            rev.flow_id.0.simple().to_string(),
         ],
     )?;
 
@@ -238,7 +238,7 @@ fn get_revision_row(
                 summary, patch, snapshot, created_at \
          FROM flow_revisions WHERE id = ?1",
     )?;
-    let mut rows = stmt.query_map(params![id.0.to_string()], map_revision_row)?;
+    let mut rows = stmt.query_map(params![id.0.simple().to_string()], map_revision_row)?;
     rows.next().transpose().map_err(Into::into)
 }
 
@@ -257,7 +257,7 @@ fn list_revision_rows(
          LIMIT ?2 OFFSET ?3",
     )?;
     let rows = stmt.query_map(
-        params![flow_id.0.to_string(), limit, offset],
+        params![flow_id.0.simple().to_string(), limit, offset],
         map_revision_row,
     )?;
     rows.collect::<Result<_, rusqlite::Error>>()
@@ -276,7 +276,7 @@ fn head_revision_row(
          ORDER BY seq DESC \
          LIMIT 1",
     )?;
-    let mut rows = stmt.query_map(params![flow_id.0.to_string()], map_revision_row)?;
+    let mut rows = stmt.query_map(params![flow_id.0.simple().to_string()], map_revision_row)?;
     rows.next().transpose().map_err(Into::into)
 }
 
@@ -345,7 +345,7 @@ fn prune_revisions_tx(
 ) -> Result<(), SqliteError> {
     let total: i64 = conn.query_row(
         "SELECT COUNT(*) FROM flow_revisions WHERE flow_id = ?1",
-        params![flow_id.0.to_string()],
+        params![flow_id.0.simple().to_string()],
         |r| r.get(0),
     )?;
 
@@ -368,7 +368,7 @@ fn prune_revisions_tx(
              LIMIT ?2",
         )?;
         let rows: Vec<i64> = stmt
-            .query_map(params![flow_id.0.to_string(), delete_count], |r| r.get(0))?
+            .query_map(params![flow_id.0.simple().to_string(), delete_count], |r| r.get(0))?
             .collect::<Result<_, _>>()?;
         rows.last().copied()
     };
@@ -385,7 +385,7 @@ fn prune_revisions_tx(
             "SELECT id FROM flow_revisions \
              WHERE flow_id = ?1 AND seq > ?2 \
              ORDER BY seq ASC LIMIT 1",
-            params![flow_id.0.to_string(), cutoff_seq],
+            params![flow_id.0.simple().to_string(), cutoff_seq],
             |r| r.get(0),
         )
         .ok();
@@ -408,7 +408,7 @@ fn prune_revisions_tx(
                     "SELECT snapshot FROM flow_revisions \
                      WHERE flow_id = ?1 AND seq <= ?2 AND snapshot IS NOT NULL \
                      ORDER BY seq DESC LIMIT 1",
-                    params![flow_id.0.to_string(), cutoff_seq],
+                    params![flow_id.0.simple().to_string(), cutoff_seq],
                     |r| r.get(0),
                 )
                 .ok()
@@ -427,7 +427,7 @@ fn prune_revisions_tx(
     if pinned.is_empty() {
         tx.execute(
             "DELETE FROM flow_revisions WHERE flow_id = ?1 AND seq <= ?2",
-            params![flow_id.0.to_string(), cutoff_seq],
+            params![flow_id.0.simple().to_string(), cutoff_seq],
         )?;
     } else {
         // SQLite doesn't support array params natively; build placeholders.
@@ -443,7 +443,7 @@ fn prune_revisions_tx(
         );
         let mut stmt = tx.prepare(&sql)?;
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
-            vec![Box::new(flow_id.0.to_string()), Box::new(cutoff_seq)];
+            vec![Box::new(flow_id.0.simple().to_string()), Box::new(cutoff_seq)];
         for pin in &pinned {
             params_vec.push(Box::new(pin.clone()));
         }
@@ -477,7 +477,7 @@ fn collect_undo_redo_pins(
             break;
         }
         if let Some(target) = rev.target_rev_id {
-            pins.push(target.0.to_string());
+            pins.push(target.0.simple().to_string());
         }
         // Walk to parent.
         current = match rev.parent_id {

@@ -60,7 +60,7 @@ impl HistoryRepo for SqliteHistoryRepo {
                 let mut groups: HashMap<(String, String), Vec<&HistoryRecord>> = HashMap::new();
                 for r in records {
                     groups
-                        .entry((r.node_id.to_string(), r.slot_name.clone()))
+                        .entry((r.node_id.simple().to_string(), r.slot_name.clone()))
                         .or_default()
                         .push(r);
                 }
@@ -101,7 +101,7 @@ impl HistoryRepo for SqliteHistoryRepo {
 
                     for r in &group {
                         ins.execute(params![
-                            r.node_id.to_string(),
+                            r.node_id.simple().to_string(),
                             r.slot_name,
                             r.slot_kind.as_str(),
                             r.ts_ms,
@@ -134,7 +134,7 @@ impl HistoryRepo for SqliteHistoryRepo {
                     AND ts_ms BETWEEN ?3 AND ?4
                   ORDER BY ts_ms ASC, id ASC{limit_clause}"
             );
-            let nid = q.node_id.to_string();
+            let nid = q.node_id.simple().to_string();
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map(params![nid, q.slot_name, q.from_ms, q.to_ms], |row| {
                 let node_id_str: String = row.get(1)?;
@@ -173,7 +173,7 @@ impl HistoryRepo for SqliteHistoryRepo {
         self.with_conn(|conn| {
             let n: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM slot_history WHERE node_id = ?1 AND slot_name = ?2",
-                params![node_id.to_string(), slot_name],
+                params![node_id.simple().to_string(), slot_name],
                 |row| row.get(0),
             )?;
             Ok(n as u64)
@@ -189,7 +189,7 @@ impl HistoryRepo for SqliteHistoryRepo {
                       ORDER BY ts_ms ASC, id ASC
                       LIMIT ?3
                  )",
-                params![node_id.to_string(), slot_name, n as i64],
+                params![node_id.simple().to_string(), slot_name, n as i64],
             )?;
             Ok(())
         })
@@ -208,7 +208,7 @@ impl HistoryRepo for SqliteHistoryRepo {
                    FROM slot_history
                   WHERE node_id = ?1 AND slot_name = ?2
                     AND ts_ms >= ?3 AND ts_ms < ?4",
-                params![node_id.to_string(), slot_name, day_start_ms, end_ms],
+                params![node_id.simple().to_string(), slot_name, day_start_ms, end_ms],
                 |row| row.get(0),
             )?;
             Ok(n)
@@ -229,7 +229,7 @@ mod tests {
             conn.execute(
                 "INSERT INTO nodes (id, kind_id, path, name, lifecycle)
                  VALUES (?1, 'sys.core.folder', '/test', 'test', 'created')",
-                [id.to_string()],
+                [id.simple().to_string()],
             )?;
             Ok(())
         })

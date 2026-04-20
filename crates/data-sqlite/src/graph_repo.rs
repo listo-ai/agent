@@ -159,8 +159,8 @@ fn save_node_row(conn: &mut Connection, n: &PersistedNode) -> Result<(), SqliteE
             name=excluded.name,
             lifecycle=excluded.lifecycle",
         params![
-            n.id.to_string(),
-            n.parent_id.map(|p| p.to_string()),
+            n.id.simple().to_string(),
+            n.parent_id.map(|p| p.simple().to_string()),
             n.kind_id,
             n.path,
             n.name,
@@ -175,7 +175,7 @@ fn delete_node_rows(conn: &mut Connection, ids: &[Uuid]) -> Result<(), SqliteErr
     {
         let mut stmt = tx.prepare("DELETE FROM nodes WHERE id = ?1")?;
         for id in ids {
-            stmt.execute(params![id.to_string()])?;
+            stmt.execute(params![id.simple().to_string()])?;
         }
     }
     tx.commit()?;
@@ -193,7 +193,7 @@ fn upsert_slot_row(conn: &mut Connection, s: &PersistedSlot) -> Result<(), Sqlit
             generation=excluded.generation,
             kind=excluded.kind",
         params![
-            s.node_id.to_string(),
+            s.node_id.simple().to_string(),
             s.name,
             s.role,
             value,
@@ -210,10 +210,10 @@ fn save_link_row(conn: &mut Connection, l: &PersistedLink) -> Result<(), SqliteE
          VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(id) DO NOTHING",
         params![
-            l.id.to_string(),
-            l.source_node.to_string(),
+            l.id.simple().to_string(),
+            l.source_node.simple().to_string(),
             l.source_slot,
-            l.target_node.to_string(),
+            l.target_node.simple().to_string(),
             l.target_slot,
         ],
     )?;
@@ -225,7 +225,7 @@ fn delete_link_rows(conn: &mut Connection, ids: &[Uuid]) -> Result<(), SqliteErr
     {
         let mut stmt = tx.prepare("DELETE FROM links WHERE id = ?1")?;
         for id in ids {
-            stmt.execute(params![id.to_string()])?;
+            stmt.execute(params![id.simple().to_string()])?;
         }
     }
     tx.commit()?;

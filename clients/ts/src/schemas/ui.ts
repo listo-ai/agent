@@ -135,6 +135,13 @@ export const UiWizardStepSchema: z.ZodType<any> = z.lazy(() =>
 );
 export type UiWizardStep = { label: string; children: UiComponent[] };
 
+export const UiDateRangePresetSchema = z.object({
+  label: z.string(),
+  /** `null` / omitted → "all time / unbounded." */
+  duration_ms: z.number().int().nullable().optional(),
+});
+export type UiDateRangePreset = z.infer<typeof UiDateRangePresetSchema>;
+
 // ---- Component (recursive) ------------------------------------------------
 
 /** Recursive component tree node. Discriminator `type`. */
@@ -277,6 +284,12 @@ export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
       id: z.string().optional(),
       steps: z.array(UiWizardStepSchema),
       submit: UiActionSchema.optional(),
+    }),
+    z.object({
+      type: z.literal("date_range"),
+      id: z.string().optional(),
+      page_state_key: z.string(),
+      presets: z.array(UiDateRangePresetSchema),
     }),
     z.object({
       type: z.literal("drawer"),

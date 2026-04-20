@@ -374,6 +374,7 @@ fn variant_name(c: &Component) -> &'static str {
         Component::Markdown { .. } => "markdown",
         Component::RichText { .. } => "rich_text",
         Component::RefPicker { .. } => "ref_picker",
+        Component::DateRange { .. } => "date_range",
         Component::Wizard { .. } => "wizard",
         Component::Drawer { .. } => "drawer",
         Component::Button { .. } => "button",

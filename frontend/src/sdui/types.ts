@@ -75,6 +75,11 @@ export type WizardStepShape = { label: string; children: UiComponent[] };
 export type WizardNode = {
   type: "wizard"; id?: string; steps: WizardStepShape[]; submit?: UiAction;
 };
+export type DateRangePresetShape = { label: string; duration_ms?: number | null };
+export type DateRangeNode = {
+  type: "date_range"; id?: string;
+  page_state_key: string; presets: DateRangePresetShape[];
+};
 export type DrawerNode = {
   type: "drawer"; id?: string; title?: string; open: boolean;
   page_state_key?: string; children: UiComponent[];

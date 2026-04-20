@@ -10,6 +10,7 @@ import type {
   TableNode, ChartNode, SparklineNode,
   TreeNode, TimelineNode, MarkdownNode,
   RichTextNode, RefPickerNode, WizardNode, DrawerNode,
+  DateRangeNode,
   ButtonNode, FormNode,
   ForbiddenNode, DanglingNode, CustomNode,
 } from "./types";
@@ -29,6 +30,7 @@ import { MarkdownComponent } from "./components/Markdown";
 import { RefPickerComponent } from "./components/RefPicker";
 import { WizardComponent } from "./components/Wizard";
 import { DrawerComponent } from "./components/Drawer";
+import { DateRangePicker } from "./components/DateRangePicker";
 import { RichTextComponent } from "./components/RichText";
 import { ButtonComponent } from "./components/ButtonComp";
 import { FormComponent } from "./components/FormComp";
@@ -59,6 +61,7 @@ export function Renderer({ node }: { node: UiComponent }) {
     case "ref_picker":return <RefPickerComponent node={as<RefPickerNode>(node)} />;
     case "wizard":    return <WizardComponent node={as<WizardNode>(node)} />;
     case "drawer":    return <DrawerComponent node={as<DrawerNode>(node)} />;
+    case "date_range":return <DateRangePicker node={as<DateRangeNode>(node)} />;
     case "rich_text": return <RichTextComponent node={as<RichTextNode>(node)} />;
     case "button":    return <ButtonComponent node={as<ButtonNode>(node)} />;
     case "form":      return <FormComponent node={as<FormNode>(node)} />;

@@ -96,11 +96,11 @@ pub(crate) struct SlotDto {
 impl From<NodeSnapshot> for NodeDto {
     fn from(s: NodeSnapshot) -> Self {
         Self {
-            id: s.id.to_hex(),
+            id: s.id.to_string(),
             kind: s.kind.as_str().to_string(),
             parent_path: s.path.parent().map(|p| p.to_string()),
             path: s.path.to_string(),
-            parent_id: s.parent.map(|p| p.to_hex()),
+            parent_id: s.parent.map(|p| p.to_string()),
             has_children: s.has_children,
             lifecycle: s.lifecycle,
             slots: s
@@ -240,7 +240,7 @@ async fn create_node(
         .create_child(&parent, kind, &req.name)
         .map_err(ApiError::from_graph)?;
     Ok(Json(CreatedNodeResp {
-        id: id.to_hex(),
+        id: id.to_string(),
         path: parent.child(&req.name).to_string(),
     }))
 }

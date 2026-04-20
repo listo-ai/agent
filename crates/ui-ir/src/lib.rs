@@ -8,7 +8,9 @@
 
 mod component;
 
-pub use component::{Action, Component, DiffAnnotation, Tab, TableColumn, TableSource};
+pub use component::{
+    Action, Component, DateRangePreset, DiffAnnotation, Tab, TableColumn, TableSource,
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

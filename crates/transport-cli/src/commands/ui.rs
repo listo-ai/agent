@@ -434,6 +434,7 @@ fn component_info(c: &UiComponent) -> (&str, Option<&str>, &[UiComponent]) {
         UiComponent::Markdown { id, .. } => ("markdown", id.as_deref(), &[]),
         UiComponent::RefPicker { id, .. } => ("ref_picker", id.as_deref(), &[]),
         UiComponent::Wizard { id, .. } => ("wizard", id.as_deref(), &[]),
+        UiComponent::DateRange { id, .. } => ("date_range", id.as_deref(), &[]),
         UiComponent::Drawer { id, children, .. } => ("drawer", id.as_deref(), children),
     }
 }
