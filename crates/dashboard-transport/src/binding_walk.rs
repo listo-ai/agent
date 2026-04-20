@@ -34,6 +34,59 @@ pub fn walk_string_leaves(v: &JsonValue, path: &str, f: &mut dyn FnMut(&str, &st
     }
 }
 
+/// Substitute every `{{binding}}` occurrence in `s` using `eval`.
+/// Whole-string expressions are replaced with the raw JSON value
+/// rendering (preserving numeric/boolean types as their JSON form);
+/// interpolated expressions are stringified. On evaluation failure
+/// the original `{{...}}` text is left in place so RSQL downstream
+/// sees it as a literal — authors get an empty-result row rather
+/// than a hard error, and the builder's dry-run already flagged it.
+pub fn substitute_bindings<F>(s: &str, mut eval: F) -> String
+where
+    F: FnMut(&str) -> Option<JsonValue>,
+{
+    // Whole-string fast path — preserves the JSON type (number, bool,
+    // object) rather than forcing everything through .to_string().
+    let trimmed = s.trim();
+    if let Some(inner) = trimmed
+        .strip_prefix("{{")
+        .and_then(|r| r.strip_suffix("}}"))
+    {
+        if !inner.contains("{{") && !inner.contains("}}") {
+            if let Some(v) = eval(inner.trim()) {
+                return match v {
+                    JsonValue::String(x) => x,
+                    other => other.to_string(),
+                };
+            }
+            return s.to_string();
+        }
+    }
+    // Embedded — every `{{...}}` becomes its stringified form.
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'{' {
+            if let Some(end) = s[i + 2..].find("}}") {
+                let expr = s[i + 2..i + 2 + end].trim();
+                let rendered = eval(expr)
+                    .map(|v| match v {
+                        JsonValue::String(x) => x,
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_else(|| format!("{{{{{expr}}}}}"));
+                out.push_str(&rendered);
+                i += 2 + end + 2;
+                continue;
+            }
+        }
+        out.push(s.as_bytes()[i] as char);
+        i += 1;
+    }
+    out
+}
+
 /// Iterate `{{...}}` expressions in `s` — yields the trimmed inner text
 /// of every well-formed binding. Malformed `{{` with no closing `}}` is
 /// reported by `on_unterminated` so dry-run callers can flag it.

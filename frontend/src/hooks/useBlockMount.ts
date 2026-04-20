@@ -7,15 +7,15 @@ import { AGENT_BASE_URL } from "@/lib/agent";
  * Load a block's MF-exposed `./Panel` module through the agent.
  *
  * The block's container name follows the dot-escape convention from
- * `docs/design/PLUGINS.md` § "Path-segment encoding":
+ * `docs/design/BLOCKS.md` § "Path-segment encoding":
  *
- *   block id    `com.sys.hello`
- *   MF name      `com_acme_hello`
+ *   block id  `com.acme.hello`
+ *   MF name   `com_acme_hello`
  *
  * So the host can derive the remote name from the block id without
  * extra metadata on the wire.
  */
-export function pluginRemoteName(id: string): string {
+export function blockRemoteName(id: string): string {
   return id.replace(/\./g, "_");
 }
 
@@ -24,7 +24,7 @@ interface RemoteModule {
   REMOTE_REACT_VERSION?: string;
 }
 
-export interface PluginMountState {
+export interface BlockMountState {
   Panel: ComponentType | null;
   remoteReact: string | undefined;
   loading: boolean;
@@ -33,7 +33,7 @@ export interface PluginMountState {
   unmount: () => void;
 }
 
-export function useBlockMount(): PluginMountState {
+export function useBlockMount(): BlockMountState {
   const [Panel, setPanel] = useState<ComponentType | null>(null);
   const [remoteReact, setRemoteReact] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
@@ -45,7 +45,7 @@ export function useBlockMount(): PluginMountState {
     setPanel(null);
     setRemoteReact(undefined);
     try {
-      const name = pluginRemoteName(pluginId);
+      const name = blockRemoteName(pluginId);
       // Agent serves the block's ui/ at `/blocks/<id>/…`. MF manifest
       // → reliable MF handshake; remoteEntry.js works too.
       const entry = `${AGENT_BASE_URL}/blocks/${encodeURIComponent(pluginId)}/mf-manifest.json`;

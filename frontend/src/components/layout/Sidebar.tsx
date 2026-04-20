@@ -4,7 +4,6 @@ import { useStore, create } from "zustand";
 import {
   GitBranch,
   FileText,
-  Package,
   Puzzle,
   Settings,
   PanelLeftClose,
@@ -38,10 +37,9 @@ import {
 interface NavItem { label: string; to: string; icon: React.ElementType; }
 
 const BOTTOM_NAV: NavItem[] = [
-  { label: "Pages",      to: "/pages",      icon: FileText },
-  { label: "Blocks", to: "/blocks", icon: Puzzle },
-  { label: "Plugins",    to: "/blocks",    icon: Package },
-  { label: "Settings",   to: "/settings",   icon: Settings },
+  { label: "Pages",    to: "/pages",    icon: FileText },
+  { label: "Blocks",   to: "/blocks",   icon: Puzzle },
+  { label: "Settings", to: "/settings", icon: Settings },
 ];
 
 // ---------------------------------------------------------------------------

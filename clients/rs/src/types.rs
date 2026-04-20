@@ -745,6 +745,26 @@ pub enum UiComponent {
         page_state_key: String,
         presets: Vec<UiDateRangePreset>,
     },
+    Select {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        page_state_key: String,
+        options: Vec<UiSelectOption>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        default: Option<JsonValue>,
+    },
+    Kpi {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        label: String,
+        source: UiChartSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+    },
     Drawer {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
@@ -901,6 +921,13 @@ pub struct UiDateRangePreset {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<i64>,
+}
+
+/// One option in a `Select`. `value` can be any JSON scalar.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiSelectOption {
+    pub label: String,
+    pub value: JsonValue,
 }
 
 /// Tab entry — mirrors `ui_ir::Tab`.

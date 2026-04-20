@@ -142,6 +142,12 @@ export const UiDateRangePresetSchema = z.object({
 });
 export type UiDateRangePreset = z.infer<typeof UiDateRangePresetSchema>;
 
+export const UiSelectOptionSchema = z.object({
+  label: z.string(),
+  value: z.unknown(),
+});
+export type UiSelectOption = z.infer<typeof UiSelectOptionSchema>;
+
 // ---- Component (recursive) ------------------------------------------------
 
 /** Recursive component tree node. Discriminator `type`. */
@@ -290,6 +296,22 @@ export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
       id: z.string().optional(),
       page_state_key: z.string(),
       presets: z.array(UiDateRangePresetSchema),
+    }),
+    z.object({
+      type: z.literal("select"),
+      id: z.string().optional(),
+      page_state_key: z.string(),
+      options: z.array(UiSelectOptionSchema),
+      placeholder: z.string().optional(),
+      default: z.unknown().optional(),
+    }),
+    z.object({
+      type: z.literal("kpi"),
+      id: z.string().optional(),
+      label: z.string(),
+      source: UiChartSourceSchema,
+      format: z.string().optional(),
+      intent: z.string().optional(),
     }),
     z.object({
       type: z.literal("drawer"),

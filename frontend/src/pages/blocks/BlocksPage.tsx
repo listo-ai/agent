@@ -35,7 +35,8 @@ type RemoteModule = {
 // ---------------------------------------------------------------------------
 
 export function BlocksPage() {
-  const blocks = useBlocksStore((s) => [...s.blocks.values()]);
+  const blocksMap = useBlocksStore((s) => s.blocks);
+  const blocks = [...blocksMap.values()];
   const [remote, setRemote] = useState<RemoteModule | null>(null);
   const [loading, setLoading] = useState(false);
 

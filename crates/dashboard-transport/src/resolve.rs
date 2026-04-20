@@ -132,6 +132,15 @@ pub async fn handler(
     // both carry the same key for the client to patch against.
     crate::render::assign_synthetic_ids(&mut layout);
 
+    // Substitute `{{$page.*}} / {{$stack.*}} / {{$user.*}} / {{$self.*}}`
+    // in fields where bindings gate data fetching (today: a table's
+    // `source.query`). Done on the live path; dry-run validates the
+    // raw template so authors see their un-substituted bindings when
+    // they browse errors.
+    if !req.dry_run {
+        substitute_query_bindings(&mut layout, &page, &req, &*state.reader);
+    }
+
     if req.dry_run {
         if let Err(e) = serde_json::from_value::<ComponentTree>(layout.clone()) {
             return Ok(Json(ResolveResponse::DryRun {
@@ -171,6 +180,58 @@ pub async fn handler(
         subscriptions,
         meta,
     }))
+}
+
+fn substitute_query_bindings(
+    layout: &mut JsonValue,
+    page: &NodeSnapshot,
+    req: &ResolveRequest,
+    reader: &(dyn dashboard_runtime::NodeReader + Send + Sync),
+) {
+    use dashboard_runtime::{Binding, ContextStack, EvalContext};
+    let stack = ContextStack::build(reader, &req.stack, 128).unwrap_or_default();
+    let ctx = EvalContext {
+        reader,
+        stack: &stack,
+        self_id: page.id,
+        user_claims: &req.user_claims,
+        page_state: &req.page_state,
+        access_log: None,
+    };
+    walk_table_queries(layout, &|q| {
+        crate::binding_walk::substitute_bindings(q, |expr| {
+            Binding::parse(expr).ok().and_then(|b| b.evaluate(&ctx).ok())
+        })
+    });
+}
+
+/// Walk the layout, applying `rewrite` to every `table.source.query`
+/// string leaf. The walker is conservative by design — only fields
+/// that gate server-side data fetching get substituted. Adding a new
+/// substituted field is a one-line addition here and should be
+/// accompanied by a test.
+fn walk_table_queries<F: Fn(&str) -> String>(v: &mut JsonValue, rewrite: &F) {
+    match v {
+        JsonValue::Array(arr) => {
+            for x in arr {
+                walk_table_queries(x, rewrite);
+            }
+        }
+        JsonValue::Object(m) => {
+            let is_table = m.get("type").and_then(|t| t.as_str()) == Some("table");
+            for val in m.values_mut() {
+                walk_table_queries(val, rewrite);
+            }
+            if is_table {
+                if let Some(JsonValue::Object(src)) = m.get_mut("source") {
+                    if let Some(JsonValue::String(q)) = src.get_mut("query") {
+                        *q = rewrite(q);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn collect_binding_issues(
@@ -375,6 +436,8 @@ fn variant_name(c: &Component) -> &'static str {
         Component::RichText { .. } => "rich_text",
         Component::RefPicker { .. } => "ref_picker",
         Component::DateRange { .. } => "date_range",
+        Component::Select { .. } => "select",
+        Component::Kpi { .. } => "kpi",
         Component::Wizard { .. } => "wizard",
         Component::Drawer { .. } => "drawer",
         Component::Button { .. } => "button",

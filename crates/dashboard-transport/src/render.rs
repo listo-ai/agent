@@ -272,6 +272,7 @@ struct SyntheticIdCounters {
     table: usize,
     sparkline: usize,
     timeline: usize,
+    kpi: usize,
 }
 
 fn assign_ids_walk(v: &mut JsonValue, counters: &mut SyntheticIdCounters) {
@@ -308,6 +309,11 @@ fn assign_ids_walk(v: &mut JsonValue, counters: &mut SyntheticIdCounters) {
                         let n = counters.timeline;
                         counters.timeline += 1;
                         Some(("timeline", n))
+                    }
+                    Some("kpi") => {
+                        let n = counters.kpi;
+                        counters.kpi += 1;
+                        Some(("kpi", n))
                     }
                     _ => None,
                 } {
@@ -400,7 +406,8 @@ fn collect_chart_plans(v: &JsonValue, plans: &mut Vec<SubscriptionPlan>) {
         JsonValue::Object(m) => {
             let is_chart = m.get("type").and_then(|v| v.as_str()) == Some("chart");
             let is_spark = m.get("type").and_then(|v| v.as_str()) == Some("sparkline");
-            if is_chart {
+            let is_kpi = m.get("type").and_then(|v| v.as_str()) == Some("kpi");
+            if is_chart || is_kpi {
                 let src = m.get("source").and_then(|v| v.as_object());
                 let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 if let (Some(src), true) = (src, !id.is_empty()) {

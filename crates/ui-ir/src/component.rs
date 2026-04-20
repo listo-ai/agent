@@ -244,6 +244,40 @@ pub enum Component {
         placeholder: Option<String>,
     },
 
+    /// Single-choice dropdown. Writes `value` into
+    /// `$page[page_state_key]` on selection. Values can be any JSON
+    /// scalar — a `select` over `severity: [low, medium, high]` writes
+    /// strings; a severity-as-int select writes numbers. Downstream
+    /// components (table `source.query`, chart source, etc.) reference
+    /// the same `$page` key via `{{$page.<key>}}` binding substitution.
+    Select {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        page_state_key: String,
+        options: Vec<SelectOption>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+        /// Initial option value applied on mount when the key is
+        /// unset. Must be one of `options[].value` if set.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        default: Option<JsonValue>,
+    },
+
+    /// Big-number stat tile. Reads the current slot value from the
+    /// graph at resolve time and lives-updates over the same
+    /// subscription plan that powers charts. `format` controls
+    /// display: `"number"` (default) | `"percent"` | `"bytes"`.
+    Kpi {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        label: String,
+        source: ChartSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+    },
+
     /// Time-range picker with preset buttons. Writes
     /// `{from, to}` (Unix ms) into `$page[page_state_key]` on every
     /// click. `to` is "now" at click time for presets; `null/null`
@@ -471,6 +505,13 @@ pub struct TimelineEvent {
     /// `"info"` | `"ok"` | `"warn"` | `"danger"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intent: Option<String>,
+}
+
+/// One entry in a [`Component::Select`].
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SelectOption {
+    pub label: String,
+    pub value: JsonValue,
 }
 
 /// One preset button on a [`Component::DateRange`]. `duration_ms` of

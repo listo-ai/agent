@@ -103,10 +103,13 @@ export function useSubscriptions(
           // yet), fall back to invalidating the prefix so the
           // component refetches on its own schedule.
           const patched =
-            applyToTables(qc, widget, event) || applyToCharts(qc, widget, event);
+            applyToTables(qc, widget, event) ||
+            applyToCharts(qc, widget, event) ||
+            applyToKpis(qc, widget, event);
           if (!patched) {
             qc.invalidateQueries({ queryKey: ["sdui-table", widget] });
             qc.invalidateQueries({ queryKey: ["sdui-chart", widget] });
+            qc.invalidateQueries({ queryKey: ["sdui-kpi", widget] });
           }
         }
       }
@@ -137,6 +140,24 @@ function applyToTables(
       });
       if (touched) touchedAny = true;
       return touched ? { ...old, data } : old;
+    },
+  );
+  return touchedAny;
+}
+
+function applyToKpis(
+  qc: ReturnType<typeof useQueryClient>,
+  widget: string,
+  event: SlotChangedEvent,
+): boolean {
+  let touchedAny = false;
+  qc.setQueriesData<unknown>(
+    { queryKey: ["sdui-kpi", widget] },
+    (_old: unknown) => {
+      touchedAny = true;
+      // KPI stores the raw slot value; the component unwraps
+      // `.payload` at render time.
+      return event.value;
     },
   );
   return touchedAny;

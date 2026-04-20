@@ -80,6 +80,16 @@ export type DateRangeNode = {
   type: "date_range"; id?: string;
   page_state_key: string; presets: DateRangePresetShape[];
 };
+export type SelectOptionShape = { label: string; value: unknown };
+export type SelectNode = {
+  type: "select"; id?: string;
+  page_state_key: string; options: SelectOptionShape[];
+  placeholder?: string; default?: unknown;
+};
+export type KpiNode = {
+  type: "kpi"; id?: string; label: string;
+  source: ChartSource; format?: string; intent?: string;
+};
 export type DrawerNode = {
   type: "drawer"; id?: string; title?: string; open: boolean;
   page_state_key?: string; children: UiComponent[];
