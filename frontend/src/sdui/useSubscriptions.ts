@@ -23,7 +23,7 @@
  *   server remains the source of truth.
  */
 import { useEffect } from "react";
-import { useQueryClient, type Query } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { agentPromise } from "@/lib/agent";
 import type {
   SlotChangedEvent,
@@ -72,11 +72,17 @@ export function useSubscriptions(
           continue;
         }
 
-        // Component-scoped plans: patch the cache in place. Touches
-        // every matching query (different pageState / pagination)
-        // via setQueriesData.
-        applyToTables(qc, widget, event);
-        applyToCharts(qc, widget, event);
+        // Component-scoped plans: try to patch the cache in place.
+        // If no matching cached query was found (e.g. widget not
+        // mounted yet, or a future component type we don't patch
+        // yet), fall back to invalidating the prefix so the
+        // component refetches on its own schedule.
+        const patched =
+          applyToTables(qc, widget, event) || applyToCharts(qc, widget, event);
+        if (!patched) {
+          qc.invalidateQueries({ queryKey: ["sdui-table", widget] });
+          qc.invalidateQueries({ queryKey: ["sdui-chart", widget] });
+        }
       }
     })();
 
@@ -91,9 +97,10 @@ function applyToTables(
   qc: ReturnType<typeof useQueryClient>,
   widget: string,
   event: SlotChangedEvent,
-): void {
+): boolean {
+  let touchedAny = false;
   qc.setQueriesData<UiTableResponse>(
-    { predicate: matchesPrefix(["sdui-table", widget]) },
+    { queryKey: ["sdui-table", widget] },
     (old) => {
       if (!old) return old;
       let touched = false;
@@ -102,45 +109,35 @@ function applyToTables(
         touched = true;
         return { ...row, slots: { ...row.slots, [event.slot]: event.value } };
       });
+      if (touched) touchedAny = true;
       return touched ? { ...old, data } : old;
     },
   );
+  return touchedAny;
 }
 
 function applyToCharts(
   qc: ReturnType<typeof useQueryClient>,
   widget: string,
   event: SlotChangedEvent,
-): void {
+): boolean {
   const v = coerceNumber(extractPayload(event.value));
-  if (v === null) return;
+  if (v === null) return false;
+  let touchedAny = false;
   qc.setQueriesData<ChartSeries[]>(
-    { predicate: matchesPrefix(["sdui-chart", widget]) },
+    { queryKey: ["sdui-chart", widget] },
     (old) => {
       if (!old || old.length === 0) return old;
-      // Append to the first series. Charts currently render exactly
-      // one source; when multi-series lands, the event includes slot
-      // and we'd pick by label.
       const [head, ...rest] = old;
       if (!head) return old;
-      const nextPoints: [number, number][] = [
-        ...head.points,
-        [event.ts, v],
+      touchedAny = true;
+      return [
+        { label: head.label, points: [...head.points, [event.ts, v]] },
+        ...rest,
       ];
-      return [{ label: head.label, points: nextPoints }, ...rest];
     },
   );
-}
-
-function matchesPrefix(prefix: readonly unknown[]) {
-  return (q: Query): boolean => {
-    const key = q.queryKey as readonly unknown[];
-    if (key.length < prefix.length) return false;
-    for (let i = 0; i < prefix.length; i++) {
-      if (key[i] !== prefix[i]) return false;
-    }
-    return true;
-  };
+  return touchedAny;
 }
 
 function coerceNumber(v: unknown): number | null {
