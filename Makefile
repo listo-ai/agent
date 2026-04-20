@@ -92,11 +92,12 @@ studio-edge: build-client ## Start Studio pointed at the edge agent (http://loca
 	  $(PNPM) --filter @sys/studio dev --port 3002
 
 .PHONY: kill
-kill: ## Kill any running agent processes
-	@pids=$$(pgrep -f "/target/debug/$(BIN)" 2>/dev/null); \
-	  if [ -n "$$pids" ]; then kill $$pids && echo "debug agent stopped"; else echo "no debug agent running"; fi
-	@pids=$$(pgrep -f "/target/release/$(BIN)" 2>/dev/null); \
-	  if [ -n "$$pids" ]; then kill $$pids && echo "release agent stopped"; fi
+kill: ## Kill anything running on agent/studio ports (8080-8082, 3000-3002)
+	@for port in 8080 8081 8082 3000 3001 3002; do \
+	  pid=$$(lsof -ti tcp:$$port 2>/dev/null); \
+	  if [ -n "$$pid" ]; then kill -9 $$pid 2>/dev/null && echo "killed :$$port (pid $$pid)"; fi; \
+	done
+	@echo "all ports clear"
 
 .PHONY: dev-reset
 dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)
