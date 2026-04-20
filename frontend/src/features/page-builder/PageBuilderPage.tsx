@@ -27,11 +27,16 @@ const LAYOUT_SLOT = "layout";
 
 async function loadDraft(nodeId: string): Promise<DraftPage> {
   const client = await agentPromise;
-  const page = await client.nodes.getNodesPage({
-    filter: `id=="${nodeId}"`,
-    size: 1,
+  // List all ui.page nodes and pick by id. The kind-filter path is
+  // proven to work; filtering directly by `id==<uuid>` has been
+  // flaky in practice — RSQL dashes seem to confuse some parsers.
+  // The list is small in practice, so one extra roundtrip beats a
+  // spooky filter bug.
+  const resp = await client.nodes.getNodesPage({
+    filter: `kind=="ui.page"`,
+    size: 500,
   });
-  const snap = page.data[0];
+  const snap = resp.data.find((n) => n.id === nodeId);
   if (!snap) throw new Error(`No ui.page node with id ${nodeId}`);
   return toDraft(snap);
 }
