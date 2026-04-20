@@ -3,7 +3,7 @@
 
 use crate::error::ClientError;
 use crate::http::HttpClient;
-use crate::types::{CreatedNode, NodeListResponse, NodeSnapshot};
+use crate::types::{CreatedNode, NodeListResponse, NodeSchema, NodeSnapshot};
 
 use serde::Serialize;
 
@@ -69,6 +69,28 @@ impl<'c> Nodes<'c> {
         self.http
             .get::<NodeSnapshot>(&format!("{}/node?path={encoded}", self.base))
             .await
+    }
+
+    /// Get the kind-declared slot schemas for one node. Lets a client
+    /// answer "what slots does this node have, and what shape does
+    /// each carry?" without cross-referencing the full kind registry.
+    ///
+    /// Internal bookkeeping slots (marked `is_internal` in the
+    /// manifest) are filtered out by default — pass `include_internal:
+    /// true` to see them.
+    ///
+    /// Example: `client.nodes().schema("/flow-1/heartbeat", false).await?`.
+    pub async fn schema(
+        &self,
+        path: &str,
+        include_internal: bool,
+    ) -> Result<NodeSchema, ClientError> {
+        let encoded = urlencoding_path(path);
+        let url = format!(
+            "{}/node/schema?path={encoded}&include_internal={include_internal}",
+            self.base
+        );
+        self.http.get::<NodeSchema>(&url).await
     }
 
     /// Create a child node under `parent` with the given kind and name.

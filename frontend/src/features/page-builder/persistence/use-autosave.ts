@@ -22,7 +22,6 @@ const LAYOUT_SLOT = "layout";
 export function useAutosave(): void {
   const draft = useBuilderStore((s) => s.draft);
   const conflict = useBuilderStore((s) => s.conflict);
-  const issues = useBuilderStore((s) => s.issues);
   const setSaveState = useBuilderStore((s) => s.setSaveState);
   const markSaved = useBuilderStore((s) => s.markSaved);
   const setConflict = useBuilderStore((s) => s.setConflict);
@@ -31,23 +30,15 @@ export function useAutosave(): void {
   // don't re-save on no-op ticks (e.g. cursor moves that re-render).
   const lastSent = useRef<string | null>(null);
 
-  // Hard block: don't persist a layout the server's dry-run
-  // rejected. Saving broken JSON leaves /ui/resolve returning 422
-  // forever — the page becomes un-previewable until the user edits
-  // again. Local parse errors already short-circuit later; this
-  // catches schema-level problems (missing required fields, unknown
-  // component types) that parse locally but the server rejects.
-  const hasDryRunErrors = issues.some((i) => i.source === "dry-run");
+  // Save as long as the text parses locally. Dry-run (binding /
+  // schema) issues are surfaced in the validation strip but never
+  // block persistence — a half-authored page with a dangling
+  // `$target` or a typo'd `$page.key` is still a save-worthy draft,
+  // and forcing the user to make it resolve-clean mid-edit broke the
+  // authoring flow.
 
   useEffect(() => {
     if (!draft || conflict) return;
-    if (hasDryRunErrors) {
-      setSaveState({
-        kind: "error",
-        message: "fix validation errors to save",
-      });
-      return;
-    }
     if (draft.layoutText === lastSent.current) return;
 
     const snapshot = {
@@ -81,5 +72,5 @@ export function useAutosave(): void {
       }
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [draft, conflict, hasDryRunErrors, setSaveState, markSaved, setConflict]);
+  }, [draft, conflict, setSaveState, markSaved, setConflict]);
 }

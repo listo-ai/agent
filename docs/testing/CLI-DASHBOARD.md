@@ -72,8 +72,8 @@ agent slots write /dashboards/heartbeat-monitor layout '{
        "source":{"query":"path==/flow-1/heartbeat","subscribe":true},
        "columns":[
          {"title":"Node","field":"path"},
-         {"title":"Count","field":"slots.current_count"},
-         {"title":"State","field":"slots.current_state"}
+         {"title":"Count","field":"slots.out.payload.count"},
+         {"title":"State","field":"slots.out.payload.state"}
        ],
        "page_size":10}
     ]
@@ -87,7 +87,7 @@ Key points an LLM should remember:
 - `source.subscribe: true` on a `table` is what turns on live rows — the backend derives `node.<id>.slot.<name>` subjects for every node the query matches, and the React hook patches the table's cached row in place on each matching event (no refetch per tick).
 - `source.query` is RSQL (same grammar as `agent nodes list --filter`). Test queries with `agent ui table --query '…'` first.
 - `columns[].field` is a dot-path into the row JSON (`path`, `kind`, `slots.<name>`, `parent_id`).
-- **Flow-engine envelope caveat.** Slots fed by a flow (`msg in`/`msg out`) are stored as `{_msgid, _ts, payload: <real value>}` objects, not raw scalars. A `field: "slots.count"` cell will render `[object Object]`. Drill into `slots.count.payload` instead, or bind to a status-kind slot that the behaviour already flattens (e.g. heartbeat ships `current_count` as a bare number alongside `count` as the envelope).
+- **Output-slot envelope.** Source and transformer kinds write a `Msg` envelope (`{_msgid, topic?, payload: <real value>}`) to their output slot — not a bare scalar. A `field: "slots.out"` cell renders `[object Object]`. Drill into `slots.out.payload.count` / `slots.out.payload.state` for the scalars (the heartbeat example above). The envelope is exactly what [spi/src/msg.rs](../../crates/spi/src/msg.rs) serialises; Stage 2 of [NODE-RED-MODEL.md](../design/NODE-RED-MODEL.md) stripped `_ts` / `_source` / `_parentid` — timestamps ride the SSE frame, provenance moves to trace context.
 
 ### Step 3 — verify before opening Studio
 
@@ -177,7 +177,7 @@ views:
                 level: 2
               - type: badge
                 id: state
-                label: "{{$target.current_state}}"
+                label: "{{$target.out.payload.state}}"
                 intent: info
 ```
 
@@ -188,7 +188,7 @@ agent ui render --target <instance-node-id>
 agent ui render --target <instance-node-id> --view overview   # explicit
 ```
 
-Supported `$target` bindings: `id`, `path`, `name`, `kind`, and any slot name.
+Supported `$target` bindings: `id`, `path`, `name`, `kind`, and any slot name — with an optional dot-path into the slot value (e.g. `$target.out.payload.state` walks into the Msg envelope).
 
 When no `view` parameter is supplied, the highest-`priority` view wins; ties break by declaration order.
 
@@ -262,7 +262,7 @@ Every error follows [CLI.md § 1](../design/CLI.md#1-deterministic-json-output-c
 | `409 generation_mismatch` (`slots write --expected-generation`) | Someone else wrote to the slot between your read and write | Re-read the node (`agent nodes get <path> -o json`), rebase your edits on the new generation, retry |
 | `413 payload_too_large` | Tree exceeded a DoS limit (see SDUI.md § "Size & DoS limits") | Split into sub-pages or reduce row counts |
 | `subscriptions: []` when you expected updates | Table has `subscribe: false`, or the query matched zero nodes | Flip `subscribe: true`; test the query independently |
-| Row cell shows `[object Object]` | Slot is a flow-engine envelope `{_msgid, _ts, payload}` | Use `slots.<name>.payload` in `columns[].field`, or bind a flattened status-kind slot the behaviour publishes alongside |
+| Row cell shows `[object Object]` | Slot holds a Msg envelope `{_msgid, topic?, payload}` | Drill into the payload: `slots.<name>.payload.<field>` in `columns[].field` |
 
 ---
 

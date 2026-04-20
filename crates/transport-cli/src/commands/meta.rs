@@ -126,6 +126,7 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &CAPABILITIES,
         &NODES_LIST,
         &NODES_GET,
+        &NODES_SCHEMA,
         &NODES_CREATE,
         &NODES_DELETE,
         &SLOTS_WRITE,
@@ -316,6 +317,49 @@ static NODES_GET: CommandMeta = CommandMeta {
         })
     },
     output_schema: schema_for_type::<types::NodeSnapshot>,
+    errors: &[
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "bad_path",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static NODES_SCHEMA: CommandMeta = CommandMeta {
+    name: "nodes schema",
+    summary: "Show the kind-declared slot schemas for one node — name, role, value kind, writable/internal/emit-on-init flags, and per-slot JSON Schema.",
+    args: &[ArgInfo {
+        name: "path",
+        required: true,
+        type_name: "node-path",
+        description: "Node path, e.g. /flow-1/heartbeat",
+    }],
+    examples: &[
+        "agent nodes schema /flow-1/heartbeat",
+        "agent nodes schema /flow-1/heartbeat --include-internal",
+        "agent nodes schema /flow-1/heartbeat -o json | jq '.slots[].name'",
+    ],
+    related: &["nodes get", "kinds list"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+                "path": { "type": "string", "format": "node-path" },
+                "include_internal": { "type": "boolean", "default": false }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::NodeSchema>,
     errors: &[
         ErrorInfo {
             code: "not_found",
@@ -561,9 +605,18 @@ static SLOTS_HISTORY_LIST: CommandMeta = CommandMeta {
         })
     },
     errors: &[
-        ErrorInfo { code: "not_found",         exit_code: 1 },
-        ErrorInfo { code: "service_unavailable", exit_code: 2 },
-        ErrorInfo { code: "agent_unreachable",  exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "service_unavailable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -584,9 +637,7 @@ static SLOTS_HISTORY_RECORD: CommandMeta = CommandMeta {
             description: "Slot name, e.g. label",
         },
     ],
-    examples: &[
-        "agent slots history record /station/sensor label",
-    ],
+    examples: &["agent slots history record /station/sensor label"],
     related: &["slots history list", "slots telemetry record"],
     input_schema: || {
         serde_json::json!({
@@ -611,10 +662,22 @@ static SLOTS_HISTORY_RECORD: CommandMeta = CommandMeta {
         })
     },
     errors: &[
-        ErrorInfo { code: "not_found",           exit_code: 1 },
-        ErrorInfo { code: "unprocessable",        exit_code: 1 },
-        ErrorInfo { code: "service_unavailable",  exit_code: 2 },
-        ErrorInfo { code: "agent_unreachable",    exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "unprocessable",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "service_unavailable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -679,9 +742,18 @@ static SLOTS_TELEMETRY_LIST: CommandMeta = CommandMeta {
         })
     },
     errors: &[
-        ErrorInfo { code: "not_found",          exit_code: 1 },
-        ErrorInfo { code: "service_unavailable", exit_code: 2 },
-        ErrorInfo { code: "agent_unreachable",   exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "service_unavailable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -702,9 +774,7 @@ static SLOTS_TELEMETRY_RECORD: CommandMeta = CommandMeta {
             description: "Slot name, e.g. temperature",
         },
     ],
-    examples: &[
-        "agent slots telemetry record /station/sensor temperature",
-    ],
+    examples: &["agent slots telemetry record /station/sensor temperature"],
     related: &["slots telemetry list", "slots history record"],
     input_schema: || {
         serde_json::json!({
@@ -729,10 +799,22 @@ static SLOTS_TELEMETRY_RECORD: CommandMeta = CommandMeta {
         })
     },
     errors: &[
-        ErrorInfo { code: "not_found",           exit_code: 1 },
-        ErrorInfo { code: "unprocessable",        exit_code: 1 },
-        ErrorInfo { code: "service_unavailable",  exit_code: 2 },
-        ErrorInfo { code: "agent_unreachable",    exit_code: 2 },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "unprocessable",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "service_unavailable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 
@@ -1595,12 +1677,30 @@ static UI_COMPOSE: CommandMeta = CommandMeta {
     },
     output_schema: schema_for_type::<types::UiComposeResponse>,
     errors: &[
-        ErrorInfo { code: "compose_unavailable", exit_code: 2 },
-        ErrorInfo { code: "upstream_error", exit_code: 2 },
-        ErrorInfo { code: "bad_request", exit_code: 1 },
-        ErrorInfo { code: "not_found", exit_code: 1 },
-        ErrorInfo { code: "generation_mismatch", exit_code: 1 },
-        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+        ErrorInfo {
+            code: "compose_unavailable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "upstream_error",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "not_found",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "generation_mismatch",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
     ],
 };
 

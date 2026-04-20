@@ -367,17 +367,49 @@ pub enum SlotRole {
     Status,
 }
 
+/// Primitive value kind — mirrors `spi::SlotValueKind`. Drives
+/// historizer table routing: `Bool`/`Number` → time-series tables,
+/// others → `slot_history`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SlotValueKind {
+    #[default]
+    Null,
+    Bool,
+    Number,
+    String,
+    Json,
+    Binary,
+}
+
 /// Slot shape declared by a kind — mirrors `spi::SlotSchema`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SlotSchema {
     pub name: String,
     pub role: SlotRole,
     #[serde(default)]
+    pub value_kind: SlotValueKind,
+    #[serde(default)]
     pub value_schema: JsonValue,
     #[serde(default)]
     pub writable: bool,
     #[serde(default)]
     pub trigger: bool,
+    #[serde(default)]
+    pub is_internal: bool,
+    #[serde(default)]
+    pub emit_on_init: bool,
+}
+
+/// Wire shape for `GET /api/v1/node/schema` — a single node's kind-
+/// declared slots. Answers "what slots does this node have?" in one
+/// call, without cross-referencing `/kinds`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NodeSchema {
+    pub id: String,
+    pub kind: String,
+    pub path: String,
+    pub slots: Vec<SlotSchema>,
 }
 
 /// Wire shape for `GET /api/v1/kinds`.
@@ -845,6 +877,8 @@ pub struct UiOptimisticHint {
 pub struct UiChartSource {
     pub node_id: String,
     pub slot: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
 }
 
 /// One chart series — mirrors `ui_ir::ChartSeries`.

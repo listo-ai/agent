@@ -90,8 +90,8 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use engine::BehaviorRegistry;
     use blocks_host::BlockRegistry;
+    use engine::BehaviorRegistry;
     use graph::{seed as graph_seed, GraphStore, KindRegistry, NullSink};
     use spi::{KindId, NodePath};
     use tokio::sync::broadcast;

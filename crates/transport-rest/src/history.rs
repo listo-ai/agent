@@ -260,7 +260,9 @@ async fn record_history(
             };
             repo.insert_batch(&[r], 100_000)
                 .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
-            Ok(Json(serde_json::json!({ "recorded": true, "kind": "bool" })))
+            Ok(Json(
+                serde_json::json!({ "recorded": true, "kind": "bool" }),
+            ))
         }
         JsonValue::Number(n) => {
             let repo = state.telemetry_repo.as_ref().ok_or_else(|| {
@@ -280,7 +282,9 @@ async fn record_history(
             };
             repo.insert_batch(&[r], 100_000)
                 .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
-            Ok(Json(serde_json::json!({ "recorded": true, "kind": "number" })))
+            Ok(Json(
+                serde_json::json!({ "recorded": true, "kind": "number" }),
+            ))
         }
         JsonValue::String(_) => {
             let repo = state.history_repo.as_ref().ok_or_else(|| {
@@ -309,7 +313,9 @@ async fn record_history(
             };
             repo.insert_batch(&[r], 100_000)
                 .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
-            Ok(Json(serde_json::json!({ "recorded": true, "kind": "string" })))
+            Ok(Json(
+                serde_json::json!({ "recorded": true, "kind": "string" }),
+            ))
         }
         JsonValue::Object(_) | JsonValue::Array(_) => {
             let repo = state.history_repo.as_ref().ok_or_else(|| {
@@ -334,7 +340,9 @@ async fn record_history(
             };
             repo.insert_batch(&[r], 100_000)
                 .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
-            Ok(Json(serde_json::json!({ "recorded": true, "kind": "json" })))
+            Ok(Json(
+                serde_json::json!({ "recorded": true, "kind": "json" }),
+            ))
         }
         JsonValue::Null => Err(ApiError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -349,13 +357,13 @@ mod tests {
 
     use axum::extract::{Query, State};
     use axum::Json;
+    use blocks_host::BlockRegistry;
     use data_sqlite::SqliteHistoryRepo;
     use data_tsdb::sqlite::SqliteTelemetryRepo;
     use data_tsdb::ScalarRecord;
-    use rusqlite;
     use engine::BehaviorRegistry;
-    use blocks_host::BlockRegistry;
     use graph::{seed, GraphStore, KindRegistry, NullSink};
+    use rusqlite;
     use spi::{KindId, NodePath};
     use tokio::sync::broadcast;
     use uuid::Uuid;
@@ -420,11 +428,7 @@ mod tests {
     /// Returns the NodeId of the point, which has a `value` (Number) slot.
     fn demo_point(graph: &GraphStore) -> spi::NodeId {
         graph
-            .create_child(
-                &NodePath::root(),
-                KindId::new("sys.driver.demo"),
-                "proto",
-            )
+            .create_child(&NodePath::root(), KindId::new("sys.driver.demo"), "proto")
             .unwrap();
         graph
             .create_child(
@@ -634,8 +638,7 @@ mod tests {
         // when a slot exists; folder has no slots so 404 fires first).
         // Adjust: use a real demo point so slot exists with null value.
         assert!(
-            err.status == StatusCode::SERVICE_UNAVAILABLE
-                || err.status == StatusCode::NOT_FOUND
+            err.status == StatusCode::SERVICE_UNAVAILABLE || err.status == StatusCode::NOT_FOUND
         );
     }
 
@@ -752,7 +755,12 @@ mod tests {
         .unwrap();
         assert_eq!(resp.0["kind"], "bool");
         assert_eq!(
-            state.telemetry_repo.as_ref().unwrap().count(node_id.0, "value").unwrap(),
+            state
+                .telemetry_repo
+                .as_ref()
+                .unwrap()
+                .count(node_id.0, "value")
+                .unwrap(),
             1
         );
     }

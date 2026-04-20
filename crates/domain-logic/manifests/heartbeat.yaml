@@ -8,28 +8,31 @@ containment:
   cardinality_per_parent: many_per_parent
   cascade: strict
 slots:
-  - name: state
+  - name: out
     role: output
+    # Describes the Msg envelope that lands on the slot (Stage 4 of
+    # NODE-RED-MODEL.md): the whole `Msg` is stored, not just the
+    # payload. Studio surfaces use this schema to suggest history
+    # paths without requiring a runtime emit first.
     value_schema:
-      type: boolean
+      type: object
+      properties:
+        _msgid:
+          type: string
+        topic:
+          type: string
+        payload:
+          type: object
+          properties:
+            state:
+              type: boolean
+            count:
+              type: integer
+              minimum: 0
+          required: [state, count]
+      required: [payload, _msgid]
     writable: false
-  - name: count
-    role: output
-    value_schema:
-      type: integer
-      minimum: 0
-    writable: false
-  - name: current_state
-    role: status
-    value_schema:
-      type: boolean
-    writable: true
-  - name: current_count
-    role: status
-    value_schema:
-      type: integer
-      minimum: 0
-    writable: true
+    emit_on_init: true
   - name: pending_timer
     role: status
     value_schema:
@@ -37,6 +40,7 @@ slots:
         - integer
         - "null"
     writable: true
+    is_internal: true
 trigger_policy: on_any
 settings_schema:
   type: object
@@ -82,12 +86,12 @@ views:
                 level: 2
               - type: badge
                 id: state
-                label: "{{$target.current_state}}"
+                label: "{{$target.out.payload.state}}"
                 intent: info
           - type: row
             id: kpis
             children:
               - type: badge
                 id: count
-                label: "count: {{$target.current_count}}"
+                label: "count: {{$target.out.payload.count}}"
                 intent: info

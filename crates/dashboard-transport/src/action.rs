@@ -74,9 +74,14 @@ pub enum ActionResponse {
     /// Replace the full page render tree.
     FullRender { tree: ComponentTree },
     /// Show a transient notification.
-    Toast { intent: ToastIntent, message: String },
+    Toast {
+        intent: ToastIntent,
+        message: String,
+    },
     /// Attach field-level validation errors to the originating form.
-    FormErrors { errors: std::collections::HashMap<String, String> },
+    FormErrors {
+        errors: std::collections::HashMap<String, String>,
+    },
     /// Trigger a file download from the given URL.
     Download { url: String },
     /// Long-running response — client subscribes to the given channel.
@@ -109,7 +114,8 @@ pub async fn handler(
     let fut = match fut {
         Some(f) => f,
         None => {
-            let body = serde_json::json!({ "error": format!("handler `{}` not found", req.handler) });
+            let body =
+                serde_json::json!({ "error": format!("handler `{}` not found", req.handler) });
             return (StatusCode::NOT_FOUND, Json(body)).into_response();
         }
     };

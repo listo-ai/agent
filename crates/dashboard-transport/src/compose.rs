@@ -237,9 +237,9 @@ fn system_prompt() -> String {
         "Data components:",
         "- table: source.query is RSQL over node fields (path, kind,",
         "  parent_path, lifecycle). Set subscribe: true for live rows.",
-        "  columns[].field is a dot path; flow-engine envelopes store",
-        "  real values at .payload — prefer flattened status slots",
-        "  (e.g. slots.current_count) over envelope slots.",
+        "  columns[].field is a dot path into the slot value. Source",
+        "  nodes write a Msg to their output slot, so drill into the",
+        "  payload: e.g. `slots.out.payload.count`, not `slots.out`.",
         "- chart, kpi, sparkline: source.{node_id, slot}. node_id must be",
         "  a real UUID the user referenced. When unsure, declare it as",
         "  a $vars key the user will fill in rather than fabricating.",
@@ -263,8 +263,7 @@ fn user_message(req: &ComposeRequest) -> String {
         );
         parts.push("```json".into());
         parts.push(
-            serde_json::to_string_pretty(current)
-                .unwrap_or_else(|_| "<unserialisable>".into()),
+            serde_json::to_string_pretty(current).unwrap_or_else(|_| "<unserialisable>".into()),
         );
         parts.push("```".into());
     }
@@ -289,8 +288,13 @@ struct AnthropicResponse {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AnthropicBlock {
-    Text { text: String },
-    ToolUse { name: String, input: JsonValue },
+    Text {
+        text: String,
+    },
+    ToolUse {
+        name: String,
+        input: JsonValue,
+    },
     #[serde(other)]
     Unknown,
 }

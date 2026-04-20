@@ -1,6 +1,14 @@
 import type { RequestTransport } from "../transport/request.js";
-import { NodeListResponseSchema, NodeSnapshotSchema } from "../schemas/node.js";
-import type { NodeListResponse, NodeSnapshot } from "../schemas/node.js";
+import {
+  NodeListResponseSchema,
+  NodeSchemaSchema,
+  NodeSnapshotSchema,
+} from "../schemas/node.js";
+import type {
+  NodeListResponse,
+  NodeSchema,
+  NodeSnapshot,
+} from "../schemas/node.js";
 
 /**
  * Node operations against the Rust REST surface
@@ -19,6 +27,12 @@ export interface NodesApi {
     size?: number;
   }): Promise<NodeListResponse>;
   getNode(path: string): Promise<NodeSnapshot>;
+  /**
+   * Kind-declared slot schemas for one node. Internal bookkeeping
+   * slots are filtered out by default; pass `includeInternal: true`
+   * to see them. See `GET /api/v1/node/schema?path=...`.
+   */
+  getNodeSchema(path: string, includeInternal?: boolean): Promise<NodeSchema>;
   createNode(args: {
     parent: string;
     kind: string;
@@ -60,6 +74,18 @@ export function createNodesApi(http: RequestTransport, apiVersion: number): Node
         `${base}/node?path=${encodeURIComponent(path)}`,
       );
       return NodeSnapshotSchema.parse(raw);
+    },
+
+    async getNodeSchema(
+      path: string,
+      includeInternal = false,
+    ): Promise<NodeSchema> {
+      const qs = new URLSearchParams({
+        path,
+        include_internal: String(includeInternal),
+      });
+      const raw = await http.get<unknown>(`${base}/node/schema?${qs.toString()}`);
+      return NodeSchemaSchema.parse(raw);
     },
 
     async createNode(args): Promise<{ id: string; path: string }> {

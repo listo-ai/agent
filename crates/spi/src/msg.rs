@@ -1,6 +1,7 @@
 //! Node-RED-compatible message envelope for wires between slots.
 //!
-//! See `docs/design/EVERYTHING-AS-NODE.md` § "Wires, ports, and messages".
+//! See `docs/design/EVERYTHING-AS-NODE.md` § "Wires, ports, and messages"
+//! and `docs/design/NODE-RED-MODEL.md` § "Msg shape change".
 //!
 //! # Wire-level JSON layout
 //!
@@ -9,34 +10,28 @@
 //!   "payload": <any>,
 //!   "topic": "optional",
 //!   "_msgid": "uuid",
-//!   "_parentid": "uuid or absent",
-//!   "_ts": 1700000000000,
-//!   "_source": "acme/station/folder/node",
 //!   "userField1": ...,
 //!   "userField2": ...
 //! }
 //! ```
 //!
-//! `payload`, `topic`, `_msgid`, and user-added root-level fields match
-//! Node-RED exactly — Node-RED flows can be imported and Function-node
-//! JS that reads/writes those fields works unchanged.
-//!
-//! `_ts`, `_parentid`, `_source` are our additions, underscore-prefixed
-//! so they're clearly platform-reserved and don't collide with user
-//! fields.
+//! Three fields. `payload`, `topic`, `_msgid`, plus arbitrary user-added
+//! root-level fields — Node-RED byte-for-byte. Stripped in Stage 2:
+//! `_ts` (SSE frame + history writer stamp their own timestamps),
+//! `_source` (derived from the subject / span attributes), `_parentid`
+//! (carried as W3C TraceContext in transport metadata once Stage 1.5
+//! wiring lands; none of the three had production readers).
 //!
 //! # Immutability
 //!
 //! `Msg` is an immutable value on the wire. Nodes that transform a
-//! message produce a new one (typically via [`Msg::child`] for
-//! provenance). This kills the Node-RED fan-out mutation bug where two
-//! downstream branches mutate a shared `msg` and see each other's
-//! changes. The QuickJS Function node exposes `msg` as mutable JS for
-//! authoring familiarity; the runtime snapshots it into a fresh `Msg`
-//! on exit.
+//! message produce a new one via [`Msg::child`] or [`Msg::new`]. This
+//! kills the Node-RED fan-out mutation bug where two downstream
+//! branches mutate a shared `msg` and see each other's changes. The
+//! QuickJS Function node exposes `msg` as mutable JS for authoring
+//! familiarity; the runtime snapshots it into a fresh `Msg` on exit.
 
 use std::collections::BTreeMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -84,19 +79,6 @@ pub struct Msg {
     #[serde(rename = "_msgid", default)]
     pub id: MessageId,
 
-    /// The message this one was derived from, if any. Underscore-prefixed
-    /// so it's clearly platform-reserved.
-    #[serde(rename = "_parentid", default, skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<MessageId>,
-
-    /// Creation timestamp, milliseconds since Unix epoch.
-    #[serde(rename = "_ts", default = "now_millis")]
-    pub timestamp_ms: u64,
-
-    /// Emitting node's path in the graph, if known.
-    #[serde(rename = "_source", default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-
     /// User-added custom fields. Flattened onto the root JSON on
     /// serialize, harvested from unknown root-level keys on deserialize.
     ///
@@ -109,43 +91,31 @@ pub struct Msg {
 }
 
 impl Msg {
-    /// Build a new message with a fresh id and current timestamp.
+    /// Build a new message with a fresh id.
     pub fn new(payload: serde_json::Value) -> Self {
         Self {
             payload,
             topic: None,
             id: MessageId::new(),
-            parent_id: None,
-            timestamp_ms: now_millis(),
-            source: None,
             metadata: BTreeMap::new(),
         }
     }
 
-    /// Derive a child message carrying this one as its `parent_id`.
-    /// Copies `topic` forward (matching Node-RED intuition); does not
-    /// copy `source` (the emitting node will set its own) or
-    /// `metadata` (the caller opts in if they want it carried).
+    /// Derive a child message. Copies `topic` forward (matching
+    /// Node-RED intuition); does not copy `metadata` (the caller opts
+    /// in if they want it carried). Parent lineage now travels as
+    /// W3C TraceContext in transport metadata, not on the msg itself.
     pub fn child(&self, payload: serde_json::Value) -> Self {
         Self {
             payload,
             topic: self.topic.clone(),
             id: MessageId::new(),
-            parent_id: Some(self.id),
-            timestamp_ms: now_millis(),
-            source: None,
             metadata: BTreeMap::new(),
         }
     }
 
-    /// Chainable setters for ergonomics. These consume and return self.
     pub fn with_topic(mut self, topic: impl Into<String>) -> Self {
         self.topic = Some(topic.into());
-        self
-    }
-
-    pub fn with_source(mut self, source: impl Into<String>) -> Self {
-        self.source = Some(source.into());
         self
     }
 
@@ -153,13 +123,6 @@ impl Msg {
         self.metadata.insert(key.into(), value);
         self
     }
-}
-
-fn now_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -171,22 +134,22 @@ mod tests {
     fn serialises_node_red_shape() {
         let msg = Msg::new(json!({"temp": 72}))
             .with_topic("sensors/floor3")
-            .with_source("acme/station/devices/floor3/temp-1")
             .with_meta("unit", json!("F"));
 
         let v: serde_json::Value = serde_json::to_value(&msg).unwrap();
 
-        // Node-RED-compatible keys
         assert_eq!(v["payload"], json!({"temp": 72}));
         assert_eq!(v["topic"], json!("sensors/floor3"));
         assert!(
             v["_msgid"].is_string(),
             "id serialises as _msgid for Node-RED parity"
         );
-
-        // Platform-reserved keys
-        assert!(v["_ts"].is_number());
-        assert_eq!(v["_source"], json!("acme/station/devices/floor3/temp-1"));
+        assert!(v.get("_ts").is_none(), "_ts stripped in Stage 2");
+        assert!(v.get("_source").is_none(), "_source stripped in Stage 2");
+        assert!(
+            v.get("_parentid").is_none(),
+            "_parentid stripped in Stage 2"
+        );
 
         // Custom field is flattened onto the root, Node-RED style
         assert_eq!(v["unit"], json!("F"));
@@ -194,8 +157,6 @@ mod tests {
 
     #[test]
     fn deserialises_node_red_input_with_custom_fields() {
-        // A message a Node-RED flow might emit: custom fields at root level,
-        // _msgid from Node-RED's core.
         let raw = json!({
             "payload": 42,
             "topic": "t",
@@ -214,6 +175,24 @@ mod tests {
     }
 
     #[test]
+    fn deserialises_legacy_msg_ignoring_stripped_fields() {
+        // Stage-2 forward-compat: a producer that still emits _ts /
+        // _source / _parentid (e.g., an old fixture, a pre-upgrade
+        // edge agent) must still parse — the fields flow into
+        // `metadata` as opaque underscore-keyed values and are
+        // ignored everywhere downstream.
+        let raw = json!({
+            "payload": 1,
+            "_msgid": "00000000-0000-0000-0000-000000000001",
+            "_ts": 1700000000000u64,
+            "_source": "acme/node",
+            "_parentid": "00000000-0000-0000-0000-000000000002",
+        });
+        let msg: Msg = serde_json::from_value(raw).unwrap();
+        assert_eq!(msg.payload, json!(1));
+    }
+
+    #[test]
     fn round_trip_preserves_custom_fields() {
         let msg = Msg::new(json!("hi"))
             .with_meta("a", json!(1))
@@ -229,11 +208,10 @@ mod tests {
     }
 
     #[test]
-    fn child_tracks_parent() {
+    fn child_has_fresh_id_and_carries_topic() {
         let parent = Msg::new(json!(1)).with_topic("t");
         let child = parent.child(json!(2));
 
-        assert_eq!(child.parent_id, Some(parent.id));
         assert_ne!(child.id, parent.id);
         assert_eq!(child.topic.as_deref(), Some("t"), "topic carries forward");
         assert_eq!(child.payload, json!(2));
@@ -241,14 +219,11 @@ mod tests {
 
     #[test]
     fn missing_optional_fields_deserialise_to_defaults() {
-        // Minimal Node-RED-ish payload — no _msgid, no topic, no custom.
         let raw = json!({ "payload": "bare" });
         let msg: Msg = serde_json::from_value(raw).unwrap();
 
         assert_eq!(msg.payload, json!("bare"));
         assert!(msg.topic.is_none());
-        assert!(msg.parent_id.is_none());
-        assert!(msg.source.is_none());
         assert!(msg.metadata.is_empty());
         // id defaulted to a fresh UUID
         assert_ne!(msg.id.0, Uuid::nil());

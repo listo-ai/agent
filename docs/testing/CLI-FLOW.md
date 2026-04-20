@@ -98,9 +98,11 @@ Links route slot outputs to slot inputs:
 
 ```bash
 agent links create \
-  --source-path /flow-1/heartbeat --source-slot count \
+  --source-path /flow-1/heartbeat --source-slot out \
   --target-path /flow-1/add       --target-slot a
 ```
+
+Heartbeat's single `out` port carries `{ state, count }` as a Node-RED-style `msg.payload`. Downstream nodes read `msg.payload.count` / `msg.payload.state`.
 
 List links to verify:
 
@@ -121,8 +123,10 @@ agent lifecycle /flow-1/heartbeat active
 ### Step 6 — observe
 
 ```bash
-agent nodes get /flow-1/heartbeat -o json | jq '.slots[] | select(.name=="current_count")'
+agent nodes get /flow-1/heartbeat -o json | jq '.slots[] | select(.name=="out") | .value.payload.count'
 ```
+
+The `out` output slot holds the whole `Msg` envelope (`{_msgid, payload: {state, count}}`); drill into `payload.count` for the counter. To include bookkeeping slots like `pending_timer` in the response, pass `--include-internal` (or `?include_internal=true` on the REST endpoint).
 
 Or tail the SSE stream (outside the CLI — use `curl`):
 
@@ -258,12 +262,13 @@ agent nodes create / sys.core.flow ticker-demo
 agent nodes create /ticker-demo sys.logic.heartbeat ticker
 agent config set   /ticker-demo/ticker '{"interval_ms": 1000, "enabled": true}'
 
-# 3. Counter that sums the heartbeat's `count` output
+# 3. Counter that sums the heartbeat's tick
 agent nodes create /ticker-demo sys.compute.count counter
 
 # 4. Wire the tick to the counter's increment input
+#    (heartbeat's single `out` port carries { state, count } under msg.payload)
 agent links create \
-  --source-path /ticker-demo/ticker  --source-slot count \
+  --source-path /ticker-demo/ticker  --source-slot out \
   --target-path /ticker-demo/counter --target-slot in
 
 # 5. Activate

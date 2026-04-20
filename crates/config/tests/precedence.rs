@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use config::{
-    default_db_path, default_blocks_dir, from_file, AgentConfigOverlay, DatabaseOverlay, Defaults,
+    default_blocks_dir, default_db_path, from_file, AgentConfigOverlay, DatabaseOverlay, Defaults,
     LogOverlay, PluginsOverlay, Role,
 };
 
@@ -91,10 +91,7 @@ fn edge_role_defaults_plugins_under_var_lib() {
         ..Default::default()
     };
     let resolved = overlay.resolve(defaults());
-    assert_eq!(
-        resolved.blocks.dir,
-        PathBuf::from("/var/lib/agent/blocks")
-    );
+    assert_eq!(resolved.blocks.dir, PathBuf::from("/var/lib/agent/blocks"));
 }
 
 #[test]

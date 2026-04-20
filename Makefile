@@ -91,6 +91,16 @@ studio-edge: build-client ## Start Studio pointed at the edge agent (http://loca
 	PUBLIC_AGENT_URL=http://localhost:8082 \
 	  $(PNPM) --filter @sys/studio dev --port 3002
 
+.PHONY: kill
+kill: ## Kill any running agent processes
+	@pkill -f "target/debug/$(BIN)" 2>/dev/null && echo "agent stopped" || echo "no agent running"
+	@pkill -f "target/release/$(BIN)" 2>/dev/null || true
+
+.PHONY: clean
+clean: kill ## Kill running agents and wipe all build artifacts (cargo clean)
+	$(CARGO) clean
+	@echo "target/ wiped."
+
 .PHONY: dev-reset
 dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)
 	rm -f dev/cloud.db dev/cloud.db-shm dev/cloud.db-wal

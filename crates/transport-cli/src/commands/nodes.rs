@@ -28,6 +28,14 @@ pub enum NodesCmd {
         /// Node path (e.g. `/station/floor1/ahu-5`).
         path: String,
     },
+    /// Show the kind-declared slot schemas for one node.
+    Schema {
+        /// Node path (e.g. `/flow-1/heartbeat`).
+        path: String,
+        /// Include bookkeeping slots marked `is_internal` in the manifest.
+        #[arg(long)]
+        include_internal: bool,
+    },
     /// Create a child node.
     Create {
         /// Parent path.
@@ -49,6 +57,7 @@ impl NodesCmd {
         match self {
             Self::List { .. } => "nodes list",
             Self::Get { .. } => "nodes get",
+            Self::Schema { .. } => "nodes schema",
             Self::Create { .. } => "nodes create",
             Self::Delete { .. } => "nodes delete",
         }
@@ -94,6 +103,39 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &NodesCmd) -> Res
         NodesCmd::Get { path } => {
             let node = client.nodes().get(path).await?;
             output::ok(fmt, &node)?;
+        }
+        NodesCmd::Schema {
+            path,
+            include_internal,
+        } => {
+            let schema = client.nodes().schema(path, *include_internal).await?;
+            match fmt {
+                OutputFormat::Json => output::ok(fmt, &schema)?,
+                OutputFormat::Table => {
+                    output::ok_table(
+                        fmt,
+                        &[
+                            "NAME",
+                            "ROLE",
+                            "KIND",
+                            "WRITABLE",
+                            "INTERNAL",
+                            "EMIT_ON_INIT",
+                        ],
+                        &schema.slots,
+                        |s| {
+                            vec![
+                                s.name.clone(),
+                                format!("{:?}", s.role).to_lowercase(),
+                                format!("{:?}", s.value_kind).to_lowercase(),
+                                s.writable.to_string(),
+                                s.is_internal.to_string(),
+                                s.emit_on_init.to_string(),
+                            ]
+                        },
+                    )?;
+                }
+            }
         }
         NodesCmd::Create { parent, kind, name } => {
             let created = client.nodes().create(parent, kind, name).await?;

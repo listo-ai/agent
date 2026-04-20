@@ -28,11 +28,9 @@ use ui_ir::ComponentTree;
 
 fn state_with(layout: Value, handlers: HandlerRegistry) -> (DashboardState, NodeId) {
     let page = NodeId::default();
-    let reader = InMemoryReader::new().with(
-        NodeSnapshot::new(page, "ui.page").with_slot("layout", layout),
-    );
-    let state = DashboardState::new(Arc::new(reader) as Arc<_>)
-        .with_handlers(Arc::new(handlers));
+    let reader =
+        InMemoryReader::new().with(NodeSnapshot::new(page, "ui.page").with_slot("layout", layout));
+    let state = DashboardState::new(Arc::new(reader) as Arc<_>).with_handlers(Arc::new(handlers));
     (state, page)
 }
 
@@ -60,11 +58,7 @@ async fn dispatch_action(state: DashboardState, handler: &str, args: Value) -> A
 /// Count every component matching a predicate, recursively.
 fn count_where(tree: &ComponentTree, mut pred: impl FnMut(&ui_ir::Component) -> bool) -> usize {
     let mut n = 0;
-    fn walk(
-        c: &ui_ir::Component,
-        pred: &mut impl FnMut(&ui_ir::Component) -> bool,
-        n: &mut usize,
-    ) {
+    fn walk(c: &ui_ir::Component, pred: &mut impl FnMut(&ui_ir::Component) -> bool, n: &mut usize) {
         if pred(c) {
             *n += 1;
         }

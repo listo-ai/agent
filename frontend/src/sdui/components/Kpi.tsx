@@ -9,6 +9,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { agentPromise } from "@/lib/agent";
+import { extractField } from "../field";
 import type { KpiNode } from "../types";
 
 const INTENT_CLASSES: Record<string, string> = {
@@ -38,7 +39,7 @@ export function KpiComponent({ node }: { node: KpiNode }) {
     },
   });
 
-  const value = extractPayload(query.data);
+  const value = extractField(query.data, node.source.field);
   const display = formatValue(value, node.format);
 
   const intentClass =
@@ -56,14 +57,6 @@ export function KpiComponent({ node }: { node: KpiNode }) {
       </div>
     </div>
   );
-}
-
-/** Flow-engine envelopes store the real value at `.payload`. */
-function extractPayload(v: unknown): unknown {
-  if (v && typeof v === "object" && !Array.isArray(v) && "payload" in v) {
-    return (v as { payload: unknown }).payload;
-  }
-  return v;
 }
 
 function formatValue(v: unknown, format?: string): string {

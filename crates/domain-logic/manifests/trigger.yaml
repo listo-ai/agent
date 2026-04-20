@@ -20,7 +20,21 @@ slots:
     trigger: true
   - name: out
     role: output
-    value_schema: {}
+    # Msg envelope emitted on every trigger (and on reset if
+    # reset_payload is non-null). The payload is user-configured
+    # (settings: trigger_payload / reset_payload) so no narrow type —
+    # any JSON value. Studio history suggestions will offer `payload`
+    # as a json snapshot; type-specific historization is an explicit
+    # author choice on the paths editor.
+    value_schema:
+      type: object
+      properties:
+        _msgid:
+          type: string
+        topic:
+          type: string
+        payload: {}
+      required: [_msgid]
     writable: false
   - name: armed
     role: status
@@ -34,6 +48,7 @@ slots:
         - integer
         - "null"
     writable: true
+    is_internal: true
 trigger_policy: on_any
 settings_schema:
   type: object

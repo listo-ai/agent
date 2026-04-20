@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/chart";
 import type { ChartNode, ChartSeries } from "../types";
 import { useSdui } from "../context";
+import { extractField } from "../field";
 
 const DEFAULT_WINDOW_MS = 60 * 60 * 1000;
 const DEFAULT_LIMIT = 500;
@@ -218,7 +219,7 @@ function useChartFetch(
   hasAuthored: boolean,
   range: { from: number; to: number } | undefined,
 ): { series: ChartSeries[]; isLoading: boolean; isError: boolean } {
-  const { node_id, slot } = node.source;
+  const { node_id, slot, field } = node.source;
   const widgetId = node.id ?? `${node_id}.${slot}`;
   const from = range?.from;
   const to = range?.to;
@@ -272,12 +273,12 @@ function useChartFetch(
 
       const points: [number, number][] = [];
       for (const r of telemetry) {
-        const v = coerceNumber(r.value);
+        const v = coerceNumber(field ? extractField(r.value, field) : r.value);
         if (v !== null) points.push([r.ts_ms, v]);
       }
       if (points.length === 0) {
         for (const r of history) {
-          const v = coerceNumber(extractPayload(r.value));
+          const v = coerceNumber(extractField(r.value, field));
           if (v !== null) points.push([r.ts_ms, v]);
         }
       }
@@ -324,9 +325,3 @@ function coerceNumber(v: unknown): number | null {
   return null;
 }
 
-function extractPayload(v: unknown): unknown {
-  if (v && typeof v === "object" && !Array.isArray(v) && "payload" in v) {
-    return (v as { payload: unknown }).payload;
-  }
-  return v;
-}

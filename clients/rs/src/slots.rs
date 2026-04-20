@@ -87,7 +87,10 @@ impl<'c> Slots<'c> {
             .await
         {
             Ok(resp) => Ok(resp.generation),
-            Err(ClientError::Http { status: 409, message }) => {
+            Err(ClientError::Http {
+                status: 409,
+                message,
+            }) => {
                 // Server sent `{"code":"generation_mismatch","current_generation":N}`;
                 // the HTTP layer stringifies anything without an `error` key into
                 // `message`. Parse it back to the typed error.
@@ -155,11 +158,7 @@ impl<'c> Slots<'c> {
     ///
     /// Routes to the telemetry store for Bool/Number, structured history
     /// store for String/Json. Returns the kind that was recorded.
-    pub async fn record(
-        &self,
-        path: &str,
-        slot: &str,
-    ) -> Result<RecordedResponse, ClientError> {
+    pub async fn record(&self, path: &str, slot: &str) -> Result<RecordedResponse, ClientError> {
         self.http
             .post(
                 &format!("{}/history/record", self.base),

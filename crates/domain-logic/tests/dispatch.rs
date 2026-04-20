@@ -11,8 +11,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use engine::{queue, Engine};
 use blocks_sdk::NodeKind;
+use engine::{queue, Engine};
 use graph::{GraphStore, KindRegistry};
 use serde_json::{json, Value as JsonValue};
 use spi::{Msg, NodePath};
@@ -146,6 +146,49 @@ async fn armed_slot_source_regression() {
         "second input must produce a fresh emission once slot says disarmed",
     );
     assert_eq!(second.get("payload"), Some(&json!(true)));
+
+    engine.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn heartbeat_emits_initial_msg_on_init() {
+    // emit_on_init contract (NODE-RED-MODEL.md Stage 3): by the end of
+    // on_init the `out` output slot must hold a Msg, so widgets binding
+    // immediately after node creation resolve to a value rather than
+    // "no data yet."
+    let kinds = KindRegistry::new();
+    domain_logic::register_kinds(&kinds);
+    let (sink, rx) = queue::channel();
+    let graph = Arc::new(GraphStore::new(kinds, sink));
+
+    let kind = <domain_logic::Heartbeat as NodeKind>::kind_id();
+    graph.create_root(kind.clone()).unwrap();
+    let path = NodePath::root();
+    let id = graph.get(&path).unwrap().id;
+
+    let engine = Engine::new(graph.clone(), rx);
+    engine
+        .behaviors()
+        .register(kind, domain_logic::heartbeat_behavior())
+        .unwrap();
+    engine
+        .behaviors()
+        .set_config(id, json!({ "enabled": false }))
+        .unwrap();
+    engine.start().await.unwrap();
+    engine.behaviors().dispatch_init(id).unwrap();
+    yield_dispatch().await;
+
+    let out = slot(&graph, &path, "out");
+    assert!(
+        out.get("_msgid").is_some(),
+        "out slot must hold a Msg envelope after on_init: {out:?}"
+    );
+    assert_eq!(
+        out.get("payload"),
+        Some(&json!({ "state": false, "count": 0 })),
+        "initial payload must be default state/count: {out:?}"
+    );
 
     engine.shutdown().await.unwrap();
 }

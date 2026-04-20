@@ -32,6 +32,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 
 mod auth;
+mod blocks;
 mod capabilities;
 mod config;
 mod error;
@@ -42,7 +43,6 @@ mod kinds;
 mod lifecycle;
 mod links;
 mod nodes;
-mod blocks;
 mod seed;
 mod slots;
 pub mod types;

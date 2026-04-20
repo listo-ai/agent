@@ -72,10 +72,7 @@ pub async fn handler(
     }
 
     let manifest = kinds.get(&target.kind).ok_or_else(|| {
-        TransportError::BadRequest(format!(
-            "no kind registered for `{}`",
-            target.kind.as_str()
-        ))
+        TransportError::BadRequest(format!("no kind registered for `{}`", target.kind.as_str()))
     })?;
 
     let view = pick_view(&manifest.views, params.view.as_deref()).ok_or_else(|| {
@@ -86,15 +83,13 @@ pub async fn handler(
     })?;
 
     let substituted = substitute_bindings(view.template.clone(), &target);
-    let render: ComponentTree = serde_json::from_value(substituted).map_err(|e| {
-        TransportError::MalformedView {
+    let render: ComponentTree =
+        serde_json::from_value(substituted).map_err(|e| TransportError::MalformedView {
             kind: target.kind.as_str().into(),
             reason: format!("view template is not a ComponentTree: {e}"),
-        }
-    })?;
+        })?;
 
-    let subscriptions =
-        derive_subscriptions(&view.template, Some(&target), &*state.reader);
+    let subscriptions = derive_subscriptions(&view.template, Some(&target), &*state.reader);
 
     let meta = ResolveMeta {
         cache_key: target.version,
@@ -151,9 +146,11 @@ fn pick_view<'a>(views: &'a [KindView], requested: Option<&str>) -> Option<&'a K
 fn substitute_bindings(value: JsonValue, target: &dashboard_runtime::NodeSnapshot) -> JsonValue {
     match value {
         JsonValue::String(s) => substitute_string(s, target),
-        JsonValue::Array(a) => {
-            JsonValue::Array(a.into_iter().map(|v| substitute_bindings(v, target)).collect())
-        }
+        JsonValue::Array(a) => JsonValue::Array(
+            a.into_iter()
+                .map(|v| substitute_bindings(v, target))
+                .collect(),
+        ),
         JsonValue::Object(m) => JsonValue::Object(
             m.into_iter()
                 .map(|(k, v)| (k, substitute_bindings(v, target)))
@@ -211,17 +208,37 @@ fn eval_target_expr(expr: &str, target: &dashboard_runtime::NodeSnapshot) -> Opt
         return Some(JsonValue::String(target.id.to_string()));
     }
     let rest = rest.strip_prefix('.')?;
-    match rest {
-        "id" => Some(JsonValue::String(target.id.to_string())),
-        "path" => Some(JsonValue::String(target.path.clone().unwrap_or_default())),
+    let (head, tail) = match rest.split_once('.') {
+        Some((h, t)) => (h, Some(t)),
+        None => (rest, None),
+    };
+    let base = match head {
+        "id" => JsonValue::String(target.id.to_string()),
+        "path" => JsonValue::String(target.path.clone().unwrap_or_default()),
         "name" => {
             let p = target.path.clone().unwrap_or_default();
             let name = p.rsplit('/').next().unwrap_or("").to_string();
-            Some(JsonValue::String(name))
+            JsonValue::String(name)
         }
-        "kind" => Some(JsonValue::String(target.kind.as_str().into())),
-        slot => target.slots.get(slot).cloned(),
+        "kind" => JsonValue::String(target.kind.as_str().into()),
+        slot => target.slots.get(slot).cloned()?,
+    };
+    match tail {
+        None => Some(base),
+        Some(path) => walk_json_path(&base, path),
     }
+}
+
+/// Walk a dot-separated path into a JSON object, returning the nested
+/// value. Supports Node-RED-shape Msg values (`{ payload: { count }}`)
+/// so `$target.out.payload.count` resolves cleanly after Stage 4
+/// collapsed mirror status slots into the Msg on the output slot.
+fn walk_json_path(root: &JsonValue, path: &str) -> Option<JsonValue> {
+    let mut cursor = root;
+    for segment in path.split('.') {
+        cursor = cursor.as_object()?.get(segment)?;
+    }
+    Some(cursor.clone())
 }
 
 /// Derive subscription subjects from a template.
@@ -356,6 +373,7 @@ fn derive_subscriptions(
                 widget_id: t.id.to_string(),
                 subjects,
                 debounce_ms: 250,
+                field: None,
             });
         }
     }
@@ -388,8 +406,13 @@ fn scan_bindings(s: &str, acc: &mut BTreeSet<String>) {
         s,
         &mut |expr| {
             if let Some(tail) = expr.strip_prefix("$target.") {
-                if !matches!(tail, "id" | "path" | "name" | "kind") {
-                    acc.insert(tail.to_string());
+                // Subscriptions are keyed on the slot name, not the
+                // full dot-path: `$target.out.payload.count` still
+                // subscribes to the `out` slot. The dot-path extraction
+                // happens in `eval_target_expr` at render time.
+                let slot = tail.split('.').next().unwrap_or(tail);
+                if !matches!(slot, "id" | "path" | "name" | "kind") {
+                    acc.insert(slot.to_string());
                 }
             }
         },
@@ -413,11 +436,16 @@ fn collect_chart_plans(v: &JsonValue, plans: &mut Vec<SubscriptionPlan>) {
                 if let (Some(src), true) = (src, !id.is_empty()) {
                     let node = src.get("node_id").and_then(|v| v.as_str()).unwrap_or("");
                     let slot = src.get("slot").and_then(|v| v.as_str()).unwrap_or("");
+                    let field = src
+                        .get("field")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
                     if !node.is_empty() && !slot.is_empty() {
                         plans.push(SubscriptionPlan {
                             widget_id: id.to_string(),
                             subjects: vec![format!("node.{node}.slot.{slot}")],
                             debounce_ms: 250,
+                            field,
                         });
                     }
                 }
@@ -430,6 +458,7 @@ fn collect_chart_plans(v: &JsonValue, plans: &mut Vec<SubscriptionPlan>) {
                         widget_id: id.to_string(),
                         subjects: vec![subj.to_string()],
                         debounce_ms: 250,
+                        field: None,
                     });
                 }
             }
@@ -466,6 +495,7 @@ fn collect_table_plans(
                                 widget_id: table_id.to_string(),
                                 subjects: subjects.into_iter().collect(),
                                 debounce_ms: 250,
+                                field: None,
                             });
                         }
                     }
@@ -494,7 +524,9 @@ fn emit_query_subjects(
         page: Some(1),
         size: Some(500),
     };
-    let Ok(validated) = parse_only(req, 500) else { return };
+    let Ok(validated) = parse_only(req, 500) else {
+        return;
+    };
     let rows: Vec<TableRow> = reader
         .list_all()
         .into_iter()
@@ -511,7 +543,9 @@ fn emit_query_subjects(
             slots: snap.slots,
         })
         .collect();
-    let Ok(page) = execute(rows, &validated) else { return };
+    let Ok(page) = execute(rows, &validated) else {
+        return;
+    };
     for row in &page.data {
         for slot_name in row.slots.keys() {
             acc.insert(format!("node.{}.slot.{}", row.id, slot_name));

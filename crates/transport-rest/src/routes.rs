@@ -39,6 +39,7 @@ pub fn mount(state: AppState) -> Router {
         .route("/api/v1/capabilities", get(capabilities))
         .route("/api/v1/nodes", get(list_nodes).post(create_node))
         .route("/api/v1/node", get(get_node).delete(delete_node))
+        .route("/api/v1/node/schema", get(get_node_schema))
         .route("/api/v1/slots", post(write_slot))
         .route("/api/v1/config", post(set_config))
         .route("/api/v1/events", get(stream_events))
@@ -195,16 +196,133 @@ struct PathQuery {
     path: String,
 }
 
-async fn get_node(
-    State(s): State<AppState>,
-    Query(q): Query<PathQuery>,
-) -> Result<Json<NodeDto>, ApiError> {
-    let path = parse_path(&q.path)?;
-    let snap = s
+#[derive(Deserialize)]
+struct GetNodeQuery {
+    path: String,
+    /// When true, bookkeeping slots marked `is_internal` in the kind
+    /// manifest are included in the response. Default: false —
+    /// Studio's default node card only renders user-facing slots.
+    #[serde(default)]
+    include_internal: bool,
+}
+
+pub(crate) fn get_node_core(
+    state: &AppState,
+    path_raw: &str,
+    include_internal: bool,
+) -> Result<NodeDto, ApiError> {
+    let path = parse_path(path_raw)?;
+    let snap = state
         .graph
         .get(&path)
         .ok_or_else(|| ApiError::not_found(format!("no node at `{path}`")))?;
-    Ok(Json(NodeDto::from(snap)))
+    let mut dto = NodeDto::from(snap);
+    if !include_internal {
+        if let Some(manifest) = state.graph.kinds().get(&KindId::new(dto.kind.as_str())) {
+            let internal: std::collections::HashSet<&str> = manifest
+                .slots
+                .iter()
+                .filter(|s| s.is_internal)
+                .map(|s| s.name.as_str())
+                .collect();
+            dto.slots.retain(|s| !internal.contains(s.name.as_str()));
+        }
+    }
+    Ok(dto)
+}
+
+async fn get_node(
+    State(s): State<AppState>,
+    Query(q): Query<GetNodeQuery>,
+) -> Result<Json<NodeDto>, ApiError> {
+    get_node_core(&s, &q.path, q.include_internal).map(Json)
+}
+
+/// Wire shape of `GET /api/v1/node/schema` — the kind-declared slot
+/// schemas for one node. Lets clients answer "what slots does this
+/// node have?" without cross-referencing `/kinds`. See
+/// [`docs/design/NEW-API.md`] for the contract rules.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct NodeSchemaDto {
+    pub id: String,
+    pub kind: String,
+    pub path: String,
+    pub slots: Vec<SlotSchemaDto>,
+}
+
+/// One slot's manifest declaration — mirrors `spi::SlotSchema` exactly.
+/// Kept here (not reusing `spi::SlotSchema` directly) so the wire shape
+/// is an independent contract the clients mirror field-for-field.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct SlotSchemaDto {
+    pub name: String,
+    pub role: spi::SlotRole,
+    pub value_kind: spi::SlotValueKind,
+    pub value_schema: JsonValue,
+    pub writable: bool,
+    pub trigger: bool,
+    pub is_internal: bool,
+    pub emit_on_init: bool,
+}
+
+impl From<&spi::SlotSchema> for SlotSchemaDto {
+    fn from(s: &spi::SlotSchema) -> Self {
+        Self {
+            name: s.name.clone(),
+            role: s.role,
+            value_kind: s.value_kind,
+            value_schema: s.value_schema.clone(),
+            writable: s.writable,
+            trigger: s.trigger,
+            is_internal: s.is_internal,
+            emit_on_init: s.emit_on_init,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct GetNodeSchemaQuery {
+    path: String,
+    /// When true, slots marked `is_internal` in the kind manifest are
+    /// included in the response. Default: false, matching `/node`'s
+    /// default. Authors debugging internal state flip this.
+    #[serde(default)]
+    include_internal: bool,
+}
+
+pub(crate) fn get_node_schema_core(
+    state: &AppState,
+    path_raw: &str,
+    include_internal: bool,
+) -> Result<NodeSchemaDto, ApiError> {
+    let path = parse_path(path_raw)?;
+    let snap = state
+        .graph
+        .get(&path)
+        .ok_or_else(|| ApiError::not_found(format!("no node at `{path}`")))?;
+    let manifest =
+        state.graph.kinds().get(&snap.kind).ok_or_else(|| {
+            ApiError::bad_request(format!("kind `{}` is not registered", snap.kind))
+        })?;
+    let slots: Vec<SlotSchemaDto> = manifest
+        .slots
+        .iter()
+        .filter(|s| include_internal || !s.is_internal)
+        .map(SlotSchemaDto::from)
+        .collect();
+    Ok(NodeSchemaDto {
+        id: snap.id.to_string(),
+        kind: snap.kind.as_str().to_string(),
+        path: snap.path.to_string(),
+        slots,
+    })
+}
+
+async fn get_node_schema(
+    State(s): State<AppState>,
+    Query(q): Query<GetNodeSchemaQuery>,
+) -> Result<Json<NodeSchemaDto>, ApiError> {
+    get_node_schema_core(&s, &q.path, q.include_internal).map(Json)
 }
 
 async fn delete_node(
@@ -484,9 +602,7 @@ async fn create_link(
         .graph
         .add_link(source, target)
         .map_err(ApiError::from_graph)?;
-    Ok(Json(CreatedLinkResp {
-        id: id.to_string(),
-    }))
+    Ok(Json(CreatedLinkResp { id: id.to_string() }))
 }
 
 #[derive(Serialize)]
@@ -617,8 +733,8 @@ impl IntoResponse for ApiError {
 mod tests {
     use std::sync::Arc;
 
-    use engine::BehaviorRegistry;
     use blocks_host::BlockRegistry;
+    use engine::BehaviorRegistry;
     use graph::{seed, GraphStore, KindRegistry};
     use tokio::sync::broadcast;
 
@@ -660,6 +776,136 @@ mod tests {
         assert_eq!(page.meta.pages, 2);
         assert_eq!(page.data.len(), 1);
         assert_eq!(page.data[0].path, "/beta");
+    }
+
+    #[tokio::test]
+    async fn get_node_filters_internal_slots_by_default() {
+        use spi::{
+            Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindManifest, SlotRole,
+            SlotSchema,
+        };
+
+        let kinds = KindRegistry::new();
+        seed::register_builtins(&kinds);
+        kinds.register(KindManifest {
+            id: KindId::new("test.widget"),
+            display_name: None,
+            facets: FacetSet::of([Facet::IsCompute]),
+            containment: ContainmentSchema {
+                must_live_under: vec![],
+                may_contain: vec![],
+                cardinality_per_parent: Cardinality::ManyPerParent,
+                cascade: CascadePolicy::Strict,
+            },
+            slots: vec![
+                SlotSchema::new("out", SlotRole::Output).writable(),
+                SlotSchema::new("pending_timer", SlotRole::Status)
+                    .writable()
+                    .internal(),
+            ],
+            settings_schema: serde_json::Value::Null,
+            msg_overrides: Default::default(),
+            trigger_policy: Default::default(),
+            schema_version: 1,
+            views: Vec::new(),
+        });
+        let graph = Arc::new(GraphStore::new(kinds, Arc::new(graph::NullSink)));
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
+        graph
+            .create_child(&NodePath::root(), KindId::new("test.widget"), "w1")
+            .unwrap();
+        let path = NodePath::root().child("w1");
+        graph
+            .write_slot(&path, "out", serde_json::json!({"payload": 1}))
+            .unwrap();
+        graph
+            .write_slot(&path, "pending_timer", serde_json::json!(42))
+            .unwrap();
+        let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
+        let (events, _) = broadcast::channel(16);
+        let state = AppState::new(graph, behaviors, events, BlockRegistry::new());
+
+        let default = get_node_core(&state, "/w1", false).unwrap();
+        let names: Vec<&str> = default.slots.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"out"), "out should be visible: {names:?}");
+        assert!(
+            !names.contains(&"pending_timer"),
+            "pending_timer should be hidden by default: {names:?}"
+        );
+
+        let with_internal = get_node_core(&state, "/w1", true).unwrap();
+        let names: Vec<&str> = with_internal
+            .slots
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert!(names.contains(&"pending_timer"), "got {names:?}");
+    }
+
+    #[tokio::test]
+    async fn get_node_schema_returns_kind_declared_slots() {
+        use spi::{
+            Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindManifest, SlotRole,
+            SlotSchema,
+        };
+
+        let kinds = KindRegistry::new();
+        seed::register_builtins(&kinds);
+        kinds.register(KindManifest {
+            id: KindId::new("test.widget"),
+            display_name: None,
+            facets: FacetSet::of([Facet::IsCompute]),
+            containment: ContainmentSchema {
+                must_live_under: vec![],
+                may_contain: vec![],
+                cardinality_per_parent: Cardinality::ManyPerParent,
+                cascade: CascadePolicy::Strict,
+            },
+            slots: vec![
+                SlotSchema::new("out", SlotRole::Output).writable(),
+                SlotSchema::new("pending_timer", SlotRole::Status)
+                    .writable()
+                    .internal(),
+            ],
+            settings_schema: serde_json::Value::Null,
+            msg_overrides: Default::default(),
+            trigger_policy: Default::default(),
+            schema_version: 1,
+            views: Vec::new(),
+        });
+        let graph = Arc::new(GraphStore::new(kinds, Arc::new(graph::NullSink)));
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
+        graph
+            .create_child(&NodePath::root(), KindId::new("test.widget"), "w1")
+            .unwrap();
+        let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
+        let (events, _) = broadcast::channel(16);
+        let state = AppState::new(graph, behaviors, events, BlockRegistry::new());
+
+        // Default: internal slots filtered out. (The registry also
+        // injects synthesised canvas slots `position` / `notes`; we
+        // assert on the slots the test author declared.)
+        let dto = get_node_schema_core(&state, "/w1", false).unwrap();
+        assert_eq!(dto.kind, "test.widget");
+        assert_eq!(dto.path, "/w1");
+        let names: Vec<&str> = dto.slots.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"out"), "got {names:?}");
+        assert!(
+            !names.contains(&"pending_timer"),
+            "internal slot leaked: {names:?}"
+        );
+        let out = dto.slots.iter().find(|s| s.name == "out").unwrap();
+        assert_eq!(out.role, spi::SlotRole::Output);
+        assert!(out.writable);
+
+        // include_internal=true reveals the bookkeeping slot.
+        let full = get_node_schema_core(&state, "/w1", true).unwrap();
+        let names: Vec<&str> = full.slots.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"pending_timer"), "got {names:?}");
+
+        // 404 for missing node.
+        let err = get_node_schema_core(&state, "/nope", false).unwrap_err();
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

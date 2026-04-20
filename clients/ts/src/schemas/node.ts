@@ -45,7 +45,40 @@ export const NodeListResponseSchema = z.object({
   meta: PageMetaSchema,
 });
 
+/**
+ * One slot's manifest declaration — mirrors Rust `NodeSchema.slots[]`
+ * / `spi::SlotSchema`. Field-for-field with the wire.
+ */
+export const NodeSlotSchemaSchema = z.object({
+  name: z.string(),
+  role: z.enum(["config", "input", "output", "status"]),
+  value_kind: z
+    .enum(["null", "bool", "number", "string", "json", "binary"])
+    .default("null"),
+  /** JSON Schema for values written to this slot. Shape is open. */
+  value_schema: z.unknown(),
+  writable: z.boolean().default(false),
+  trigger: z.boolean().default(false),
+  is_internal: z.boolean().default(false),
+  emit_on_init: z.boolean().default(false),
+});
+
+/**
+ * `GET /api/v1/node/schema?path=<path>` response — the kind-declared
+ * slot schemas for one node. Lets callers answer "what slots does
+ * this node have and what does each carry?" in one request, no
+ * cross-reference against `/kinds` needed.
+ */
+export const NodeSchemaSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  path: z.string(),
+  slots: z.array(NodeSlotSchemaSchema),
+});
+
 export type Slot = z.infer<typeof SlotSchema>;
 export type NodeSnapshot = z.infer<typeof NodeSnapshotSchema>;
 export type PageMeta = z.infer<typeof PageMetaSchema>;
 export type NodeListResponse = z.infer<typeof NodeListResponseSchema>;
+export type NodeSlotSchema = z.infer<typeof NodeSlotSchemaSchema>;
+export type NodeSchema = z.infer<typeof NodeSchemaSchema>;

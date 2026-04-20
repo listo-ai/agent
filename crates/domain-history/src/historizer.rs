@@ -32,7 +32,7 @@ use spi::SlotValueKind;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-use crate::config::{HistoryConfig, HistoryConfigSettings, SlotPolicy};
+use crate::config::{HistoryConfig, HistoryConfigSettings, HistoryPath, SlotPolicy};
 use crate::policy::should_record_cov;
 use data_repos::{HistoryRecord, HistoryRepo, HistorySlotKind, RepoError};
 use data_tsdb::{ScalarRecord, TelemetryRepo, TsdbError};
@@ -72,6 +72,99 @@ pub enum HistorizerError {
     Repo(#[from] RepoError),
     #[error("tsdb error: {0}")]
     Tsdb(#[from] TsdbError),
+}
+
+/// One (effective_slot, value, kind) triple a single slot-change event
+/// expands into. When the policy has no `paths`, a slot-change yields
+/// exactly one expansion with the original slot name. With `paths`,
+/// one per declared path, named `<slot>.<path>`.
+#[derive(Debug, Clone)]
+struct PathExpansion {
+    /// The key used in storage + `last_written`. Matches the slot
+    /// name when no paths are declared; `<slot>.<path>` otherwise.
+    effective_name: String,
+    /// The original slot/port name — used to re-lookup the policy
+    /// on the registered config in the critical tier.
+    declaring_slot: String,
+    value: JsonValue,
+    value_kind: SlotValueKind,
+}
+
+/// Expand a raw slot-change into one or more per-path records.
+///
+/// Returns one record when the policy declares no `paths` (whole-slot
+/// historize). Returns one record per declared path otherwise; paths
+/// whose value is missing or doesn't coerce to the declared type are
+/// logged and dropped (Stage 6 non-critical mismatch semantics). A
+/// future `HistorizerTypeMismatch` health event will be emitted here;
+/// for now a warn-level log is the only signal.
+fn expand_slot_change(
+    slot_name: &str,
+    value: &JsonValue,
+    value_kind: SlotValueKind,
+    policy: &SlotPolicy,
+) -> Vec<PathExpansion> {
+    let paths = policy.paths();
+    if paths.is_empty() {
+        return vec![PathExpansion {
+            effective_name: slot_name.to_string(),
+            declaring_slot: slot_name.to_string(),
+            value: value.clone(),
+            value_kind,
+        }];
+    }
+    let mut out = Vec::with_capacity(paths.len());
+    for p in paths {
+        match extract_and_coerce(value, p) {
+            Some(v) => out.push(PathExpansion {
+                effective_name: effective_path_name(slot_name, &p.path),
+                declaring_slot: slot_name.to_string(),
+                value: v,
+                value_kind: p.as_type,
+            }),
+            None => {
+                warn!(
+                    slot = slot_name,
+                    path = %p.path,
+                    expected = ?p.as_type,
+                    "HistorizerTypeMismatch: path missing or value doesn't coerce to declared type; record dropped"
+                );
+            }
+        }
+    }
+    out
+}
+
+fn effective_path_name(slot: &str, path: &str) -> String {
+    if path.is_empty() {
+        slot.to_string()
+    } else {
+        format!("{slot}.{path}")
+    }
+}
+
+/// Walk the dot-path into `root`, then check that the leaf value's
+/// JSON shape is compatible with the declared `as` type. Returns
+/// `Some(coerced_value)` on success, `None` on missing path or type
+/// mismatch. `Null` and `Json` are always accepted (structural
+/// pass-through); scalar kinds require the leaf to be the matching
+/// JSON primitive.
+fn extract_and_coerce(root: &JsonValue, p: &HistoryPath) -> Option<JsonValue> {
+    let mut cursor = root;
+    if !p.path.is_empty() {
+        for segment in p.path.split('.') {
+            cursor = cursor.as_object()?.get(segment)?;
+        }
+    }
+    match p.as_type {
+        SlotValueKind::Null => Some(cursor.clone()),
+        SlotValueKind::Bool if cursor.is_boolean() => Some(cursor.clone()),
+        SlotValueKind::Number if cursor.is_number() => Some(cursor.clone()),
+        SlotValueKind::String if cursor.is_string() => Some(cursor.clone()),
+        SlotValueKind::Json => Some(cursor.clone()),
+        SlotValueKind::Binary if cursor.is_string() || cursor.is_array() => Some(cursor.clone()),
+        _ => None,
+    }
 }
 
 /// A pending history record before routing to scalar or structured backend.
@@ -165,30 +258,63 @@ impl Historizer {
         value_kind: SlotValueKind,
         ts_ms: i64,
     ) -> Result<(), HistorizerError> {
+        // Stage 6: expand a single slot-change into per-path records
+        // when the policy declares `paths`. Each expansion is a
+        // standalone logical record, keyed by `<slot>.<path>` in the
+        // historizer's `last_written` map and in storage.
+        let expansions = {
+            let map = self.configs.lock().expect("historizer lock poisoned");
+            let Some(cs) = map.get(&node_id) else {
+                return Ok(());
+            };
+            let Some(slot_policy) = cs.config.settings.slots.get(slot_name) else {
+                return Ok(());
+            };
+            expand_slot_change(slot_name, &value, value_kind, slot_policy)
+        };
+
+        for expansion in expansions {
+            self.record_one(node_id, ts_ms, expansion)?;
+        }
+        Ok(())
+    }
+
+    fn record_one(
+        &self,
+        node_id: Uuid,
+        ts_ms: i64,
+        expansion: PathExpansion,
+    ) -> Result<(), HistorizerError> {
+        let PathExpansion {
+            effective_name,
+            value,
+            value_kind,
+            declaring_slot,
+        } = expansion;
         let mut map = self.configs.lock().expect("historizer lock poisoned");
         let cs = match map.get_mut(&node_id) {
             Some(cs) => cs,
-            None => return Ok(()), // no config registered for this node
+            None => return Ok(()),
         };
         let settings = &cs.config.settings;
-        let slot_policy = match settings.slots.get(slot_name) {
+        // The policy lives on the declaring slot/port, not the
+        // synthesised per-path name — re-lookup by the original key.
+        let slot_policy = match settings.slots.get(&declaring_slot) {
             Some(p) => p,
-            None => return Ok(()), // slot not declared in config
+            None => return Ok(()),
         };
 
-        // Compute elapsed since last write for rate-floor / heartbeat checks.
         let (elapsed_ms, last_value) = cs
             .last_written
-            .get(slot_name)
+            .get(&effective_name)
             .map(|(last_ts, last_val)| {
                 let elapsed = (ts_ms - last_ts).max(0) as u64;
                 (elapsed, Some(last_val))
             })
             .unwrap_or((u64::MAX, None));
 
-        // Decide whether to record.
         let should_record = match slot_policy {
-            SlotPolicy::OnDemand => false, // only on explicit trigger
+            SlotPolicy::OnDemand { .. } => false,
             SlotPolicy::Interval {
                 period_ms,
                 align_to_wall,
@@ -216,31 +342,29 @@ impl Historizer {
 
         let record = PendingRecord {
             node_id,
-            slot_name: slot_name.to_string(),
+            slot_name: effective_name.clone(),
             value_kind,
             ts_ms,
             value: value.clone(),
-            ntp_synced: true, // TODO: plumb NTP state from agent clock
+            ntp_synced: true,
         };
 
-        // Critical tier: bypass buffer, write immediately.
         if settings.critical {
-            let max_samples = effective_max_samples(slot_name, slot_policy, settings, &self.cfg);
-            // Update last_written before releasing the lock.
+            let max_samples =
+                effective_max_samples(&effective_name, slot_policy, settings, &self.cfg);
             cs.last_written
-                .insert(slot_name.to_string(), (ts_ms, value.clone()));
+                .insert(effective_name.clone(), (ts_ms, value.clone()));
             drop(map);
             return self.write_record_direct(&record, max_samples);
         }
 
-        // Default tier: push to ring buffer, drop oldest on overflow.
         let cap = self.cfg.queue_cap;
         if cs.queue.len() >= cap {
-            cs.queue.pop_front(); // evict oldest
+            cs.queue.pop_front();
             if !cs.overflow_logged {
                 warn!(
                     node_id = %node_id,
-                    slot = slot_name,
+                    slot = %effective_name,
                     "HistorizerOverflow: ring buffer full, oldest record dropped"
                 );
                 cs.overflow_logged = true;
@@ -249,10 +373,8 @@ impl Historizer {
             cs.overflow_logged = false;
         }
         cs.queue.push_back(record);
-        cs.last_written
-            .insert(slot_name.to_string(), (ts_ms, value));
+        cs.last_written.insert(effective_name, (ts_ms, value));
 
-        // Batch-size trigger: if we're at the batch cap, flush inline.
         if cs.queue.len() >= self.cfg.batch_size {
             let batch: Vec<_> = cs.queue.drain(..).collect();
             let settings_clone = cs.config.settings.clone();
@@ -415,7 +537,7 @@ fn effective_max_samples(
         SlotPolicy::Cov { max_samples, .. } | SlotPolicy::Interval { max_samples, .. } => {
             *max_samples
         }
-        SlotPolicy::OnDemand => None,
+        SlotPolicy::OnDemand { .. } => None,
     };
     slot_max
         .or(settings.retention.max_samples_per_slot)
@@ -624,6 +746,7 @@ mod tests {
                 min_interval_ms: 0,
                 max_gap_ms: 900_000,
                 max_samples: None,
+                paths: Vec::new(),
             },
         );
         register(&h, node, slots);
@@ -647,6 +770,7 @@ mod tests {
                 min_interval_ms: 0,
                 max_gap_ms: 900_000,
                 max_samples: None,
+                paths: Vec::new(),
             },
         );
         register(&h, node, slots);
@@ -674,6 +798,7 @@ mod tests {
                 min_interval_ms: 0,
                 max_gap_ms: 900_000,
                 max_samples: None,
+                paths: Vec::new(),
             },
         );
         register(&h, node, slots);
@@ -710,6 +835,7 @@ mod tests {
                 min_interval_ms: 0,
                 max_gap_ms: 0, // heartbeat always fires
                 max_samples: None,
+                paths: Vec::new(),
             },
         );
         register(&h, node, slots);
@@ -729,5 +855,105 @@ mod tests {
         // Should have exactly 5 records (oldest dropped on overflow).
         let count = tsdb.rows.lock().unwrap().len();
         assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn per_path_expansion_routes_scalar_and_json_paths_separately() {
+        // Stage 6 contract: a config with `paths` on a Msg-valued
+        // output slot historizes each declared sub-path independently.
+        // Scalar paths land in the time-series table; Json paths land
+        // in slot_history. Routing is driven by the declared `as`
+        // type, not by the enclosing slot's native value_kind (which
+        // here is Json — the Msg envelope).
+        use crate::config::HistoryPath;
+
+        let (h, tsdb, hist) = make_historizer();
+        let node = Uuid::new_v4();
+        let mut slots = BTreeMap::new();
+        slots.insert(
+            "out".into(),
+            SlotPolicy::Cov {
+                deadband: 0.0,
+                min_interval_ms: 0,
+                max_gap_ms: 0,
+                max_samples: None,
+                paths: vec![
+                    HistoryPath {
+                        path: "payload.count".into(),
+                        as_type: SlotValueKind::Number,
+                    },
+                    HistoryPath {
+                        path: "payload.state".into(),
+                        as_type: SlotValueKind::Bool,
+                    },
+                    HistoryPath {
+                        path: "payload".into(),
+                        as_type: SlotValueKind::Json,
+                    },
+                ],
+            },
+        );
+        register(&h, node, slots);
+
+        // Msg-shaped value on the `out` slot — what heartbeat emits.
+        let msg = json!({
+            "_msgid": "00000000-0000-0000-0000-000000000001",
+            "payload": { "count": 7, "state": true }
+        });
+        h.on_slot_changed(node, "out", msg, SlotValueKind::Json, 1000)
+            .unwrap();
+        h.flush().unwrap();
+
+        // Two scalar paths (count, state) → telemetry table.
+        let scalars = tsdb.rows.lock().unwrap();
+        let names: Vec<&str> = scalars.iter().map(|r| r.slot_name.as_str()).collect();
+        assert!(names.contains(&"out.payload.count"), "got {names:?}");
+        assert!(names.contains(&"out.payload.state"), "got {names:?}");
+        assert_eq!(scalars.len(), 2);
+
+        // One json path (payload) → slot_history.
+        let structured = hist.rows.lock().unwrap();
+        assert_eq!(structured.len(), 1);
+        assert_eq!(structured[0].slot_name, "out.payload");
+    }
+
+    #[test]
+    fn per_path_drops_records_for_missing_or_mismatched_paths() {
+        use crate::config::HistoryPath;
+
+        let (h, tsdb, hist) = make_historizer();
+        let node = Uuid::new_v4();
+        let mut slots = BTreeMap::new();
+        slots.insert(
+            "out".into(),
+            SlotPolicy::Cov {
+                deadband: 0.0,
+                min_interval_ms: 0,
+                max_gap_ms: 0,
+                max_samples: None,
+                paths: vec![
+                    HistoryPath {
+                        path: "payload.missing".into(), // not in msg → drop
+                        as_type: SlotValueKind::Number,
+                    },
+                    HistoryPath {
+                        path: "payload.count".into(), // value is a string → type mismatch → drop
+                        as_type: SlotValueKind::Number,
+                    },
+                ],
+            },
+        );
+        register(&h, node, slots);
+
+        let msg = json!({
+            "_msgid": "00000000-0000-0000-0000-000000000002",
+            "payload": { "count": "not-a-number" }
+        });
+        h.on_slot_changed(node, "out", msg, SlotValueKind::Json, 1000)
+            .unwrap();
+        h.flush().unwrap();
+
+        assert!(tsdb.rows.lock().unwrap().is_empty());
+        assert!(hist.rows.lock().unwrap().is_empty());
     }
 }

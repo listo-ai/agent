@@ -99,7 +99,7 @@ export function ComposePanel({ open, onClose }: Props) {
             placeholder={
               draft?.layoutText?.trim()
                 ? "e.g. Add a severity filter chip above the table"
-                : "e.g. A dashboard for /flow-1/heartbeat with a KPI for count and a chart of count over time"
+                : "e.g. A dashboard for /flow-1/heartbeat with a KPI for out.payload.count and a chart of out.payload.count over time"
             }
             rows={4}
             className="w-full rounded-md border border-border bg-card p-2 text-sm disabled:opacity-50"

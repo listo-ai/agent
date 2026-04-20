@@ -34,12 +34,24 @@ const HISTORY_CONFIG_NAME = "history";
 
 type PolicyKind = "cov" | "interval" | "on_demand";
 
+/** Per-path historization — mirrors Rust `HistoryPath` in
+ *  `crates/domain-history/src/config.rs`. `as` drives storage routing:
+ *  number/bool → time-series; string/json/binary → slot_history. */
+type AsType = "bool" | "number" | "string" | "json" | "binary" | "null";
+const AS_TYPES: AsType[] = ["number", "bool", "string", "json", "binary", "null"];
+
+interface HistoryPath {
+  path: string;
+  as: AsType;
+}
+
 interface CovFields {
   policy: "cov";
   deadband: number;
   min_interval_ms: number;
   max_gap_ms: number;
   max_samples?: number | undefined;
+  paths?: HistoryPath[];
 }
 
 interface IntervalFields {
@@ -47,10 +59,12 @@ interface IntervalFields {
   period_ms: number;
   align_to_wall: boolean;
   max_samples?: number | undefined;
+  paths?: HistoryPath[];
 }
 
 interface OnDemandFields {
   policy: "on_demand";
+  paths?: HistoryPath[];
 }
 
 type SlotPolicy = CovFields | IntervalFields | OnDemandFields;
@@ -234,6 +248,187 @@ function IntervalForm({
   );
 }
 
+/** Walk a kind's declared `value_schema` (JSON Schema) and yield every
+ *  leaf path with the type the historizer should store it as. This is
+ *  the authoritative source of suggestions — always available, even
+ *  before the slot has emitted. Underscore-prefixed properties are
+ *  skipped (platform-reserved: `_msgid` etc). Object nodes are also
+ *  offered as `json` snapshots so an author can opt to record a whole
+ *  subtree as structured JSON. */
+function pathsFromSchema(schema: unknown, prefix = ""): HistoryPath[] {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [];
+  const s = schema as Record<string, unknown>;
+  const t = typeof s["type"] === "string" ? (s["type"] as string) : undefined;
+  switch (t) {
+    case "boolean":
+      return [{ path: prefix, as: "bool" }];
+    case "number":
+    case "integer":
+      return [{ path: prefix, as: "number" }];
+    case "string":
+      return [{ path: prefix, as: "string" }];
+    case "array":
+      return [{ path: prefix, as: "json" }];
+    case "object": {
+      const props = s["properties"];
+      if (!props || typeof props !== "object") {
+        // Object declared without properties → offer the whole thing
+        // as a json snapshot unless we're at the root (root = slot
+        // value, already the author's scope).
+        return prefix ? [{ path: prefix, as: "json" }] : [];
+      }
+      const out: HistoryPath[] = [];
+      for (const [k, sub] of Object.entries(props as Record<string, unknown>)) {
+        if (k.startsWith("_")) continue;
+        const next = prefix ? `${prefix}.${k}` : k;
+        out.push(...pathsFromSchema(sub, next));
+      }
+      if (prefix.length > 0) out.push({ path: prefix, as: "json" });
+      return out;
+    }
+    default:
+      // Property declared without a `type` keyword (e.g. trigger's
+      // user-configured payload) — the manifest names it but doesn't
+      // constrain it. Offer as a json snapshot; the author can switch
+      // `as:` to a scalar if they know the runtime shape.
+      if (prefix.length > 0) return [{ path: prefix, as: "json" }];
+      return [];
+  }
+}
+
+/** Fallback walker for the *live* value when a kind doesn't declare a
+ *  detailed `value_schema` (e.g. trigger / function nodes emit dynamic
+ *  payloads). Same output shape as `pathsFromSchema`, inferred from
+ *  whatever the slot currently holds. */
+function pathsFromValue(v: unknown, prefix = ""): HistoryPath[] {
+  if (v === null || v === undefined) return [{ path: prefix, as: "null" }];
+  if (typeof v === "boolean") return [{ path: prefix, as: "bool" }];
+  if (typeof v === "number") return [{ path: prefix, as: "number" }];
+  if (typeof v === "string") return [{ path: prefix, as: "string" }];
+  if (Array.isArray(v)) return [{ path: prefix, as: "json" }];
+  if (typeof v === "object") {
+    const out: HistoryPath[] = [];
+    for (const [k, sub] of Object.entries(v)) {
+      if (k.startsWith("_")) continue;
+      const next = prefix ? `${prefix}.${k}` : k;
+      out.push(...pathsFromValue(sub, next));
+    }
+    if (prefix.length > 0) out.push({ path: prefix, as: "json" });
+    return out;
+  }
+  return [];
+}
+
+function PathsEditor({
+  value,
+  onChange,
+  suggestions,
+}: {
+  value: HistoryPath[];
+  onChange: (v: HistoryPath[]) => void;
+  suggestions: HistoryPath[];
+}) {
+  const taken = new Set(value.map((p) => `${p.path}:${p.as}`));
+  const unused = suggestions.filter((s) => !taken.has(`${s.path}:${s.as}`));
+
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+      <div className="flex items-baseline justify-between">
+        <Label className="text-xs font-medium">Paths</Label>
+        <span className="text-[11px] text-muted-foreground">
+          Historize sub-fields of the slot value, each with a declared type.
+        </span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Leave empty to historize the whole slot value (routed by its native
+        kind). Add a path like <code className="font-mono">payload.count</code>{" "}
+        with <code className="font-mono">as: number</code> to split a Msg
+        envelope into a scalar time-series.
+      </p>
+
+      {unused.length > 0 && (
+        <div className="space-y-1">
+          <Label className="text-[11px] font-medium text-muted-foreground">
+            Suggested (from current slot value)
+          </Label>
+          <div className="flex flex-wrap gap-1">
+            {unused.map((s) => (
+              <button
+                key={`${s.path}:${s.as}`}
+                type="button"
+                onClick={() => onChange([...value, s])}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-[11px] font-mono hover:bg-accent hover:text-accent-foreground"
+              >
+                <span>{s.path || "(whole)"}</span>
+                <span className="text-muted-foreground">→</span>
+                <span className="text-foreground/70">{s.as}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {value.length > 0 && (
+        <div className="space-y-1.5">
+          {value.map((p, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                placeholder="payload.count"
+                value={p.path}
+                onChange={(e) => {
+                  const next = [...value];
+                  next[i] = { ...p, path: e.target.value };
+                  onChange(next);
+                }}
+                className="h-7 flex-1 font-mono text-xs"
+              />
+              <Select
+                value={p.as}
+                onValueChange={(v) => {
+                  const next = [...value];
+                  next[i] = { ...p, as: v as AsType };
+                  onChange(next);
+                }}
+              >
+                <SelectTrigger size="sm" className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AS_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      <span className="font-mono">{t}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-destructive hover:text-destructive"
+                onClick={() => onChange(value.filter((_, j) => j !== i))}
+                aria-label="Remove path"
+              >
+                ×
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7"
+        onClick={() => onChange([...value, { path: "", as: "number" }])}
+      >
+        + Add path
+      </Button>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export interface SlotHistoryConfigPanelProps {
@@ -276,6 +471,45 @@ export function SlotHistoryConfigPanel({
   const existingPolicy: SlotPolicy | undefined =
     configQuery.data?.slots?.[slot];
 
+  // Fetch the parent node once so we know (a) what kind it is —
+  // drives the schema-based path suggestions below — and (b) the
+  // live value of the target slot, which serves as a fallback for
+  // kinds whose output slot declares no detailed schema.
+  const parentNodeQuery = useQuery({
+    queryKey: ["historyConfigParentNode", nodePath],
+    queryFn: async () => agent.data!.nodes.getNode(nodePath),
+    enabled: agent.data !== undefined,
+    staleTime: 10_000,
+  });
+
+  // Load the kind registry. Cached across the whole app; the query
+  // key is static so every Configure panel shares one fetch.
+  const kindsQuery = useQuery({
+    queryKey: ["kinds"],
+    queryFn: async () => agent.data!.kinds.list(),
+    enabled: agent.data !== undefined,
+    staleTime: 60_000,
+  });
+
+  const pathSuggestions: HistoryPath[] = (() => {
+    // Prefer the manifest's `value_schema` — it's authoritative and
+    // available even before the slot has emitted.
+    const kindId = parentNodeQuery.data?.kind;
+    const kind = kindId
+      ? kindsQuery.data?.find((k) => k.id === kindId)
+      : undefined;
+    const slotDef = kind?.slots?.find((s) => s.name === slot);
+    const fromSchema = slotDef ? pathsFromSchema(slotDef.value_schema) : [];
+    if (fromSchema.length > 0) return fromSchema;
+
+    // Fallback: probe the live value for kinds that don't declare a
+    // strict schema (function / wasm blocks emitting dynamic shapes).
+    const slotValue = parentNodeQuery.data?.slots?.find(
+      (x: { name: string }) => x.name === slot,
+    )?.value;
+    return slotValue != null ? pathsFromValue(slotValue) : [];
+  })();
+
   // ── 2. Local form state ───────────────────────────────────────────────────
   const [policyKind, setPolicyKind] = useState<PolicyKind>(
     (existingPolicy?.policy as PolicyKind | undefined) ?? "cov",
@@ -286,6 +520,9 @@ export function SlotHistoryConfigPanel({
   const [intervalFields, setIntervalFields] = useState<IntervalFields>(
     existingPolicy?.policy === "interval" ? existingPolicy : defaultInterval(),
   );
+  // Per-path split (Stage 6 of NODE-RED-MODEL.md). Shared across policy
+  // variants so toggling COV ↔ Interval keeps the path list intact.
+  const [paths, setPaths] = useState<HistoryPath[]>(existingPolicy?.paths ?? []);
 
   // Sync form when query resolves
   useEffect(() => {
@@ -293,6 +530,7 @@ export function SlotHistoryConfigPanel({
     setPolicyKind(existingPolicy.policy as PolicyKind);
     if (existingPolicy.policy === "cov") setCovFields(existingPolicy);
     if (existingPolicy.policy === "interval") setIntervalFields(existingPolicy);
+    setPaths(existingPolicy.paths ?? []);
   }, [existingPolicy]);
 
   // ── 3. Save mutation ──────────────────────────────────────────────────────
@@ -322,6 +560,12 @@ export function SlotHistoryConfigPanel({
       const newPolicy = defaultForKind(policyKind);
       if (policyKind === "cov") Object.assign(newPolicy, covFields);
       if (policyKind === "interval") Object.assign(newPolicy, intervalFields);
+      // Attach paths (Stage 6). Drop rows with blank path strings so
+      // users can have an in-progress row without it hitting the wire.
+      const cleaned = paths
+        .map((p) => ({ path: p.path.trim(), as: p.as }))
+        .filter((p) => p.path.length > 0 || p.as === "json" || p.as === "null");
+      if (cleaned.length > 0) newPolicy.paths = cleaned;
 
       const newSettings: HistoryConfigSettings = {
         ...currentSettings,
@@ -402,6 +646,9 @@ export function SlotHistoryConfigPanel({
           call the API explicitly.
         </p>
       )}
+
+      {/* Per-path split */}
+      <PathsEditor value={paths} onChange={setPaths} suggestions={pathSuggestions} />
 
       {/* Error */}
       {(saveMutation.error ?? removeMutation.error) && (

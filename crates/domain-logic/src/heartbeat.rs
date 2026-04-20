@@ -1,12 +1,16 @@
 //! `sys.logic.heartbeat` — self-driven boolean toggle with a counter.
 //!
-//! Source node: no inputs. On `on_init` it emits `start_state` on the
-//! `state` output and arms a timer. Each timer fire flips the state,
-//! increments the counter, and emits both on the output ports. Status
-//! mirrors (`current_state`, `current_count`) hold the readable state
-//! because [`NodeCtx::read_status`] only reads status-role slots — the
-//! output ports are write-only from the behaviour's POV (same idiom as
-//! [`crate::trigger`]).
+//! Source node: no inputs. On `on_init` it arms a timer and emits the
+//! initial `{ state, count }` on the single `out` port. Each timer fire
+//! flips the state, increments the counter, and emits one message
+//! carrying both fields under `msg.payload`.
+//!
+//! (docs/design/NODE-RED-MODEL.md) deleted the mirror status
+//! slots `current_state` / `current_count`: the output slot IS the
+//! current value, so the behaviour recovers its previous state by
+//! reading the `out` slot back (the engine persists every emit). Only
+//! `pending_timer` remains as a status slot — marked `isInternal` so
+//! it doesn't clutter the node card.
 //!
 //! A stale-fire guard (pattern borrowed from `trigger`) ignores timer
 //! fires whose handle no longer matches the active one — defends
@@ -42,10 +46,7 @@ fn default_enabled() -> bool {
     true
 }
 
-const STATE_OUT: &str = "state";
-const COUNT_OUT: &str = "count";
-const CURRENT_STATE: &str = "current_state";
-const CURRENT_COUNT: &str = "current_count";
+const OUT: &str = "out";
 const PENDING_TIMER: &str = "pending_timer";
 
 impl NodeBehavior for Heartbeat {
@@ -59,22 +60,8 @@ impl NodeBehavior for Heartbeat {
 
     fn on_init(&self, ctx: &NodeCtx, cfg: &HeartbeatConfig) -> Result<(), NodeError> {
         cancel_pending(ctx);
-        // Preserve the counter across config edits and restarts — only
-        // seed it when the slot is still null (first-ever init).
-        let count = ctx
-            .read_status(CURRENT_COUNT)
-            .ok()
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let state = ctx
-            .read_status(CURRENT_STATE)
-            .ok()
-            .and_then(|v| v.as_bool())
-            .unwrap_or(cfg.start_state);
-        ctx.update_status(CURRENT_STATE, json!(state))?;
-        ctx.update_status(CURRENT_COUNT, json!(count))?;
-        ctx.emit(STATE_OUT, Msg::new(json!(state)))?;
-        ctx.emit(COUNT_OUT, Msg::new(json!(count)))?;
+        let (state, count) = prev_state(ctx).unwrap_or((cfg.start_state, 0));
+        ctx.emit(OUT, Msg::new(json!({ "state": state, "count": count })))?;
         arm_if_enabled(ctx, cfg)
     }
 
@@ -90,26 +77,27 @@ impl NodeBehavior for Heartbeat {
             return Ok(());
         }
 
-        let prev = ctx
-            .read_status(CURRENT_STATE)
-            .ok()
-            .and_then(|v| v.as_bool())
-            .unwrap_or(cfg.start_state);
-        let next = !prev;
-        let prev_count = ctx
-            .read_status(CURRENT_COUNT)
-            .ok()
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let (prev_state, prev_count) = prev_state(ctx).unwrap_or((cfg.start_state, 0));
+        let next_state = !prev_state;
         let next_count = prev_count + 1;
 
-        ctx.update_status(CURRENT_STATE, json!(next))?;
-        ctx.update_status(CURRENT_COUNT, json!(next_count))?;
-        ctx.emit(STATE_OUT, Msg::new(json!(next)))?;
-        ctx.emit(COUNT_OUT, Msg::new(json!(next_count)))?;
+        ctx.emit(
+            OUT,
+            Msg::new(json!({ "state": next_state, "count": next_count })),
+        )?;
 
         arm_if_enabled(ctx, &cfg)
     }
+}
+
+/// Recover `(state, count)` from the last `Msg` emitted on `out`.
+/// Returns `None` on first init (slot is null / missing a shape).
+fn prev_state(ctx: &NodeCtx) -> Option<(bool, u64)> {
+    let out = ctx.read_output(OUT).ok()?;
+    let payload = out.get("payload")?;
+    let state = payload.get("state")?.as_bool()?;
+    let count = payload.get("count")?.as_u64()?;
+    Some((state, count))
 }
 
 fn arm_if_enabled(ctx: &NodeCtx, cfg: &HeartbeatConfig) -> Result<(), NodeError> {

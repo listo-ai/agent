@@ -88,6 +88,8 @@ export type UiDiffAnnotation = z.infer<typeof UiDiffAnnotationSchema>;
 export const UiChartSourceSchema = z.object({
   node_id: z.string(),
   slot: z.string(),
+  /** Dot-path into the slot value (e.g. `payload.count` for a Msg envelope). */
+  field: z.string().optional(),
 });
 export type UiChartSource = z.infer<typeof UiChartSourceSchema>;
 
@@ -388,6 +390,8 @@ export const UiSubscriptionPlanSchema = z.object({
   widget_id: z.string(),
   subjects: z.array(z.string()),
   debounce_ms: z.number().int().nonnegative(),
+  /** Dot-path for chart/kpi widgets using `source.field`; omitted otherwise. */
+  field: z.string().optional(),
 });
 export type UiSubscriptionPlan = z.infer<typeof UiSubscriptionPlanSchema>;
 

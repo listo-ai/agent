@@ -10,7 +10,7 @@ A typed component IR emitted by the backend and rendered by a tiny React runtime
 - **S2**: `POST /api/v1/ui/action` + HandlerRegistry with `toast` / `navigate` / `none` / `full_render` / `form_errors` / `download` / `stream` response variants.
 - **S3**: `GET /api/v1/ui/table` paginated endpoint + `custom` IR variant + client/TS/Rust client parity.
 - **S4**: SDUI renderer at `frontend/src/sdui/` — `SduiProvider`, `Renderer`, `useActionResponse`, 16 component implementations. Route `/ui/:pageRef` renders any authored page. Dashboard page (`/dashboard`) replaced with a live `ui.page` node browser — shows a card per page, clicking navigates to `/ui/<id>`.
-- **S5**: `GET /api/v1/ui/render?target=<id>[&view=<id>]` endpoint. `spi::KindManifest` gained `views: Vec<KindView>` (each view is `{id, title, template: JsonValue, priority}`). DashboardState threaded with an `Arc<KindRegistry>` so the endpoint can look up a target's kind, pick the matching view, substitute `{{$target.*}}` bindings in the template, and return the same `ResolveResponse` shape `/ui/resolve` emits. `sys.logic.heartbeat` now declares an inline `overview` view (heading + badges bound to `current_state` / `current_count`). Full NEW-API parity landed in the same PR: Rust client (`client.ui().render(target, view)`), CLI (`agent ui render --target <id> [--view <id>]`) + CommandMeta, TS client (`client.ui.render(...)`), fixtures (`ui-render/{ok,not-found}.json`) + `fixture_gate` tests, plus a new React route `/render/:targetId` backed by `SduiRenderPage.tsx`. SSE subscription consumer wired via `frontend/src/sdui/useSubscriptions.ts` — opens `client.events.subscribe()`, matches incoming `slot_changed` events against the resolve/render response's `subscriptions` subjects, and invalidates the matching React Query cache entry (no polling).
+- **S5**: `GET /api/v1/ui/render?target=<id>[&view=<id>]` endpoint. `spi::KindManifest` gained `views: Vec<KindView>` (each view is `{id, title, template: JsonValue, priority}`). DashboardState threaded with an `Arc<KindRegistry>` so the endpoint can look up a target's kind, pick the matching view, substitute `{{$target.*}}` bindings in the template, and return the same `ResolveResponse` shape `/ui/resolve` emits. `sys.logic.heartbeat` declares an inline `overview` view (heading + badges bound to `$target.out.payload.state` / `$target.out.payload.count` — dot-path walks into the Msg envelope on the output slot, per [NODE-RED-MODEL.md](NODE-RED-MODEL.md) Stage 4). Full NEW-API parity landed in the same PR: Rust client (`client.ui().render(target, view)`), CLI (`agent ui render --target <id> [--view <id>]`) + CommandMeta, TS client (`client.ui.render(...)`), fixtures (`ui-render/{ok,not-found}.json`) + `fixture_gate` tests, plus a new React route `/render/:targetId` backed by `SduiRenderPage.tsx`. SSE subscription consumer wired via `frontend/src/sdui/useSubscriptions.ts` — opens `client.events.subscribe()`, matches incoming `slot_changed` events against the resolve/render response's `subscriptions` subjects, and invalidates the matching React Query cache entry (no polling).
 
 ### Implementation notes / divergences from design
 
@@ -38,8 +38,8 @@ agent slots write /dashboards/heartbeat-demo layout '{
     {"type":"table","id":"t","source":{"query":"path==\"/flow-1/heartbeat\"","subscribe":false},
      "columns":[
        {"title":"Node","field":"path"},
-       {"title":"current_count","field":"slots.current_count"},
-       {"title":"current_state","field":"slots.current_state"}
+       {"title":"count","field":"slots.out.payload.count"},
+       {"title":"state","field":"slots.out.payload.state"}
      ],"page_size":10}
   ]
 }'

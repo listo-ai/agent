@@ -86,16 +86,15 @@ impl<'c> Ui<'c> {
         if let Some(v) = view {
             qp.push(("view", v.to_string()));
         }
-        self.http.get_query(&format!("{}/render", self.base), &qp).await
+        self.http
+            .get_query(&format!("{}/render", self.base), &qp)
+            .await
     }
 
     /// AI-authored page generation. The agent owns the LLM API key —
     /// callers never see it. Returns a validated ComponentTree the
     /// caller can apply through `slots.write_with_generation`.
-    pub async fn compose(
-        &self,
-        req: &UiComposeRequest,
-    ) -> Result<UiComposeResponse, ClientError> {
+    pub async fn compose(&self, req: &UiComposeRequest) -> Result<UiComposeResponse, ClientError> {
         self.http.post(&format!("{}/compose", self.base), req).await
     }
 
@@ -131,8 +130,7 @@ impl<'c> Ui<'c> {
         if let Some(id) = &params.source_id {
             qp.push(("source_id".into(), id.clone()));
         }
-        let pairs: Vec<(&str, String)> =
-            qp.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        let pairs: Vec<(&str, String)> = qp.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
         self.http
             .get_query(&format!("{}/table", self.base), &pairs)
             .await

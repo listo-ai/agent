@@ -334,9 +334,8 @@ impl GraphStore {
         };
 
         // Try the original name first, then base-2, base-3, …
-        let candidates = std::iter::once(name.to_string()).chain(
-            (start..=start + MAX_TRIES).map(|n| format!("{base}-{n}"))
-        );
+        let candidates = std::iter::once(name.to_string())
+            .chain((start..=start + MAX_TRIES).map(|n| format!("{base}-{n}")));
 
         for candidate in candidates {
             match self.create_child(parent, kind.clone(), &candidate) {

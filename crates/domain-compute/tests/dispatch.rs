@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
-use engine::BehaviorRegistry;
 use blocks_sdk::NodeKind;
+use engine::BehaviorRegistry;
 use graph::{GraphEvent, GraphStore, KindRegistry, NullSink, VecSink};
 use serde_json::{json, Value as JsonValue};
 use spi::{KindId, Msg, NodePath};

@@ -78,9 +78,7 @@ pub enum WasmError {
         #[source]
         source: anyhow::Error,
     },
-    #[error(
-        "block `{block}` missing required export `{export}` — not a us-extension block?"
-    )]
+    #[error("block `{block}` missing required export `{export}` — not a us-extension block?")]
     MissingExport { block: String, export: &'static str },
     #[error("describe() on block `{block}` trapped: {source}")]
     Describe {
@@ -102,9 +100,7 @@ pub enum WasmError {
     },
     #[error("block `{expected}` identified itself as `{actual}`")]
     IdentityMismatch { expected: String, actual: String },
-    #[error(
-        "block `{block}` declared kind `{kind}` outside its namespace — refused"
-    )]
+    #[error("block `{block}` declared kind `{kind}` outside its namespace — refused")]
     NamespaceViolation { block: String, kind: String },
     #[error("block `{block}` ran out of fuel (budget {budget})")]
     OutOfFuel { block: String, budget: u64 },
@@ -368,8 +364,8 @@ impl WasmSupervisor {
             block: self.block_id.as_str().to_string(),
             source: e,
         })?;
-        let result: Result<Vec<OutputMsg>, String> = serde_json::from_slice(&out_bytes)
-            .map_err(|e| WasmError::BadJson {
+        let result: Result<Vec<OutputMsg>, String> =
+            serde_json::from_slice(&out_bytes).map_err(|e| WasmError::BadJson {
                 block: self.block_id.as_str().to_string(),
                 source: e,
             })?;

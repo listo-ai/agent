@@ -40,7 +40,7 @@ export type TableNode = {
   type: "table"; id?: string; source: UiTableSource;
   columns: UiTableColumn[]; row_action?: UiAction; page_size?: number;
 };
-export type ChartSource = { node_id: string; slot: string };
+export type ChartSource = { node_id: string; slot: string; field?: string };
 export type ChartSeries = { label: string; points: [number, number][] };
 export type ChartRange = { from: number; to: number };
 export type ChartNode = {

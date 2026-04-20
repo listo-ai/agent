@@ -52,14 +52,16 @@ What travels on a wire when a slot's type is `Msg`. Full spec in [EVERYTHING-AS-
 | `payload` | any | Primary data | `msg.payload` |
 | `topic` | `string?` | Routing / grouping hint | `msg.topic` |
 | `_msgid` | string (UUID) | Unique message id | `msg._msgid` |
-| `_parentid` | string (UUID)? | Parent message id for provenance across fan-out | — (ours) |
-| `_ts` | integer (ms) | Creation timestamp | — (ours) |
-| `_source` | string? | Emitting node's graph path | — (ours) |
 | `<anything else>` | any | User-added custom field; flattened at root | Any non-underscore field on `msg` |
 
-Underscore-prefixed fields are platform-reserved. User fields sit at the root alongside `payload` / `topic` — same shape as Node-RED, so porting logic that does `msg.myField = ...` works unchanged.
+Three fields. Byte-for-byte Node-RED compatible — nothing extra on the wire. [NODE-RED-MODEL.md Stage 2](NODE-RED-MODEL.md) moved `_ts`, `_source`, and `_parentid` off the `Msg`:
+- `_ts` → SSE event frame `ts`; history writer stamps its own at storage time.
+- `_source` → derived from the subject name (`node.<id>.slot.<port>`) + trace-span attributes.
+- `_parentid` → W3C TraceContext (`traceparent` / `tracestate`) carried in transport metadata (NATS headers, SSE event frame, gRPC metadata).
 
-Under the hood messages are **immutable** — a node "modifies" a message by producing a new one (typically via `Msg::child(new_payload)` which preserves provenance). The QuickJS Function node exposes `msg` as a mutable JS object for authoring familiarity; the runtime snapshots it on exit.
+User fields sit at the root alongside `payload` / `topic`; porting logic that does `msg.myField = ...` works unchanged.
+
+Under the hood messages are **immutable** — a node "modifies" a message by producing a new one (typically via `Msg::child(new_payload)` which forwards `topic` but generates a fresh `_msgid`; parent lineage rides the trace context on the transport). The QuickJS Function node exposes `msg` as a mutable JS object for authoring familiarity; the runtime snapshots it on exit.
 
 ## Settings vs msg overrides — the core pattern
 
@@ -229,7 +231,7 @@ The node's `resolve_settings` call yields:
 | `timeout_ms` | `5000` | config |
 | `follow_redirects` | `true` | config (not overridable) |
 
-The payload of the response goes to `out`'s `payload`; status code and response headers land in `out.metadata.status` / `out.metadata.response_headers`; the `_parentid` on the emitted msg is the incoming `_msgid` so you can trace request → response in the audit log.
+The payload of the response goes to `out`'s `payload`; status code and response headers land in `out.metadata.status` / `out.metadata.response_headers`. Request→response lineage rides the active trace context (span parent) on whichever transport delivered the emit, not a field on the Msg itself — see [NODE-RED-MODEL.md Stage 2](NODE-RED-MODEL.md).
 
 ## Best practices
 
@@ -241,7 +243,7 @@ The payload of the response goes to `out`'s `payload`; status code and response 
 
 **Declare slot roles accurately.** `config` for user-authored settings, `input`/`output` for data flow, `status` for computed state. The platform uses roles to route audit, telemetry, and RBAC correctly; getting them wrong breaks all three quietly.
 
-**Emit child messages, not root messages.** When a node transforms a message, use `msg.child(new_payload)` so `_parentid` is populated and provenance tracing works across the whole flow. Downstream debugging and the audit log both depend on this.
+**Emit child messages, not root messages.** When a node transforms a message, use `msg.child(new_payload)` so `topic` carries forward and the trace span links the new msg to the triggering one. `Msg::new(payload)` is only appropriate for source kinds with no inbound msg to derive from (e.g. `sys.logic.heartbeat`'s timer tick).
 
 **Surface errors on a dedicated output.** Two outputs (`out`, `error`) beats one output with a status code buried in metadata. Flow authors want to wire the error path explicitly; they rarely want to write `if (msg.metadata.error) { ... }` by hand.
 

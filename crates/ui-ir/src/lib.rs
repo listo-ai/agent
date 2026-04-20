@@ -9,8 +9,7 @@
 mod component;
 
 pub use component::{
-    Action, Component, DateRangePreset, DiffAnnotation, SelectOption, Tab, TableColumn,
-    TableSource,
+    Action, Component, DateRangePreset, DiffAnnotation, SelectOption, Tab, TableColumn, TableSource,
 };
 
 use schemars::JsonSchema;

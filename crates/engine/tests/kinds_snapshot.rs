@@ -8,8 +8,8 @@
 //! `crates/graph/tests/seed_snapshot.rs` for the matching regression
 //! gate on seed kinds.
 
-use engine::kinds::{Flow, ReadSlot, WriteSlot};
 use blocks_sdk::NodeKind;
+use engine::kinds::{Flow, ReadSlot, WriteSlot};
 use serde_json::json;
 use spi::{
     Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindId, KindManifest,

@@ -63,6 +63,22 @@ pub struct SlotSchema {
     /// on input slots; the field is ignored on other roles.
     #[serde(default)]
     pub trigger: bool,
+    /// Render facet: when `true`, this slot is bookkeeping not
+    /// user-facing value (e.g. `pending_timer` on heartbeat). Storage,
+    /// RBAC, history, and subscriptions treat it like any other slot —
+    /// only the default render surface hides it. REST and Studio
+    /// surface it behind `include_internal=true`.
+    #[serde(default)]
+    pub is_internal: bool,
+    /// Output slots only: the kind's `on_init` is expected to write an
+    /// initial `Msg` to this slot, so widgets binding to it don't see
+    /// "no data" between node creation and the first natural emit.
+    /// Declarative today — the engine does not synthesise the write;
+    /// behaviours remain responsible for emitting. Future engine
+    /// enforcement (warn if `on_init` returns without writing) will key
+    /// off this flag. Ignored on non-output roles.
+    #[serde(default)]
+    pub emit_on_init: bool,
 }
 
 impl SlotValueKind {
@@ -100,7 +116,19 @@ impl SlotSchema {
             value_schema: JsonValue::Object(Default::default()),
             writable: false,
             trigger: false,
+            is_internal: false,
+            emit_on_init: false,
         }
+    }
+
+    pub fn internal(mut self) -> Self {
+        self.is_internal = true;
+        self
+    }
+
+    pub fn emit_on_init(mut self) -> Self {
+        self.emit_on_init = true;
+        self
     }
 
     pub fn with_kind(mut self, kind: SlotValueKind) -> Self {

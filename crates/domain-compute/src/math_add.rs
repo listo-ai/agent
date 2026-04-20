@@ -11,8 +11,8 @@
 //! next emission. No per-instance caching.
 //!
 //! `sum` emits only when both `last_a` and `last_b` are non-null. The
-//! `last_sum` status slot mirrors the latest emission so the property
-//! panel can show it without subscribing to the wire.
+//! `sum` output slot IS the latest value — no mirror status slot
+//! (Stage 7 of NODE-RED-MODEL.md deleted `last_sum`).
 
 use blocks_sdk::prelude::*;
 use serde::Deserialize;
@@ -36,7 +36,6 @@ const INPUT_B: &str = "b";
 const OUTPUT_SUM: &str = "sum";
 const STATUS_A: &str = "last_a";
 const STATUS_B: &str = "last_b";
-const STATUS_SUM: &str = "last_sum";
 
 impl NodeBehavior for Add {
     type Config = AddConfig;
@@ -50,9 +49,6 @@ impl NodeBehavior for Add {
         }
         if ctx.read_status(STATUS_B).is_err() {
             ctx.update_status(STATUS_B, JsonValue::Null)?;
-        }
-        if ctx.read_status(STATUS_SUM).is_err() {
-            ctx.update_status(STATUS_SUM, JsonValue::Null)?;
         }
         Ok(())
     }
@@ -84,7 +80,6 @@ impl NodeBehavior for Add {
             return Ok(());
         };
         let sum = av + bv;
-        ctx.update_status(STATUS_SUM, json!(sum))?;
         ctx.emit(OUTPUT_SUM, msg.child(json!(sum)))?;
         Ok(())
     }

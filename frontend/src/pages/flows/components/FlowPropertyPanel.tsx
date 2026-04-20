@@ -6,7 +6,7 @@ import { useNodeSettings, NodeSettingsForm } from "@/lib/node-settings";
 import { mergedSlots } from "../flow-model";
 
 /** Slot names managed by the canvas — hide from the live slots list. */
-const INTERNAL_SLOTS = new Set(["position", "notes", "settings"]);
+const CANVAS_SLOTS = new Set(["position", "notes", "settings"]);
 
 interface FlowPropertyPanelProps {
   node: NodeSnapshot | undefined;
@@ -28,9 +28,14 @@ export function FlowPropertyPanel({
     onSaveSettings,
   );
 
+  const hiddenSlots = new Set(CANVAS_SLOTS);
+  for (const def of kind?.slots ?? []) {
+    if (def.is_internal) hiddenSlots.add(def.name);
+  }
+
   const statusSlots = node
     ? mergedSlots(node, { lifecycle: undefined, slots: live, touchedAt: undefined }).filter(
-        (slot) => !INTERNAL_SLOTS.has(slot.name),
+        (slot) => !hiddenSlots.has(slot.name),
       )
     : [];
 

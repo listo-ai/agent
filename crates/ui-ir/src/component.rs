@@ -426,15 +426,24 @@ pub struct OptimisticHint {
     pub fields: JsonValue,
 }
 
-/// Data source for a [`Component::Chart`] — a node + slot that carries
-/// a time series.
+/// Data source for a [`Component::Chart`] or [`Component::Kpi`] — a
+/// node + slot, optionally with a dot-path into the slot value.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChartSource {
     /// Node id (UUID as string) — the subscription plan is derived
     /// from this plus `slot`.
     pub node_id: String,
-    /// Slot name on the node (e.g. `"value"`, `"current_count"`).
+    /// Slot name on the node (e.g. `"value"`, `"out"`).
     pub slot: String,
+    /// Dot-path into the slot value to extract before rendering.
+    /// Source nodes write a `Msg` envelope to their output slot, so a
+    /// numeric KPI / chart on heartbeat's `out` port should set
+    /// `field: "payload.count"`. Omitted → use the whole slot value
+    /// (with a legacy `.payload` auto-unwrap for Msg envelopes, kept
+    /// so widgets authored before Stage 5 keep working). See
+    /// docs/design/NODE-RED-MODEL.md § "Widget ↔ output subscription".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
 }
 
 /// One series in a [`Component::Chart`].

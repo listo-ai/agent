@@ -17,9 +17,10 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use auth::{DevNullProvider, StaticTokenProvider};
+use blocks_host::{BlockHost, BlockRegistry, HostPolicy};
 use clap::{Parser, Subcommand};
 use config::{
-    default_db_path, default_blocks_dir, from_env, from_file, AgentConfig, AgentConfigOverlay,
+    default_blocks_dir, default_db_path, from_env, from_file, AgentConfig, AgentConfigOverlay,
     AuthConfig, DatabaseOverlay, Defaults, FleetConfig, FleetOverlay, LogOverlay, PluginsOverlay,
     Role, ZenohFleetOverlay,
 };
@@ -29,10 +30,9 @@ use data_sqlite::SqliteGraphRepo;
 use data_sqlite::SqliteHistoryRepo;
 use data_sqlite::SqlitePreferencesRepo;
 use data_tsdb::sqlite::SqliteTelemetryRepo;
-use domain_history::{HistoryConfig, HistoryConfigSettings, Historizer};
 use domain_flows::FlowService;
+use domain_history::{Historizer, HistoryConfig, HistoryConfigSettings};
 use engine::{kinds as engine_kinds, Engine};
-use blocks_host::{HostPolicy, BlockHost, BlockRegistry};
 use graph::{seed, GraphStore, KindRegistry};
 use spi::{AuthProvider, FleetTransport, KindId, TenantId};
 use tokio::signal::unix::{signal, SignalKind};
@@ -330,9 +330,10 @@ async fn run_daemon(
         }
 
         // Wire Historizer — drives automatic COV / interval recording.
-        if let (Some(hist_repo), Some(tel_repo)) =
-            (app_state.history_repo.clone(), app_state.telemetry_repo.clone())
-        {
+        if let (Some(hist_repo), Some(tel_repo)) = (
+            app_state.history_repo.clone(),
+            app_state.telemetry_repo.clone(),
+        ) {
             let historizer = Arc::new(Historizer::new(
                 domain_history::historizer::HistorizerConfig::default(),
                 tel_repo,
@@ -348,7 +349,10 @@ async fn run_daemon(
                             .slot_values
                             .iter()
                             .find(|(n, _)| n == "settings")
-                            .and_then(|(_, sv)| serde_json::from_value::<HistoryConfigSettings>(sv.value.clone()).ok())
+                            .and_then(|(_, sv)| {
+                                serde_json::from_value::<HistoryConfigSettings>(sv.value.clone())
+                                    .ok()
+                            })
                             .unwrap_or_default();
                         let cfg = HistoryConfig {
                             config_node_id: node.id.0,
@@ -389,13 +393,19 @@ async fn run_daemon(
                 loop {
                     match event_rx.recv().await {
                         Ok(seq) => match seq.event {
-                            GraphEvent::SlotChanged { id, slot, value, .. } => {
+                            GraphEvent::SlotChanged {
+                                id, slot, value, ..
+                            } => {
                                 // If this is a settings update on a history config node, re-register.
                                 if slot == "settings" {
-                                if let Some(node) = graph_task.get_by_id(id) {
-                                    if node.kind.as_str() == domain_history::config::KIND_ID {
-                                        if let Some(parent_id) = node.parent {
-                                                if let Ok(settings) = serde_json::from_value::<HistoryConfigSettings>(value.clone()) {
+                                    if let Some(node) = graph_task.get_by_id(id) {
+                                        if node.kind.as_str() == domain_history::config::KIND_ID {
+                                            if let Some(parent_id) = node.parent {
+                                                if let Ok(settings) =
+                                                    serde_json::from_value::<HistoryConfigSettings>(
+                                                        value.clone(),
+                                                    )
+                                                {
                                                     let cfg = HistoryConfig {
                                                         config_node_id: id.0,
                                                         parent_node_id: parent_id.0,
@@ -434,7 +444,10 @@ async fn run_daemon(
                         },
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                            tracing::warn!(dropped = n, "historizer event lag — some slot changes may not be recorded");
+                            tracing::warn!(
+                                dropped = n,
+                                "historizer event lag — some slot changes may not be recorded"
+                            );
                         }
                     }
                 }
@@ -585,8 +598,8 @@ async fn bootstrap(
     // Scan blocks *before* opening the graph so block-contributed
     // kinds are in the registry the graph later validates against.
     let host_caps = transport_rest::host_capabilities().capabilities;
-    let blocks = BlockRegistry::scan(&cfg.blocks.dir, &host_caps, &kinds)
-        .context("scanning blocks dir")?;
+    let blocks =
+        BlockRegistry::scan(&cfg.blocks.dir, &host_caps, &kinds).context("scanning blocks dir")?;
     for p in blocks.list() {
         info!(
             id = %p.id,
@@ -699,8 +712,7 @@ fn seed_plugin_nodes(graph: &GraphStore, blocks: &BlockRegistry) -> Result<()> {
             "enabled",
             serde_json::Value::Bool(!matches!(
                 p.lifecycle,
-                blocks_host::PluginLifecycle::Disabled
-                    | blocks_host::PluginLifecycle::Failed
+                blocks_host::PluginLifecycle::Disabled | blocks_host::PluginLifecycle::Failed
             )),
         )?;
     }

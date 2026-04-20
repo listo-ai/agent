@@ -208,7 +208,12 @@ impl HistoryRepo for SqliteHistoryRepo {
                    FROM slot_history
                   WHERE node_id = ?1 AND slot_name = ?2
                     AND ts_ms >= ?3 AND ts_ms < ?4",
-                params![node_id.simple().to_string(), slot_name, day_start_ms, end_ms],
+                params![
+                    node_id.simple().to_string(),
+                    slot_name,
+                    day_start_ms,
+                    end_ms
+                ],
                 |row| row.get(0),
             )?;
             Ok(n)
@@ -271,9 +276,9 @@ mod tests {
     fn insert_and_query_round_trip() {
         let (repo, id) = mk();
         let records = vec![
-            string_rec(id, "notes", "first",  1000),
+            string_rec(id, "notes", "first", 1000),
             string_rec(id, "notes", "second", 2000),
-            string_rec(id, "notes", "third",  3000),
+            string_rec(id, "notes", "third", 3000),
         ];
         repo.insert_batch(&records, 100).unwrap();
 
@@ -358,8 +363,10 @@ mod tests {
     fn count_returns_row_count() {
         let (repo, id) = mk();
         assert_eq!(repo.count(id, "notes").unwrap(), 0);
-        repo.insert_batch(&[string_rec(id, "notes", "v", 1)], 100).unwrap();
-        repo.insert_batch(&[string_rec(id, "notes", "v", 2)], 100).unwrap();
+        repo.insert_batch(&[string_rec(id, "notes", "v", 1)], 100)
+            .unwrap();
+        repo.insert_batch(&[string_rec(id, "notes", "v", 2)], 100)
+            .unwrap();
         assert_eq!(repo.count(id, "notes").unwrap(), 2);
         // Different slot — isolated counter.
         assert_eq!(repo.count(id, "other").unwrap(), 0);
@@ -393,8 +400,8 @@ mod tests {
         let day_start: i64 = 1_700_000_000_000; // some fixed ms timestamp
         let in_window = vec![
             // byte_size is the string length in string_rec
-            string_rec(id, "fault", "abc",    day_start + 1_000),   // 3 bytes
-            string_rec(id, "fault", "hello",  day_start + 3_600_000), // 5 bytes
+            string_rec(id, "fault", "abc", day_start + 1_000), // 3 bytes
+            string_rec(id, "fault", "hello", day_start + 3_600_000), // 5 bytes
         ];
         let out_of_window = vec![
             string_rec(id, "fault", "old", day_start - 1), // before window
@@ -410,7 +417,8 @@ mod tests {
     #[test]
     fn json_slot_kind_round_trips() {
         let (repo, id) = mk();
-        repo.insert_batch(&[json_rec(id, "config", 1000)], 100).unwrap();
+        repo.insert_batch(&[json_rec(id, "config", 1000)], 100)
+            .unwrap();
         let q = HistoryQuery {
             node_id: id,
             slot_name: "config".into(),
@@ -427,11 +435,25 @@ mod tests {
     #[test]
     fn slot_isolation_between_slots() {
         let (repo, id) = mk();
-        repo.insert_batch(&[string_rec(id, "a", "va", 1)], 100).unwrap();
-        repo.insert_batch(&[string_rec(id, "b", "vb", 2)], 100).unwrap();
+        repo.insert_batch(&[string_rec(id, "a", "va", 1)], 100)
+            .unwrap();
+        repo.insert_batch(&[string_rec(id, "b", "vb", 2)], 100)
+            .unwrap();
 
-        let q_a = HistoryQuery { node_id: id, slot_name: "a".into(), from_ms: 0, to_ms: 9999, limit: None };
-        let q_b = HistoryQuery { node_id: id, slot_name: "b".into(), from_ms: 0, to_ms: 9999, limit: None };
+        let q_a = HistoryQuery {
+            node_id: id,
+            slot_name: "a".into(),
+            from_ms: 0,
+            to_ms: 9999,
+            limit: None,
+        };
+        let q_b = HistoryQuery {
+            node_id: id,
+            slot_name: "b".into(),
+            from_ms: 0,
+            to_ms: 9999,
+            limit: None,
+        };
         assert_eq!(repo.query_range(&q_a).unwrap().len(), 1);
         assert_eq!(repo.query_range(&q_b).unwrap().len(), 1);
     }

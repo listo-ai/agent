@@ -21,7 +21,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::manifest::{BlockId, ProcessBinContribution};
-use crate::registry::{PluginLifecycle, BlockRegistry};
+use crate::registry::{BlockRegistry, PluginLifecycle};
 use crate::supervisor::{ProcessSupervisor, SupervisorError};
 
 /// Per-block runtime state. Updated by the supervisor task; read by

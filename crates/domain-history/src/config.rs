@@ -18,7 +18,8 @@ use spi::{KindManifest, SlotRole, SlotSchema, SlotValueKind};
 
 pub const KIND_ID: &str = "sys.core.history.config";
 
-/// Per-slot policy variant declared in `HistoryConfigSettings::slots`.
+/// Per-slot (or per-port) policy variant declared in
+/// `HistoryConfigSettings::slots`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "policy", rename_all = "snake_case")]
 pub enum SlotPolicy {
@@ -37,6 +38,10 @@ pub enum SlotPolicy {
         /// Per-slot sample cap override.  `None` → inherits config/platform.
         #[serde(default)]
         max_samples: Option<u64>,
+        /// Stage 6 — per-path split. See [`HistoryPath`] and
+        /// [`SlotPolicy::paths`].
+        #[serde(default)]
+        paths: Vec<HistoryPath>,
     },
     /// Record on a fixed wall- or monotonic-clock interval.
     Interval {
@@ -48,9 +53,46 @@ pub enum SlotPolicy {
         /// Per-slot sample cap override.
         #[serde(default)]
         max_samples: Option<u64>,
+        #[serde(default)]
+        paths: Vec<HistoryPath>,
     },
     /// Record only when `history.record` REST / flow node fires.
-    OnDemand,
+    OnDemand {
+        #[serde(default)]
+        paths: Vec<HistoryPath>,
+    },
+}
+
+/// Stage 6 per-path declaration — breaks a Msg-valued output slot into
+/// N historized time-series by author-declared dot-paths, each with an
+/// explicit storage type. Routing decision shifts from the slot's
+/// native `value_kind` (opaque Json for a Msg envelope) to the
+/// declared `as_type` per path, so `payload.count` lands in the
+/// scalar time-series table even though the enclosing slot is Json.
+///
+/// See docs/design/NODE-RED-MODEL.md § "History config shape".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryPath {
+    /// Dot-path into the slot value (e.g. `payload.count`). Empty
+    /// string means "the whole slot value."
+    pub path: String,
+    /// Declared storage type. Drives the historizer's table routing:
+    /// `Bool` / `Number` → time-series; `String` / `Json` / `Binary`
+    /// → `slot_history`.
+    #[serde(rename = "as")]
+    pub as_type: SlotValueKind,
+}
+
+impl SlotPolicy {
+    /// Returns the per-path declarations for this policy, empty if the
+    /// author historizes the whole slot (legacy shape).
+    pub fn paths(&self) -> &[HistoryPath] {
+        match self {
+            Self::Cov { paths, .. } | Self::Interval { paths, .. } | Self::OnDemand { paths } => {
+                paths
+            }
+        }
+    }
 }
 
 fn default_min_interval_ms() -> u64 {
@@ -83,8 +125,12 @@ impl Default for RetentionSettings {
 /// Full deserialized settings blob for an `sys.core.history.config` node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryConfigSettings {
-    /// Map of slot_name → policy.
-    #[serde(default)]
+    /// Map of slot-name (or output-port name) → policy. Stage 6
+    /// accepts both `slots:` and `ports:` on the wire — output ports
+    /// ARE output-role slots per NODE-RED-MODEL.md, so the two are
+    /// the same keyspace; the alias lets new configs use the
+    /// Node-RED-native noun.
+    #[serde(default, alias = "ports")]
     pub slots: BTreeMap<String, SlotPolicy>,
     #[serde(default)]
     pub retention: RetentionSettings,
@@ -142,12 +188,25 @@ pub fn manifest() -> KindManifest {
 }
 
 fn settings_schema() -> JsonValue {
+    let path_array = json!({
+        "type": "array",
+        "description": "Per-path historization (Stage 6). Each entry extracts a sub-value of the slot by dot-path and historizes it with the declared `as` type. `as` drives storage routing: number/bool → time-series; string/json/binary → slot_history.",
+        "items": {
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "as": { "enum": ["bool", "number", "string", "json", "binary", "null"] }
+            },
+            "required": ["path", "as"],
+            "additionalProperties": false
+        }
+    });
     json!({
         "type": "object",
         "properties": {
             "slots": {
                 "type": "object",
-                "description": "Map of slot_name → recording policy",
+                "description": "Map of slot-name (or output-port name) → recording policy. `ports` is accepted as an alias.",
                 "additionalProperties": {
                     "type": "object",
                     "oneOf": [
@@ -157,7 +216,8 @@ fn settings_schema() -> JsonValue {
                                 "deadband": { "type": "number", "minimum": 0, "default": 0 },
                                 "min_interval_ms": { "type": "integer", "minimum": 0, "default": 0 },
                                 "max_gap_ms": { "type": "integer", "minimum": 0, "default": 900000 },
-                                "max_samples": { "type": "integer", "minimum": 1 }
+                                "max_samples": { "type": "integer", "minimum": 1 },
+                                "paths": path_array
                             },
                             "required": ["policy"]
                         },
@@ -166,18 +226,25 @@ fn settings_schema() -> JsonValue {
                                 "policy": { "const": "interval" },
                                 "period_ms": { "type": "integer", "minimum": 1 },
                                 "align_to_wall": { "type": "boolean", "default": false },
-                                "max_samples": { "type": "integer", "minimum": 1 }
+                                "max_samples": { "type": "integer", "minimum": 1 },
+                                "paths": path_array
                             },
                             "required": ["policy", "period_ms"]
                         },
                         {
                             "properties": {
-                                "policy": { "const": "on_demand" }
+                                "policy": { "const": "on_demand" },
+                                "paths": path_array
                             },
                             "required": ["policy"]
                         }
                     ]
                 }
+            },
+            "ports": {
+                "type": "object",
+                "description": "Alias for `slots`. Use whichever reads more naturally in your config.",
+                "additionalProperties": { "type": "object" }
             },
             "retention": {
                 "type": "object",

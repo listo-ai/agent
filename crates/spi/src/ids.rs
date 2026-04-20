@@ -59,7 +59,9 @@ impl<'de> Deserialize<'de> for NodeId {
         // `Uuid::parse_str` accepts both hyphenated and simple forms,
         // so we can ingest either but always round-trip to simple.
         let raw = <std::borrow::Cow<'_, str>>::deserialize(d)?;
-        Uuid::parse_str(&raw).map(NodeId).map_err(serde::de::Error::custom)
+        Uuid::parse_str(&raw)
+            .map(NodeId)
+            .map_err(serde::de::Error::custom)
     }
 }
 

@@ -166,11 +166,7 @@ fn apply_ui_demo(state: &AppState) -> Result<SeedResult, ApiError> {
         .map_err(|e| ApiError::bad_request(format!("page layout: {e}")))?;
     // Back-fill the nav's frame_ref now that we know the page id.
     graph
-        .write_slot(
-            &nav_path,
-            "frame_ref",
-            json!({ "id": page_id.to_string() }),
-        )
+        .write_slot(&nav_path, "frame_ref", json!({ "id": page_id.to_string() }))
         .map_err(|e| ApiError::bad_request(format!("nav frame_ref: {e}")))?;
     nodes.push(SeededNode {
         path: page_path.to_string(),

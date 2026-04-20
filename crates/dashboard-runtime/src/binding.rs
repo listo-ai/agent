@@ -366,8 +366,7 @@ mod tests {
         // Test helper: every call uses empty vars. Leaks a fresh
         // static on each invocation rather than threading vars through
         // every existing test.
-        let vars: &'static HashMap<String, JsonValue> =
-            Box::leak(Box::new(HashMap::new()));
+        let vars: &'static HashMap<String, JsonValue> = Box::leak(Box::new(HashMap::new()));
         EvalContext {
             reader,
             stack,

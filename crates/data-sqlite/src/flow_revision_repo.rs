@@ -65,7 +65,10 @@ impl FlowRevisionRepo for SqliteFlowRevisionRepo {
 
     fn delete_flow(&self, id: FlowId) -> Result<(), RepoError> {
         self.with_conn(|c| {
-            c.execute("DELETE FROM flows WHERE id = ?1", params![id.0.simple().to_string()])?;
+            c.execute(
+                "DELETE FROM flows WHERE id = ?1",
+                params![id.0.simple().to_string()],
+            )?;
             Ok(())
         })
     }
@@ -368,7 +371,9 @@ fn prune_revisions_tx(
              LIMIT ?2",
         )?;
         let rows: Vec<i64> = stmt
-            .query_map(params![flow_id.0.simple().to_string(), delete_count], |r| r.get(0))?
+            .query_map(params![flow_id.0.simple().to_string(), delete_count], |r| {
+                r.get(0)
+            })?
             .collect::<Result<_, _>>()?;
         rows.last().copied()
     };
@@ -442,8 +447,10 @@ fn prune_revisions_tx(
              WHERE flow_id = ?1 AND seq <= ?2 AND id NOT IN ({placeholders})"
         );
         let mut stmt = tx.prepare(&sql)?;
-        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
-            vec![Box::new(flow_id.0.simple().to_string()), Box::new(cutoff_seq)];
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![
+            Box::new(flow_id.0.simple().to_string()),
+            Box::new(cutoff_seq),
+        ];
         for pin in &pinned {
             params_vec.push(Box::new(pin.clone()));
         }

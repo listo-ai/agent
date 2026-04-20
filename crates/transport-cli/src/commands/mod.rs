@@ -8,6 +8,7 @@ use anyhow::Result;
 use crate::output::OutputFormat;
 
 mod auth;
+mod blocks;
 mod capabilities;
 mod config;
 mod flows;
@@ -17,7 +18,6 @@ mod lifecycle;
 mod links;
 pub mod meta;
 mod nodes;
-mod blocks;
 mod schema;
 mod seed;
 mod slots;

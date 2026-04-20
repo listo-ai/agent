@@ -25,10 +25,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agent_client::{AgentClient, AgentClientOptions, NodeListParams};
+use blocks_host::BlockRegistry;
 use data_sqlite::SqliteFlowRevisionRepo;
 use domain_flows::FlowService;
 use engine::Engine;
-use blocks_host::BlockRegistry;
 use graph::{seed, GraphStore, KindRegistry};
 use serde_json::Value;
 use spi::KindId;
@@ -403,6 +403,55 @@ async fn nodes_create_ok() {
 }
 
 #[tokio::test]
+async fn nodes_schema_ok() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+
+    c.nodes()
+        .create("/", "sys.logic.heartbeat", "heartbeat")
+        .await
+        .unwrap();
+
+    let schema = c.nodes().schema("/heartbeat", false).await.unwrap();
+    let actual = parse_json_output(&serde_json::to_string_pretty(&schema).unwrap());
+    let fixture = load_fixture("nodes-schema/ok.json");
+    assert_shape_match(&actual, &fixture, "$");
+
+    // Regression: pending_timer is declared internal, so it must not
+    // appear in the default response.
+    let names: Vec<&str> = schema.slots.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        !names.contains(&"pending_timer"),
+        "internal slot leaked into default schema: {names:?}"
+    );
+
+    // include_internal=true reveals it.
+    let full = c.nodes().schema("/heartbeat", true).await.unwrap();
+    let full_names: Vec<&str> = full.slots.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        full_names.contains(&"pending_timer"),
+        "include_internal=true did not reveal the bookkeeping slot: {full_names:?}"
+    );
+}
+
+#[tokio::test]
+async fn nodes_schema_not_found() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+
+    let err = c
+        .nodes()
+        .schema("/does-not-exist", false)
+        .await
+        .unwrap_err();
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("nodes-schema/not-found.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "not_found");
+}
+
+#[tokio::test]
 async fn nodes_create_bad_path() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
@@ -627,11 +676,8 @@ async fn ui_resolve_dry_run() {
     assert_shape_match(&actual, &fixture, "$");
 }
 
-async fn server_with_ui_binding_error_fixture() -> (
-    SocketAddr,
-    tokio::task::JoinHandle<()>,
-    spi::NodeId,
-) {
+async fn server_with_ui_binding_error_fixture(
+) -> (SocketAddr, tokio::task::JoinHandle<()>, spi::NodeId) {
     let page_cell: Arc<std::sync::Mutex<Option<spi::NodeId>>> = Arc::new(Default::default());
     let set = page_cell.clone();
     let (addr, handle) = start_with_graph(move |g| {
@@ -862,19 +908,21 @@ async fn server_with_action_handler() -> (SocketAddr, tokio::task::JoinHandle<()
         Arc::new(dashboard_transport::GraphReader::new(graph));
 
     let handlers = Arc::new(HandlerRegistry::new());
-    handlers.register("fixture.greet", |_args: serde_json::Value, _ctx: ActionContext| {
-        Box::pin(async {
-            Ok(ActionResponse::Toast {
-                intent: ToastIntent::Ok,
-                message: "Hello from fixture handler!".into(),
+    handlers.register(
+        "fixture.greet",
+        |_args: serde_json::Value, _ctx: ActionContext| {
+            Box::pin(async {
+                Ok(ActionResponse::Toast {
+                    intent: ToastIntent::Ok,
+                    message: "Hello from fixture handler!".into(),
+                })
             })
-        })
-    });
+        },
+    );
 
-    let dash_state = dashboard_transport::DashboardState::new(dashboard_reader)
-        .with_handlers(handlers);
-    let router = transport_rest::router(app_state)
-        .merge(dashboard_transport::router(dash_state));
+    let dash_state =
+        dashboard_transport::DashboardState::new(dashboard_reader).with_handlers(handlers);
+    let router = transport_rest::router(app_state).merge(dashboard_transport::router(dash_state));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -1207,6 +1255,7 @@ fn every_variant_has_a_fixture() {
         "nodes-create",
         "nodes-delete",
         "nodes-list",
+        "nodes-schema",
         "slots-write",
         "ui-nav",
         "ui-resolve",

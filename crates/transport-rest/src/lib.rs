@@ -39,13 +39,13 @@ use tokio::sync::{broadcast, mpsc};
 
 pub mod auth;
 pub mod auth_routes;
+pub mod blocks;
 pub mod capabilities;
 pub mod event;
 pub mod fleet;
 pub mod flows;
 pub mod history;
 pub mod kinds;
-pub mod blocks;
 pub mod preferences;
 pub mod ring;
 pub mod routes;

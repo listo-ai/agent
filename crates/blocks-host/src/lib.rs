@@ -17,14 +17,12 @@ mod registry;
 pub mod supervisor;
 pub mod wasm;
 
-pub use host::{HostError, HostPolicy, BlockHost, PluginRuntimeState};
+pub use host::{BlockHost, HostError, HostPolicy, PluginRuntimeState};
 pub use wasm::{WasmError, WasmLimits, WasmSupervisor};
 
 pub use manifest::{
-    Contributes, NativeLibContribution, BlockId, BlockManifest, ProcessBinContribution,
+    BlockId, BlockManifest, Contributes, NativeLibContribution, ProcessBinContribution,
     UiContribution, UiExpose, WasmContribution,
 };
-pub use registry::{
-    LoadedPlugin, LoadedPluginSummary, BlockError, PluginLifecycle, BlockRegistry,
-};
+pub use registry::{BlockError, BlockRegistry, LoadedPlugin, LoadedPluginSummary, PluginLifecycle};
 pub use supervisor::{ProcessSupervisor, SupervisorError, SOCKET_ENV};

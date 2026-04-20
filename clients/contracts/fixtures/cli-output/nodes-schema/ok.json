@@ -1,0 +1,47 @@
+{
+  "id": "VARIES",
+  "kind": "sys.logic.heartbeat",
+  "path": "/heartbeat",
+  "slots": [
+    {
+      "name": "out",
+      "role": "output",
+      "value_kind": "json",
+      "value_schema": null,
+      "writable": false,
+      "trigger": false,
+      "is_internal": false,
+      "emit_on_init": true
+    },
+    {
+      "name": "position",
+      "role": "config",
+      "value_kind": null,
+      "value_schema": null,
+      "writable": true,
+      "trigger": false,
+      "is_internal": false,
+      "emit_on_init": false
+    },
+    {
+      "name": "notes",
+      "role": "config",
+      "value_kind": null,
+      "value_schema": null,
+      "writable": true,
+      "trigger": false,
+      "is_internal": false,
+      "emit_on_init": false
+    },
+    {
+      "name": "settings",
+      "role": "config",
+      "value_kind": null,
+      "value_schema": null,
+      "writable": true,
+      "trigger": false,
+      "is_internal": false,
+      "emit_on_init": false
+    }
+  ]
+}

@@ -16,14 +16,9 @@ use ui_ir::{Component, ComponentTree};
 
 fn state_with_layout(layout: Value) -> (DashboardState, NodeId) {
     let page_id = NodeId::default();
-    let reader = InMemoryReader::new().with(
-        NodeSnapshot::new(page_id, "ui.page")
-            .with_slot("layout", layout),
-    );
-    (
-        DashboardState::new(Arc::new(reader) as Arc<_>),
-        page_id,
-    )
+    let reader = InMemoryReader::new()
+        .with(NodeSnapshot::new(page_id, "ui.page").with_slot("layout", layout));
+    (DashboardState::new(Arc::new(reader) as Arc<_>), page_id)
 }
 
 fn request(page_ref: NodeId, page_state: Value) -> resolve::ResolveRequest {
@@ -90,7 +85,10 @@ async fn render_tree_bytes_limit() {
     let req = request(page, json!({}));
     let (status, body) = resolve_err(state, req).await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
-    assert!(body["error"].as_str().unwrap().contains("render_tree_bytes"));
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("render_tree_bytes"));
 }
 
 // ---- tree_nodes -----------------------------------------------------------
@@ -157,17 +155,27 @@ async fn component_types_limit() {
     let mixed = ComponentTree::new(Component::Page {
         id: "p".into(),
         title: None,
-        children: vec![
-            Component::Row {
-                id: Some("r".into()),
-                children: vec![
-                    Component::Text { id: None, content: "a".into(), intent: None },
-                    Component::Heading { id: None, content: "h".into(), level: Some(1) },
-                    Component::Badge { id: None, label: "b".into(), intent: None },
-                ],
-                gap: None,
-            },
-        ],
+        children: vec![Component::Row {
+            id: Some("r".into()),
+            children: vec![
+                Component::Text {
+                    id: None,
+                    content: "a".into(),
+                    intent: None,
+                },
+                Component::Heading {
+                    id: None,
+                    content: "h".into(),
+                    level: Some(1),
+                },
+                Component::Badge {
+                    id: None,
+                    label: "b".into(),
+                    intent: None,
+                },
+            ],
+            gap: None,
+        }],
     });
     let r = resolve::enforce_tree_shape(&mixed);
     assert!(r.is_ok(), "mixed tree should pass: {r:?}");

@@ -90,6 +90,14 @@ pub struct SubscriptionPlan {
     pub widget_id: String,
     pub subjects: Vec<String>,
     pub debounce_ms: u32,
+    /// Optional dot-path into the slot value the widget wants to
+    /// extract (e.g. `payload.count` for a Msg envelope). Populated
+    /// for chart / kpi plans that set `source.field`; omitted for
+    /// table plans and for widgets without `field`. The client uses
+    /// this in the live-tick patch path so it can apply the same
+    /// extraction the initial fetch applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -196,18 +204,12 @@ pub async fn handler(
 /// query-templating runs before we know the tree is structurally
 /// valid; a partial or still-invalid tree can still have a vars
 /// block we want to honour.
-fn extract_tree_vars(
-    layout: &JsonValue,
-) -> std::collections::HashMap<String, JsonValue> {
+fn extract_tree_vars(layout: &JsonValue) -> std::collections::HashMap<String, JsonValue> {
     layout
         .as_object()
         .and_then(|m| m.get("vars"))
         .and_then(|v| v.as_object())
-        .map(|obj| {
-            obj.iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect()
-        })
+        .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
         .unwrap_or_default()
 }
 
@@ -234,7 +236,9 @@ fn substitute_query_bindings(
             return None;
         }
         Some(crate::binding_walk::substitute_bindings(s, |expr| {
-            Binding::parse(expr).ok().and_then(|b| b.evaluate(&ctx).ok())
+            Binding::parse(expr)
+                .ok()
+                .and_then(|b| b.evaluate(&ctx).ok())
         }))
     });
 }

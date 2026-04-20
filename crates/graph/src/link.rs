@@ -46,7 +46,9 @@ impl Serialize for LinkId {
 impl<'de> Deserialize<'de> for LinkId {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let raw = <std::borrow::Cow<'_, str>>::deserialize(d)?;
-        Uuid::parse_str(&raw).map(LinkId).map_err(serde::de::Error::custom)
+        Uuid::parse_str(&raw)
+            .map(LinkId)
+            .map_err(serde::de::Error::custom)
     }
 }
 

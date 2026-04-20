@@ -16,8 +16,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use engine::BehaviorRegistry;
 use blocks_host::BlockRegistry;
+use engine::BehaviorRegistry;
 use graph::{seed as graph_seed, GraphStore, KindRegistry, NullSink};
 use spi::{FleetTransport, KindId, NodePath, Subject, TenantId};
 use tokio::sync::broadcast;

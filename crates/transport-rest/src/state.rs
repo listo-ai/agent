@@ -3,12 +3,12 @@
 use std::sync::Arc;
 
 use auth::DevNullProvider;
+use blocks_host::{BlockHost, BlockRegistry};
 use data_repos::{HistoryRepo, PreferencesService};
 use data_tsdb::TelemetryRepo;
 use domain_flows::FlowService;
 use domain_history::Historizer;
 use engine::BehaviorRegistry;
-use blocks_host::{BlockHost, BlockRegistry};
 use graph::GraphStore;
 use spi::{AuthProvider, FleetTransport, NullTransport};
 use tokio::sync::broadcast;

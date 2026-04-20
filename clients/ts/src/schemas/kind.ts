@@ -32,6 +32,10 @@ export const SlotDefinitionSchema = z.object({
   value_schema: z.unknown(),
   writable: z.boolean(),
   trigger: z.boolean(),
+  /** Bookkeeping slot — hidden from default render surfaces. */
+  is_internal: z.boolean().default(false),
+  /** Output slots only: kind's on_init is expected to write an initial Msg. */
+  emit_on_init: z.boolean().default(false),
 });
 
 export const KindSchema = z.object({

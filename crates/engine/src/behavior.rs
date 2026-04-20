@@ -299,14 +299,11 @@ struct GraphAdapter {
 }
 
 impl GraphAccess for GraphAdapter {
-    fn read_slot(
-        &self,
-        path: &NodePath,
-        slot: &str,
-    ) -> Result<JsonValue, blocks_sdk::NodeError> {
-        let snap = self.graph.get(path).ok_or_else(|| {
-            blocks_sdk::NodeError::runtime(format!("node `{path}` not found"))
-        })?;
+    fn read_slot(&self, path: &NodePath, slot: &str) -> Result<JsonValue, blocks_sdk::NodeError> {
+        let snap = self
+            .graph
+            .get(path)
+            .ok_or_else(|| blocks_sdk::NodeError::runtime(format!("node `{path}` not found")))?;
         snap.slot_values
             .into_iter()
             .find(|(n, _)| n == slot)

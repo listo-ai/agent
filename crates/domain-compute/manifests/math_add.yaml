@@ -20,25 +20,35 @@ slots:
     writable: false
   - name: sum
     role: output
+    # Msg envelope emitted when both inputs have been seen. Payload is
+    # the scalar sum. Historize `payload` as number to get a clean
+    # time-series.
     value_schema:
-      type: number
+      type: object
+      properties:
+        _msgid:
+          type: string
+        topic:
+          type: string
+        payload:
+          type: number
+      required: [payload, _msgid]
     writable: false
-  # Status mirrors so the property panel / queries can see the last
-  # inputs used to produce `sum` without subscribing to the wire. Also
-  # serve as the behaviour's cross-message memory: sum emits when both
-  # last_a and last_b have been observed at least once.
+  # Internal cross-message memory: `sum` emits when both `last_a` and
+  # `last_b` have been observed at least once. Marked `is_internal` so
+  # the property panel doesn't clutter its main view with them — they
+  # stay graph-observable (Rule A) but hide behind `include_internal`.
+  # `last_sum` was deleted in Stage 7 (NODE-RED-MODEL.md): the `sum`
+  # output slot IS the latest value.
   - name: last_a
     role: status
     value_schema:
       type: number
       nullable: true
+    is_internal: true
   - name: last_b
     role: status
     value_schema:
       type: number
       nullable: true
-  - name: last_sum
-    role: status
-    value_schema:
-      type: number
-      nullable: true
+    is_internal: true

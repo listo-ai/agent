@@ -47,8 +47,7 @@ fn build_fixture(extension_id: &str, kind_ids: &[&str]) -> tempfile::NamedTempFi
     let on_input_ptr: u32 = describe_ptr + describe_json.len() as u32 + 16;
 
     // Pack (ptr << 32) | len as an i64 literal for each export.
-    let describe_packed: i64 =
-        ((describe_ptr as i64) << 32) | describe_json.len() as i64;
+    let describe_packed: i64 = ((describe_ptr as i64) << 32) | describe_json.len() as i64;
     let on_input_packed: i64 = ((on_input_ptr as i64) << 32) | ok_empty.len() as i64;
 
     let describe_data = bytes_to_wat_literal(&describe_json);
@@ -115,10 +114,7 @@ fn load_describes_identity_and_kinds() {
     let pid = BlockId::parse("com.acme.wasm-demo").unwrap();
     let f = build_fixture(
         "com.acme.wasm-demo",
-        &[
-            "com.acme.wasm-demo.double",
-            "com.acme.wasm-demo.add",
-        ],
+        &["com.acme.wasm-demo.double", "com.acme.wasm-demo.add"],
     );
     let sup = WasmSupervisor::load(&pid, f.path(), WasmLimits::default()).unwrap();
     let id = sup.identity();
@@ -152,12 +148,7 @@ fn on_input_returns_empty_vec() {
     let f = build_fixture("com.acme.wasm-demo", &["com.acme.wasm-demo.double"]);
     let sup = WasmSupervisor::load(&pid, f.path(), WasmLimits::default()).unwrap();
     let out = sup
-        .on_input(
-            "node-1",
-            "com.acme.wasm-demo.double",
-            "in",
-            "3.0",
-        )
+        .on_input("node-1", "com.acme.wasm-demo.double", "in", "3.0")
         .unwrap();
     assert!(out.is_empty());
 }

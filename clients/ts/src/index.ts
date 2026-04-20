@@ -31,7 +31,14 @@ export type {
   HelloEvent,
   Lifecycle,
 } from "./schemas/events.js";
-export type { NodeSnapshot, NodeListResponse, PageMeta, Slot } from "./schemas/node.js";
+export type {
+  NodeSnapshot,
+  NodeListResponse,
+  PageMeta,
+  Slot,
+  NodeSchema,
+  NodeSlotSchema,
+} from "./schemas/node.js";
 export type { Link, LinkEndpoint } from "./schemas/link.js";
 export type { Kind, Facet, SlotDefinition, SlotRole } from "./schemas/kind.js";
 export type {

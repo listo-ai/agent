@@ -154,10 +154,7 @@ impl ProcessSupervisor {
     /// Connect to a block that is already running (e.g. supervised by
     /// systemd or launched for a test). Does **not** own the process.
     #[cfg(unix)]
-    pub async fn connect(
-        block_id: &BlockId,
-        socket_path: &Path,
-    ) -> Result<Self, SupervisorError> {
+    pub async fn connect(block_id: &BlockId, socket_path: &Path) -> Result<Self, SupervisorError> {
         let mut sup = Self::connect_inner(block_id, socket_path, None).await?;
         sup.verify_identity().await?;
         Ok(sup)

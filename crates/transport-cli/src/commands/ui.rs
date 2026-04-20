@@ -255,8 +255,8 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
             page_state,
             auth_subject,
         } => {
-            let args_val: serde_json::Value = serde_json::from_str(args)
-                .map_err(|e| anyhow!("--args is not valid JSON: {e}"))?;
+            let args_val: serde_json::Value =
+                serde_json::from_str(args).map_err(|e| anyhow!("--args is not valid JSON: {e}"))?;
             let page_state_val: serde_json::Value = serde_json::from_str(page_state)
                 .map_err(|e| anyhow!("--page-state is not valid JSON: {e}"))?;
             let stack_ids: Vec<String> = stack
@@ -287,26 +287,34 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                     output::ok_table(fmt, &["TYPE", "DESCRIPTION"], &rows, |r| {
                         vec![r.type_name.clone(), r.description.clone()]
                     })?;
-                    eprintln!( // NO_PRINTLN_LINT:allow
+                    eprintln!(
+                        // NO_PRINTLN_LINT:allow
                         "ir_version={}",
                         resp.ir_version,
                     );
                 }
             }
         }
-        UiCmd::Compose { prompt, page, context, apply } => {
+        UiCmd::Compose {
+            prompt,
+            page,
+            context,
+            apply,
+        } => {
             if *apply && page.is_none() {
                 return Err(anyhow!("--apply requires --page"));
             }
             // When editing, read the current layout + generation.
             let (current_layout, current_path, base_gen) = if let Some(p) = page {
                 let snap = resolve_page_snapshot(client, p).await?;
-                let slot = snap
-                    .slots
-                    .iter()
-                    .find(|s| s.name == "layout");
-                let layout = slot
-                    .and_then(|s| if s.value.is_null() { None } else { Some(s.value.clone()) });
+                let slot = snap.slots.iter().find(|s| s.name == "layout");
+                let layout = slot.and_then(|s| {
+                    if s.value.is_null() {
+                        None
+                    } else {
+                        Some(s.value.clone())
+                    }
+                });
                 let gen = slot.map(|s| s.generation).unwrap_or(0);
                 (layout, Some(snap.path.clone()), gen)
             } else {
@@ -321,8 +329,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
             let resp = client.ui().compose(&req).await?;
 
             if *apply {
-                let path = current_path
-                    .ok_or_else(|| anyhow!("--apply requires --page"))?;
+                let path = current_path.ok_or_else(|| anyhow!("--apply requires --page"))?;
                 client
                     .slots()
                     .write_with_generation(&path, "layout", &resp.layout, base_gen)
@@ -342,7 +349,8 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                 match fmt {
                     OutputFormat::Json => output::ok(fmt, &resp)?,
                     OutputFormat::Table => {
-                        println!( // NO_PRINTLN_LINT:allow
+                        println!(
+                            // NO_PRINTLN_LINT:allow
                             "{}",
                             serde_json::to_string_pretty(&resp.layout)?,
                         );
@@ -368,7 +376,8 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                     output::ok_table(fmt, &["DEPTH", "TYPE", "ID"], &rows, |r| {
                         vec![r.depth.to_string(), r.component_type.clone(), r.id.clone()]
                     })?;
-                    eprintln!( // NO_PRINTLN_LINT:allow
+                    eprintln!(
+                        // NO_PRINTLN_LINT:allow
                         "ir_version={}  cache_key={}  widgets={}",
                         render.ir_version, meta.cache_key, meta.widget_count,
                     );
@@ -395,26 +404,18 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
             match fmt {
                 OutputFormat::Json => output::ok(fmt, &resp)?,
                 OutputFormat::Table => {
-                    output::ok_table(
-                        fmt,
-                        &["ID", "KIND", "PATH", "PARENT"],
-                        &resp.data,
-                        |r| {
-                            vec![
-                                r.id.clone(),
-                                r.kind.clone(),
-                                r.path.clone(),
-                                r.parent_id.as_deref().unwrap_or("").to_string(),
-                            ]
-                        },
-                    )?;
+                    output::ok_table(fmt, &["ID", "KIND", "PATH", "PARENT"], &resp.data, |r| {
+                        vec![
+                            r.id.clone(),
+                            r.kind.clone(),
+                            r.path.clone(),
+                            r.parent_id.as_deref().unwrap_or("").to_string(),
+                        ]
+                    })?;
                     eprintln!(
                         // NO_PRINTLN_LINT:allow
                         "total={}  page={}/{}  size={}",
-                        resp.meta.total,
-                        resp.meta.page,
-                        resp.meta.pages,
-                        resp.meta.size,
+                        resp.meta.total, resp.meta.page, resp.meta.pages, resp.meta.size,
                     );
                 }
             }

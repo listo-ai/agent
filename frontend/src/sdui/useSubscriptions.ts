@@ -25,6 +25,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { agentPromise } from "@/lib/agent";
+import { extractField } from "./field";
 import type {
   SlotChangedEvent,
   UiSubscriptionPlan,
@@ -54,12 +55,17 @@ export function useSubscriptions(
   // lifecycle from render-driven inputs.
   const queryKeyRef = useRef(queryKey);
   const subjectsRef = useRef<Map<string, string[]>>(new Map());
+  // widget_id -> field dot-path (populated for chart/kpi plans that
+  // set `source.field`). Live-tick patch paths consult this to apply
+  // the same extraction the initial fetch applies.
+  const fieldsRef = useRef<Map<string, string | undefined>>(new Map());
 
   queryKeyRef.current = queryKey;
 
   useEffect(() => {
     const plans = subscriptions ?? [];
     const next = new Map<string, string[]>();
+    const nextFields = new Map<string, string | undefined>();
     for (const p of plans) {
       for (const s of p.subjects) {
         const existing = next.get(s);
@@ -69,8 +75,10 @@ export function useSubscriptions(
           next.set(s, [p.widget_id]);
         }
       }
+      nextFields.set(p.widget_id, p.field);
     }
     subjectsRef.current = next;
+    fieldsRef.current = nextFields;
     if (
       typeof window !== "undefined" &&
       window.localStorage?.getItem("sdui_debug") === "1"
@@ -119,9 +127,10 @@ export function useSubscriptions(
             continue;
           }
 
+          const field = fieldsRef.current.get(widget);
           const patched =
             applyToTables(qc, widget, event) ||
-            applyToCharts(qc, widget, event) ||
+            applyToCharts(qc, widget, event, field) ||
             applyToKpis(qc, widget, event);
           if (!patched) {
             qc.invalidateQueries({ queryKey: ["sdui-table", widget] });
@@ -184,8 +193,12 @@ function applyToCharts(
   qc: ReturnType<typeof useQueryClient>,
   widget: string,
   event: SlotChangedEvent,
+  field: string | undefined,
 ): boolean {
-  const v = coerceNumber(extractPayload(event.value));
+  const extracted = field
+    ? extractField(event.value, field)
+    : extractPayload(event.value);
+  const v = coerceNumber(extracted);
   if (v === null) return false;
   let touchedAny = false;
   qc.setQueriesData<ChartSeries[]>(

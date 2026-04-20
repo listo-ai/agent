@@ -171,7 +171,7 @@ When a flow node of kind `ai.run_cli` fires, it:
 
 1. Generates a temporary MCP config file pointing at `http://localhost:<agent-port>/mcp` with a short-lived user token.
 2. Spawns `claude --mcp-config <file>` (or `opencode`, or whichever runner was configured) with the prompt from `msg.payload`.
-3. Streams the Claude Code CLI's stdout (structured JSON events) back through its output slot as a series of `Msg`es with `_parentid` chained to the input.
+3. Streams the Claude Code CLI's stdout (structured JSON events) back through its output slot as a series of `Msg`es. Each emitted msg is `msg.child(...)`'d from the triggering input, so the trace context on the transport links the stream back to the prompt that kicked it off.
 4. Lets the user's Claude Code session drive the conversation — including calling any tool exposed via MCP, which is every installed block.
 
 Because the CLI runs locally and uses the user's own credentials:

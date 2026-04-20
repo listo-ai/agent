@@ -337,17 +337,21 @@ Slots are **typed**. The type determines what flows through a wire connecting th
 
 ```rust
 struct Msg {
-    payload:   JsonValue,                    // primary data — same as Node-RED's msg.payload
-    topic:     Option<String>,               // routing/grouping — same as Node-RED's msg.topic
-    id:        MessageId,                    // always present (no underscore-prefix hack)
-    parent_id: Option<MessageId>,            // provenance across fan-out/fan-in
-    metadata:  BTreeMap<String, JsonValue>,  // user-block fields — scoped, not arbitrary root keys
-    timestamp: Timestamp,
-    source:    NodePath,                     // which node emitted this message
+    payload:  JsonValue,                    // primary data — same as Node-RED's msg.payload
+    topic:    Option<String>,               // routing/grouping — same as Node-RED's msg.topic
+    id:       MessageId,                    // serialises as _msgid for Node-RED parity
+    metadata: BTreeMap<String, JsonValue>,  // user-added custom fields, flattened at the root on the wire
 }
 ```
 
-Flow authors see `msg.payload`, `msg.topic`, and their own custom fields — the same mental model as Node-RED.
+Three fields plus user fields. Byte-for-byte Node-RED compatible.
+
+[NODE-RED-MODEL.md Stage 2](NODE-RED-MODEL.md) stripped three platform-reserved fields that used to ride the Msg:
+- `_ts` moved to the SSE event frame / NATS header / tracing span — history writers stamp their own `ts_ms` at storage time, so carrying a creation timestamp on every msg was redundant.
+- `_source` is derived from the subject name (`node.<id>.slot.<port>`) and trace-span attributes — cheaper and always correct.
+- `_parentid` moves to W3C TraceContext (`traceparent` / `tracestate`) carried in transport metadata, so spans form the provenance graph end-to-end.
+
+Flow authors see `msg.payload`, `msg.topic`, and their own custom fields — exactly what Node-RED shows.
 
 ### Immutable under the hood, mutable at the JS boundary
 

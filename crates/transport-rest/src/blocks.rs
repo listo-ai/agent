@@ -19,7 +19,7 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use blocks_host::{LoadedPluginSummary, BlockId, PluginRuntimeState};
+use blocks_host::{BlockId, LoadedPluginSummary, PluginRuntimeState};
 
 use crate::routes::ApiError;
 use crate::state::AppState;
