@@ -199,10 +199,10 @@ fn parse_opt_rev_id(s: Option<&str>) -> Result<Option<RevisionId>, Response> {
 
 fn flow_to_dto(f: data_entities::FlowDocument) -> FlowDto {
     FlowDto {
-        id: f.id.to_string(),
+        id: f.id.to_hex(),
         name: f.name,
         document: f.document,
-        head_revision_id: f.head_revision_id.map(|r| r.to_string()),
+        head_revision_id: f.head_revision_id.map(|r| r.to_hex()),
         head_seq: f.head_seq,
     }
 }
@@ -418,13 +418,13 @@ async fn list_revisions(
             let dtos: Vec<RevisionDto> = revs
                 .into_iter()
                 .map(|r| RevisionDto {
-                    id: r.id.to_string(),
-                    flow_id: r.flow_id.to_string(),
-                    parent_id: r.parent_id.map(|p| p.to_string()),
+                    id: r.id.to_hex(),
+                    flow_id: r.flow_id.to_hex(),
+                    parent_id: r.parent_id.map(|p| p.to_hex()),
                     seq: r.seq,
                     author: r.author,
                     op: r.op.to_string(),
-                    target_rev_id: r.target_rev_id.map(|t| t.to_string()),
+                    target_rev_id: r.target_rev_id.map(|t| t.to_hex()),
                     summary: r.summary,
                     created_at: r.created_at,
                 })

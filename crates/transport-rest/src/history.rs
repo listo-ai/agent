@@ -106,7 +106,7 @@ fn history_to_dto(r: HistoryRecord) -> HistoryRecordDto {
     };
     HistoryRecordDto {
         id: r.id,
-        node_id: r.node_id.to_string(),
+        node_id: r.node_id.to_hex(),
         slot_name: r.slot_name,
         slot_kind: r.slot_kind.as_str().to_string(),
         ts_ms: r.ts_ms,
@@ -128,7 +128,7 @@ fn scalar_to_dto(r: ScalarRecord) -> ScalarRecordDto {
         JsonValue::Null
     };
     ScalarRecordDto {
-        node_id: r.node_id.to_string(),
+        node_id: r.node_id.simple().to_string(),
         slot_name: r.slot_name,
         ts_ms: r.ts_ms,
         value,

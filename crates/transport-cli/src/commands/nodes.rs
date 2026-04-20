@@ -84,7 +84,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &NodesCmd) -> Res
                                 n.path.clone(),
                                 n.kind.clone(),
                                 n.lifecycle.clone(),
-                                n.id.clone(),
+                                output::compact_id(&n.id),
                             ]
                         },
                     )?;

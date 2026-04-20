@@ -58,7 +58,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &LinksCmd) -> Res
                     l.target.path.as_deref().unwrap_or(&l.target.node_id),
                     l.target.slot,
                 );
-                vec![l.id.clone(), src, tgt]
+                vec![output::compact_id(&l.id), src, tgt]
             })?;
         }
         LinksCmd::Create {

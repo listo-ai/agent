@@ -530,3 +530,65 @@ Neither blocks Stage 1.
 - **Dev server recipe.** Agent on port 8081: `./target/debug/agent run --http 127.0.0.1:8081 --db /tmp/agent.db`. Frontend against that agent: `PUBLIC_AGENT_URL=http://localhost:8081 pnpm --filter @sys/studio dev`. To build the TS client after any `clients/ts/src/` change: `pnpm --filter @sys/agent-client build` (frontend imports from `dist/`, not `src/`).
 - **Fixture gate.** Every new endpoint or altered error contract gets a fixture under `clients/contracts/fixtures/cli-output/` and a test in `crates/transport-cli/tests/fixture_gate.rs`. Do not skip this; it is the only guard against silent contract drift across the CLI and the TS client.
 
+---
+
+## Next-up feature menu (post-issue-#1)
+
+This is the long-term backlog — not "everything we'll ever build" but the specific primitives that separate a widget renderer from a dashboard framework. Ordered by leverage, not by effort. Stage 2's existence gate still applies on top of this list: every item is optional until a real authored page hits a wall without it.
+
+Context for the tiers: the friend's reference system (their YAML linked from session notes) showed a polished CRUD-over-collections shape — filters, bulk actions, date presets, dashboard composition. Most of that maps cleanly onto our existing IR; what's missing are a handful of input components and two or three substrate tweaks.
+
+### Tier 1 — essential primitives, each small, each unblocks a page class
+
+1. **Query templating in `source.query`** — `{{$page.*}}` substitution at resolve time. The keystone: without this, every filter UI is cosmetic. Substrate change in [crates/dashboard-transport/src/table.rs](../../crates/dashboard-transport/src/table.rs) and the `table`-plan collector in [render.rs](../../crates/dashboard-transport/src/render.rs).
+2. **`select` / `toggle` / `field` input components** writing to `$page.<key>`. Already named as Stage 2 prereqs earlier in this doc. Each mirrors the existing S6 component boilerplate (`ui_ir::Component` variant + ZOD schema + renderer component).
+3. **Date-range picker with presets** (`15m / 1h / 6h / 24h / 7d / all`). Writes `{from, to}` into a `$page` key; chart and table consume via binding. Strictly better than chart drag-zoom as the only time control.
+4. **Table selection → bulk actions** — `select: "single" | "multi"` on the table writes ids into `$page.<selection_key>`. Bulk-action buttons read that key as their `args`. No component changes beyond the table.
+5. **`confirm: "..."` field on actions** (cherry-picked from the reference YAML). Every destructive button gets a typed confirm dialog; zero per-app code. Small `ui_ir::Action` addition.
+6. **KPI / stat tile component** — single big number with optional delta + intent. Concretely hit as a gap this session when the user wanted "show the count live" and had to fall back to a one-row table.
+7. **`row_link` sugar on tables** — navigates to another page with `$row.id` in context. Authors write `row_link: {page_ref, with: {id: "$row.id"}}` instead of a hand-authored `row_action: navigate` + handler.
+
+### Tier 2 — architectural, high-leverage, change what the platform is
+
+8. **URL ↔ `page_state` sync.** Filter state, selected tab, date range all round-trip through the URL. A dashboard link sent in chat lands on the same view. Non-negotiable long-term; the most underrated feature in dashboard tooling.
+9. **Schema-driven `node_form` component.** Given a node id/path, read the kind's slot schemas, render per-slot inputs, submit through `writeSlot`. Eliminates hand-authored forms for the 80% case. Uses `@rjsf` (already a frontend dep).
+10. **Page-as-widget (`{type: "page_embed", page_ref}`).** Lets dashboards compose smaller pages. Directly analogous to the reference system's `layout` view type, without inventing a new concept. A `page_embed` resolves to the referenced page's tree inline at resolve time.
+11. **User preferences as a node subtree.** A `sys.user.preferences` kind under the user's actor id; a `$prefs.<key>` binding source reads it. Feeds sticky state like last-viewed tab, default date range, column visibility. Node model already handles versioning/ACL/sync — no new infra.
+12. **Distinct-values endpoint** (`GET /api/v1/nodes/distinct?field=slots.severity&kind=sys.alarm`). Drives filter-chip options from real data instead of hard-coding `[low, medium, high]` per view. Keeps filter UIs honest as data evolves.
+13. **Paused / reconnecting indicator.** A shared SSE status badge. When the stream drops, every live widget dims and a tiny chip says "reconnecting". Tiny change; outsized trust signal.
+14. **Inline cell edit.** Click a writable cell, edit, commit through `writeSlot` with OCC. Row-level forms without leaving the page.
+15. **Empty-state component** — `{type: "empty", title, description, action?}`. One canonical way to say "nothing here yet — here's what to do" across the whole vocabulary.
+
+### Tier 3 — later polish, opinionated
+
+16. **Undo snackbar** for destructive actions. Dismiss → 5s "undo" toast → restore via `slots.at(revision)`. Rides Phase 2 of UNDO-REDO when Stage 3 lands.
+17. **Tabbed shells at the page level** — per-page tabs with persistent state. Today authors can use the `tabs` component, but page-level tabs are nicer.
+18. **Column visibility / reorder** — table gains a gear menu; state lives in user preferences (#11).
+19. **CSV / JSON export** — table gets a dump button. Pure client-side over the current rows; zero substrate change.
+20. **"Inspect binding" dev overlay** — hover a cell in the builder preview, see which slot feeds it and the raw server path. Debugging gold; also a selling point.
+21. **Saved filter presets** — `/pages/alarms?preset=unack-high`. Presets are child nodes of the page, queryable like anything else.
+
+### Cherry-picked from the reference YAML
+
+- **`confirm:` on actions.** (Tier 1 #5.) Strictly better than authoring a separate dialog per destructive button.
+- **Declarative `filters[]` shape** on tables. Not the authoring format, but the schema (`{column, title, options}`) — worth mirroring so a filter bar is a first-class field on `table`, not a separately-authored row of selects.
+- **Date-range preset buttons.** (Tier 1 #3.) Universal muscle memory across every product in the space.
+- **Action `target: record | selection | collection`.** Clean vocabulary for "this button applies to one row / selected rows / the whole collection." Worth stealing verbatim.
+
+### Explicitly NOT copying
+
+- **Views as a parallel registry.** Their views live in their own YAML alongside collections, a duplicate world. Our pages are graph nodes — they inherit versioning, ACLs, subscriptions, import/export for free. Keep ours.
+- **A separate `fields:` schema list.** Kinds already carry per-slot schemas. Don't duplicate the schema definition in the view.
+- **Collection/record/info/actions/layout as *view types*.** Their classifier exists so their renderer knows which shape to project. Our IR is the shape directly — `table`, `form`, `page_embed`. Strictly more flexible.
+
+### The three bets worth naming
+
+- **URL = complete state** (#8). The single most underrated feature in dashboard tooling. Everything else gets easier once deep links work.
+- **Everything is a slot write.** Form submits, bulk actions, preferences all route through `writeSlot` + OCC + revisions. Undo/redo for free, audit for free, OCC story unified with the CLI.
+- **Pages compose via page-embed** (#10). The difference between a widget library and a framework. A dashboard is a page that embeds an alarms page that embeds a severity filter — all authored separately, all independently versioned.
+
+### Suggested first end-to-end slice
+
+Once issue #1 is resolved, the quickest visible win is Tier 1 #1 + #3 together: **query templating** + **date-range preset picker**. That's exactly the shape of the reference system's `Readings` chart — a row of time-range buttons above a chart whose `source.range` reads `$page.range`. Implement those two; every subsequent filter feature reuses the same substrate.
+
+
