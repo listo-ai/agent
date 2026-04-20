@@ -229,36 +229,44 @@ fn substitute_query_bindings(
         vars: &vars,
         access_log: None,
     };
-    walk_table_queries(layout, &|q| {
-        crate::binding_walk::substitute_bindings(q, |expr| {
+    walk_string_leaves_mut(layout, &|s| {
+        if !s.contains("{{") {
+            return None;
+        }
+        Some(crate::binding_walk::substitute_bindings(s, |expr| {
             Binding::parse(expr).ok().and_then(|b| b.evaluate(&ctx).ok())
-        })
+        }))
     });
 }
 
-/// Walk the layout, applying `rewrite` to every `table.source.query`
-/// string leaf. The walker is conservative by design — only fields
-/// that gate server-side data fetching get substituted. Adding a new
-/// substituted field is a one-line addition here and should be
-/// accompanied by a test.
-fn walk_table_queries<F: Fn(&str) -> String>(v: &mut JsonValue, rewrite: &F) {
+/// Walk every JSON string leaf and apply `rewrite`. `None` means
+/// "leave unchanged"; `Some(s)` replaces the string.
+///
+/// Generic coverage is intentional — authors write `{{$vars.*}}` and
+/// friends in any field (node ids, slot names, labels, queries). The
+/// server substitutes at resolve time so downstream consumers (chart
+/// fetch, table query, subscription-plan derivation) all see
+/// concrete values. Strings with no `{{` short-circuit.
+fn walk_string_leaves_mut<F: Fn(&str) -> Option<String>>(v: &mut JsonValue, rewrite: &F) {
     match v {
+        JsonValue::String(s) => {
+            if let Some(next) = rewrite(s) {
+                *s = next;
+            }
+        }
         JsonValue::Array(arr) => {
             for x in arr {
-                walk_table_queries(x, rewrite);
+                walk_string_leaves_mut(x, rewrite);
             }
         }
         JsonValue::Object(m) => {
-            let is_table = m.get("type").and_then(|t| t.as_str()) == Some("table");
-            for val in m.values_mut() {
-                walk_table_queries(val, rewrite);
-            }
-            if is_table {
-                if let Some(JsonValue::Object(src)) = m.get_mut("source") {
-                    if let Some(JsonValue::String(q)) = src.get_mut("query") {
-                        *q = rewrite(q);
-                    }
+            // Skip the `vars` subtree — vars *are* the substitution
+            // source, substituting into them would recurse.
+            for (k, val) in m.iter_mut() {
+                if k == "vars" {
+                    continue;
                 }
+                walk_string_leaves_mut(val, rewrite);
             }
         }
         _ => {}
