@@ -20,6 +20,24 @@ import type { UiActionResponse, UiResolveResponse } from "@sys/agent-client";
 const emptyRegistry: CustomRegistry = new Map();
 const DEBOUNCE_MS = 250;
 
+/**
+ * The HTTP transport wraps server errors as
+ * `{kind:"HttpError", status, message}`. Its `message` is the raw
+ * response body, which the agent returns as `{"error":"..."}`. Dig
+ * the human-readable `error` field out for display.
+ */
+function extractServerMessage(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && typeof parsed.error === "string") {
+      return parsed.error;
+    }
+  } catch {
+    /* fall through */
+  }
+  return raw;
+}
+
 export function LivePreview() {
   const draft = useBuilderStore((s) => s.draft);
   const [debouncedText, setDebouncedText] = useState<string | undefined>(
@@ -53,7 +71,7 @@ export function LivePreview() {
     pageState,
   ] as const;
 
-  const { data } = useQuery<UiResolveResponse | null>({
+  const { data, isError, error, isFetching } = useQuery<UiResolveResponse | null>({
     queryKey,
     enabled: !!draft?.nodeId && parsed?.ok === true,
     staleTime: 0,
@@ -108,10 +126,26 @@ export function LivePreview() {
     );
   }
 
+  if (isError) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return (
+      <div className="p-6 text-sm">
+        <p className="mb-1 font-semibold text-destructive">Preview failed</p>
+        <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
+          {extractServerMessage(msg)}
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Fix the layout in the editor — check the validation strip
+          below or the Network tab for details.
+        </p>
+      </div>
+    );
+  }
+
   if (!data) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-        Resolving…
+        {isFetching ? "Resolving…" : "No preview yet."}
       </div>
     );
   }
