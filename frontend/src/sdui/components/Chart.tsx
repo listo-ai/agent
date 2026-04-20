@@ -107,20 +107,36 @@ function useChartFetch(
   const from = range?.from;
   const to = range?.to;
 
-  const query = useQuery({
-    queryKey: ["sdui-chart", widgetId, node_id, slot, from ?? null, to ?? null],
-    enabled: !hasAuthored && !!node_id && !!slot,
-    staleTime: 5_000,
-    queryFn: async (): Promise<ChartSeries[]> => {
+  // node_id → path is cached long-term; path only changes on rename.
+  // Splitting it off keeps per-tick invalidations from re-resolving
+  // the same id every time.
+  const pathQuery = useQuery({
+    queryKey: ["sdui-chart-path", node_id],
+    enabled: !hasAuthored && !!node_id,
+    staleTime: 60_000,
+    queryFn: async (): Promise<string | null> => {
       const client = await agentPromise;
-      // node_id → path via the list endpoint. Telemetry + history
-      // endpoints are both path-keyed.
       const resp = await client.nodes.getNodesPage({
         filter: `id=="${node_id}"`,
         size: 1,
       });
-      const path = resp.data[0]?.path;
+      return resp.data[0]?.path ?? null;
+    },
+  });
+
+  // Remember which store actually has data so later invalidations
+  // only hit one endpoint. First fetch probes both; subsequent fetches
+  // skip the one known to be empty for this (node, slot).
+  const sourceRef = useRef<"telemetry" | "history" | "both">("both");
+
+  const path = pathQuery.data ?? null;
+  const query = useQuery({
+    queryKey: ["sdui-chart", widgetId, node_id, slot, from ?? null, to ?? null],
+    enabled: !hasAuthored && !!slot && !!path,
+    staleTime: 5_000,
+    queryFn: async (): Promise<ChartSeries[]> => {
       if (!path) return [{ label: slot, points: [] }];
+      const client = await agentPromise;
       const effectiveTo = to ?? Date.now();
       const effectiveFrom = from ?? effectiveTo - DEFAULT_WINDOW_MS;
       const opts = {
@@ -129,14 +145,21 @@ function useChartFetch(
         limit: DEFAULT_LIMIT,
       };
 
-      // Bool/Number slots land in telemetry. Json slots (e.g. an
-      // envelope `{_ts, payload}` emitted by the flow engine) land
-      // in history — probe both so the chart doesn't force the
-      // author to know the storage routing.
+      const want = sourceRef.current;
       const [telemetry, history] = await Promise.all([
-        client.history.listTelemetry(path, slot, opts).catch(() => []),
-        client.history.listHistory(path, slot, opts).catch(() => []),
+        want === "history"
+          ? Promise.resolve([])
+          : client.history.listTelemetry(path, slot, opts).catch(() => []),
+        want === "telemetry"
+          ? Promise.resolve([])
+          : client.history.listHistory(path, slot, opts).catch(() => []),
       ]);
+
+      // Pin the store on the first probe that yielded rows.
+      if (sourceRef.current === "both") {
+        if (telemetry.length > 0) sourceRef.current = "telemetry";
+        else if (history.length > 0) sourceRef.current = "history";
+      }
 
       const points: [number, number][] = [];
       for (const r of telemetry) {
@@ -155,8 +178,8 @@ function useChartFetch(
 
   return {
     series: query.data ?? [],
-    isLoading: query.isLoading,
-    isError: query.isError,
+    isLoading: pathQuery.isLoading || query.isLoading,
+    isError: pathQuery.isError || query.isError,
   };
 }
 
