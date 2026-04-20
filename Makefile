@@ -70,7 +70,7 @@ frontend-build: build-client ## Production web build of the Studio UI
 # See dev/README.md for the full port map and rationale.
 
 .PHONY: dev
-dev: ## Start cloud + edge + both Studios (Ctrl-C stops all)
+dev: build build-client ## Start cloud + edge + both Studios (Ctrl-C stops all). Rebuilds agent + TS client first.
 	@bash dev/run.sh
 
 .PHONY: run-cloud

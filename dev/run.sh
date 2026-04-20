@@ -47,13 +47,28 @@ trap cleanup INT TERM
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# ── check the binary exists ──────────────────────────────────────────────────
-if [[ ! -f target/debug/agent && ! -f target/release/agent ]]; then
-  echo "No agent binary found. Run 'make build' first."
+# ── rebuild before launching ─────────────────────────────────────────────────
+# Cargo is incremental; a no-op rebuild is fast. This eliminates the
+# "I restarted but nothing changed" trap where make dev silently runs
+# a stale binary. Opt out with SKIP_REBUILD=1 if you're iterating on
+# the frontend only.
+if [[ "${SKIP_REBUILD:-0}" != "1" ]]; then
+  echo "Rebuilding agent (set SKIP_REBUILD=1 to skip)..."
+  cargo build --bin agent
+fi
+
+# ── locate the binary ────────────────────────────────────────────────────────
+# Prefer debug (what we just rebuilt). Fall back to release only if
+# debug is genuinely absent — avoids shadowing a fresh debug build
+# with an older release artifact that happens to sit in target/.
+if [[ -f target/debug/agent ]]; then
+  BIN="target/debug/agent"
+elif [[ -f target/release/agent ]]; then
+  BIN="target/release/agent"
+else
+  echo "No agent binary found after build — check cargo output above."
   exit 1
 fi
-BIN="target/debug/agent"
-[[ -f target/release/agent ]] && BIN="target/release/agent"
 
 echo "Starting dev environment (Ctrl-C to stop all)..."
 echo ""
