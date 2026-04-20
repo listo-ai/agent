@@ -61,6 +61,7 @@ fn build_filter(
     raw: &str,
 ) -> Result<FilterExpr, QueryError> {
     let field = field.trim();
+    let value = strip_matching_quotes(value.trim());
     if field.is_empty() || value.is_empty() {
         return Err(QueryError::InvalidFilter(raw.to_string()));
     }
@@ -69,6 +70,21 @@ fn build_filter(
         op,
         value: value.to_string(),
     })
+}
+
+/// Strip one pair of matching surrounding quotes (either `"` or `'`).
+/// Callers quote values so RSQL special characters don't terminate
+/// the segment early; the stored value shouldn't carry the quotes.
+fn strip_matching_quotes(s: &str) -> &str {
+    if s.len() >= 2 {
+        let bytes = s.as_bytes();
+        let first = bytes[0];
+        let last = bytes[s.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return &s[1..s.len() - 1];
+        }
+    }
+    s
 }
 
 fn parse_sort_field(raw: &str) -> Result<SortField, QueryError> {
@@ -89,6 +105,17 @@ fn parse_sort_field(raw: &str) -> Result<SortField, QueryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strips_matching_double_and_single_quotes_from_values() {
+        let f = parse_filters(Some(r#"kind=="ui.page""#)).unwrap();
+        assert_eq!(f[0].value, "ui.page");
+        let f = parse_filters(Some("kind=='ui.page'")).unwrap();
+        assert_eq!(f[0].value, "ui.page");
+        // Mismatched quotes stay literal — we don't guess.
+        let f = parse_filters(Some(r#"kind==" ui.page"#)).unwrap();
+        assert_eq!(f[0].value, r#"" ui.page"#);
+    }
 
     #[test]
     fn parses_rsql_like_filter_and_sort() {
