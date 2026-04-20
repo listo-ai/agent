@@ -7,7 +7,8 @@ use std::time::Instant;
 use anthropic_ai_sdk::client::AnthropicClient;
 use anthropic_ai_sdk::types::message::{
     ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient, MessageError,
-    RequiredMessageParams, Role, StreamEvent, Tool as SdkTool, ToolChoice as SdkToolChoice,
+    RequiredMessageParams, Role, StreamEvent, Thinking, ThinkingType, Tool as SdkTool,
+    ToolChoice as SdkToolChoice,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -88,6 +89,12 @@ impl Runner for AnthropicRunner {
         }
         if let Some(choice) = &cfg.tool_choice {
             params = params.with_tool_choice(to_sdk_choice(choice));
+        }
+        if let Some(budget) = parse_thinking_budget(cfg.thinking_budget.as_deref()) {
+            params = params.with_thinking(Thinking {
+                budget_tokens: budget,
+                type_: ThinkingType::Enabled,
+            });
         }
 
         let mut stream = match client.create_message_streaming(&params).await {
@@ -240,6 +247,22 @@ impl Runner for AnthropicRunner {
         result.tool_uses = tool_uses;
         result.error = error;
         result
+    }
+}
+
+/// Map a provider-agnostic `thinking_budget` string into a usize
+/// `budget_tokens` value for the Anthropic SDK. Accepts the CLI-style
+/// aliases `low` / `medium` / `high` and raw integer token counts.
+/// Returns `None` when the field is absent or unrecognised (runner
+/// treats as "no extended thinking").
+fn parse_thinking_budget(raw: Option<&str>) -> Option<usize> {
+    let raw = raw?.trim();
+    match raw.to_ascii_lowercase().as_str() {
+        "" | "off" | "none" | "disabled" => None,
+        "low" => Some(1024),
+        "medium" => Some(4096),
+        "high" => Some(16384),
+        other => other.parse::<usize>().ok().filter(|n| *n >= 1024),
     }
 }
 

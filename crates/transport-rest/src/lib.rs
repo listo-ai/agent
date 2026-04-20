@@ -37,6 +37,7 @@ use axum::Router;
 use graph::{EventSink, GraphEvent};
 use tokio::sync::{broadcast, mpsc};
 
+pub mod ai;
 pub mod auth;
 pub mod auth_routes;
 pub mod blocks;

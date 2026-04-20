@@ -31,6 +31,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::panic))]
 
+mod ai;
 mod auth;
 mod blocks;
 mod capabilities;
@@ -148,5 +149,9 @@ impl AgentClient {
 
     pub fn flows(&self) -> flows::Flows<'_> {
         flows::Flows::new(&self.http, API_VERSION)
+    }
+
+    pub fn ai(&self) -> ai::Ai<'_> {
+        ai::Ai::new(&self.http, API_VERSION)
     }
 }

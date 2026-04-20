@@ -107,6 +107,15 @@ pub enum UiCmd {
         /// slot with an OCC guard. Requires `--page`.
         #[arg(long)]
         apply: bool,
+
+        /// Override the agent's default AI provider for this call.
+        /// One of `anthropic`, `openai`, `claude`, `codex`.
+        #[arg(long)]
+        provider: Option<String>,
+
+        /// Override the model (e.g. `claude-opus-4-5`, `gpt-4o`).
+        #[arg(long)]
+        model: Option<String>,
     },
 
     /// Render a node's default SDUI view (`GET /api/v1/ui/render`).
@@ -300,6 +309,8 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
             page,
             context,
             apply,
+            provider,
+            model,
         } => {
             if *apply && page.is_none() {
                 return Err(anyhow!("--apply requires --page"));
@@ -325,6 +336,8 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                 prompt: prompt.clone(),
                 current_layout,
                 context_hints: context.clone(),
+                provider: provider.clone(),
+                model: model.clone(),
             };
             let resp = client.ui().compose(&req).await?;
 

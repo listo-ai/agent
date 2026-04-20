@@ -166,6 +166,9 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &FLOWS_REVERT,
         &FLOWS_REVISIONS,
         &FLOWS_DOCUMENT_AT,
+        &AI_PROVIDERS,
+        &AI_RUN,
+        &AI_STREAM,
     ];
     ALL
 }
@@ -1655,13 +1658,26 @@ static UI_COMPOSE: CommandMeta = CommandMeta {
             type_name: "bool",
             description: "Write the generated layout back to --page with an OCC guard",
         },
+        ArgInfo {
+            name: "--provider",
+            required: false,
+            type_name: "string",
+            description: "Override the default AI provider (anthropic, openai, claude, codex)",
+        },
+        ArgInfo {
+            name: "--model",
+            required: false,
+            type_name: "string",
+            description: "Override the model (e.g. claude-opus-4-5, gpt-4o)",
+        },
     ],
     examples: &[
         "agent ui compose \"heartbeat dashboard for /flow-1/heartbeat\"",
         "agent ui compose \"add a severity filter above the table\" --page /dashboards/alarms",
         "agent ui compose \"refresh the dashboard\" --page /pages/overview --apply",
+        "agent ui compose \"status board\" --provider openai --model gpt-4o",
     ],
-    related: &["ui resolve", "ui vocabulary", "slots write"],
+    related: &["ui resolve", "ui vocabulary", "ai providers", "slots write"],
     input_schema: || {
         serde_json::json!({
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1671,7 +1687,9 @@ static UI_COMPOSE: CommandMeta = CommandMeta {
                 "prompt":         { "type": "string" },
                 "page":           { "type": "string" },
                 "context":        { "type": "string" },
-                "apply":          { "type": "boolean" }
+                "apply":          { "type": "boolean" },
+                "provider":       { "type": "string" },
+                "model":          { "type": "string" }
             }
         })
     },
@@ -2240,5 +2258,165 @@ static FLOWS_DOCUMENT_AT: CommandMeta = CommandMeta {
             code: "agent_unreachable",
             exit_code: 2,
         },
+    ],
+};
+
+// ---- ai -------------------------------------------------------------------
+
+static AI_PROVIDERS: CommandMeta = CommandMeta {
+    name: "ai providers",
+    summary: "List registered AI providers and their availability.",
+    args: &[],
+    examples: &["agent ai providers"],
+    related: &["ai run", "ui compose"],
+    input_schema: empty_input,
+    output_schema: schema_for_vec::<types::AiProviderStatus>,
+    errors: &[
+        ErrorInfo {
+            code: "ai_unavailable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static AI_RUN: CommandMeta = CommandMeta {
+    name: "ai run",
+    summary: "Run a one-shot prompt through the shared registry.",
+    args: &[
+        ArgInfo {
+            name: "prompt",
+            required: true,
+            type_name: "string",
+            description: "The user prompt",
+        },
+        ArgInfo {
+            name: "--system",
+            required: false,
+            type_name: "string",
+            description: "Optional system / instruction prompt",
+        },
+        ArgInfo {
+            name: "--provider",
+            required: false,
+            type_name: "string",
+            description: "Override the default provider (anthropic, openai, claude, codex)",
+        },
+        ArgInfo {
+            name: "--model",
+            required: false,
+            type_name: "string",
+            description: "Override the model (e.g. claude-opus-4-5, gpt-4o)",
+        },
+        ArgInfo {
+            name: "--max-tokens",
+            required: false,
+            type_name: "integer",
+            description: "Generation cap; runner default when omitted",
+        },
+    ],
+    examples: &[
+        "agent ai run \"explain rust lifetimes\"",
+        "agent ai run \"summarise this\" --provider openai --model gpt-4o",
+    ],
+    related: &["ai providers", "ui compose"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["prompt"],
+            "properties": {
+                "prompt":        { "type": "string" },
+                "system":        { "type": "string" },
+                "provider":      { "type": "string" },
+                "model":         { "type": "string" },
+                "max_tokens":    { "type": "integer" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::AiRunResponse>,
+    errors: &[
+        ErrorInfo {
+            code: "ai_unavailable",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "bad_request",
+            exit_code: 1,
+        },
+        ErrorInfo {
+            code: "upstream_error",
+            exit_code: 2,
+        },
+        ErrorInfo {
+            code: "agent_unreachable",
+            exit_code: 2,
+        },
+    ],
+};
+
+static AI_STREAM: CommandMeta = CommandMeta {
+    name: "ai stream",
+    summary: "Stream a prompt (SSE). Text deltas print live; --output json emits the final result.",
+    args: &[
+        ArgInfo {
+            name: "prompt",
+            required: true,
+            type_name: "string",
+            description: "The user prompt",
+        },
+        ArgInfo {
+            name: "--system",
+            required: false,
+            type_name: "string",
+            description: "Optional system / instruction prompt",
+        },
+        ArgInfo {
+            name: "--provider",
+            required: false,
+            type_name: "string",
+            description: "Override the default provider (anthropic, openai, claude, codex)",
+        },
+        ArgInfo {
+            name: "--model",
+            required: false,
+            type_name: "string",
+            description: "Override the model",
+        },
+        ArgInfo {
+            name: "--max-tokens",
+            required: false,
+            type_name: "integer",
+            description: "Generation cap",
+        },
+    ],
+    examples: &[
+        "agent ai stream \"write a haiku about lifetimes\"",
+        "agent ai stream \"explain SSE\" --provider openai --output json",
+    ],
+    related: &["ai run", "ai providers"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["prompt"],
+            "properties": {
+                "prompt":     { "type": "string" },
+                "system":     { "type": "string" },
+                "provider":   { "type": "string" },
+                "model":      { "type": "string" },
+                "max_tokens": { "type": "integer" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::AiRunResponse>,
+    errors: &[
+        ErrorInfo { code: "ai_unavailable", exit_code: 2 },
+        ErrorInfo { code: "bad_request", exit_code: 1 },
+        ErrorInfo { code: "upstream_error", exit_code: 2 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
     ],
 };

@@ -2,11 +2,13 @@
 
 Goal: author SDUI pages (and block-owned views) entirely from `agent <cmd>` — the frontend becomes a pure projector of whatever JSON the agent serves. This is the workflow AI assistants should use when a user prompt says *"make me a dashboard for this flow"* or *"add a panel that shows the heartbeat live."*
 
+**Before anything else, read [docs/testing/TESTING.md](./TESTING.md)** — it's the source of truth for local dev: which agent runs where (`make run` = 8080; `make dev` = cloud 8081 + edge 8082), which Studio port pairs with which agent (3000 / 3001 / 3002), and the wipe/reset rules. Every URL in this doc is relative to whichever agent you're targeting — point the CLI at it with `AGENT_URL=http://localhost:<port>` or `agent -u http://localhost:<port> …`.
+
 See also:
 
 - [docs/design/CLI.md](../design/CLI.md) — command tree, global flags, JSON / exit-code contracts.
 - [docs/design/SDUI.md](../design/SDUI.md) — IR vocabulary, binding grammar, render/resolve semantics.
-- [docs/testing/FLOW.md](./FLOW.md) — sibling doc for flow + node authoring.
+- [docs/testing/CLI-FLOW.md](./CLI-FLOW.md) — sibling doc for flow + node authoring.
 
 ---
 
@@ -88,6 +90,7 @@ Key points an LLM should remember:
 - `source.query` is RSQL (same grammar as `agent nodes list --filter`). Test queries with `agent ui table --query '…'` first.
 - `columns[].field` is a dot-path into the row JSON (`path`, `kind`, `slots.<name>`, `parent_id`).
 - **Output-slot envelope.** Source and transformer kinds write a `Msg` envelope (`{_msgid, topic?, payload: <real value>}`) to their output slot — not a bare scalar. A `field: "slots.out"` cell renders `[object Object]`. Drill into `slots.out.payload.count` / `slots.out.payload.state` for the scalars (the heartbeat example above). The envelope is exactly what [spi/src/msg.rs](../../crates/spi/src/msg.rs) serialises; Stage 2 of [NODE-RED-MODEL.md](../design/NODE-RED-MODEL.md) stripped `_ts` / `_source` / `_parentid` — timestamps ride the SSE frame, provenance moves to trace context.
+- **KPI / chart `source.field`** — for envelope-emitting slots, the widget source needs an explicit dot-path. A KPI bound to the heartbeat's counter is `{ node_id: <id>, slot: "out", field: "payload.count" }` — **not** `slot: "count"` (heartbeat has no `count` slot). Omitting `field` falls back to a legacy `.payload` auto-unwrap for backwards compatibility, but declaring it explicitly is the forward-compatible form and what `agent ui vocabulary` documents.
 
 ### Step 3 — verify before opening Studio
 
@@ -119,9 +122,17 @@ agent ui resolve --page <page-id> -o json | jq '.render, .subscriptions'
 
 ### Step 4 — open in Studio
 
+Pick the Studio that's pointed at the agent you wrote the page on (see [TESTING.md](./TESTING.md) for the port map):
+
 ```
-http://localhost:3000/ui/<page-id>
+http://localhost:<studio-port>/ui/<page-id>
 ```
+
+| Mode | Studio port | Agent |
+|---|---|---|
+| `make run` + `make frontend` | 3000 | 8080 (edge-only) |
+| `make dev` | 3001 | 8081 (cloud) |
+| `make dev` | 3002 | 8082 (edge) |
 
 ---
 
@@ -177,7 +188,7 @@ views:
                 level: 2
               - type: badge
                 id: state
-                label: "{{$target.out.payload.state}}"
+                label: "state: {{$target.out.payload.state}}"
                 intent: info
 ```
 
@@ -189,6 +200,8 @@ agent ui render --target <instance-node-id> --view overview   # explicit
 ```
 
 Supported `$target` bindings: `id`, `path`, `name`, `kind`, and any slot name — with an optional dot-path into the slot value (e.g. `$target.out.payload.state` walks into the Msg envelope).
+
+**String-typed fields need a string template, not a bare binding.** A template that substitutes to a non-string scalar (boolean, number, null) breaks validation on fields like `badge.label`, `heading.content`, and `text.content` with `invalid type: boolean false, expected a string`. Force stringification by wrapping — `label: "state: {{$target.out.payload.state}}"` renders `"state: false"`. The `/ui/render` endpoint surfaces this as `422 invalid_value` with the message `malformed view template on kind <…>`.
 
 When no `view` parameter is supplied, the highest-`priority` view wins; ties break by declaration order.
 
@@ -334,4 +347,14 @@ Then:
 - **Ad-hoc query result** → `agent ui table --query '…'`.
 - **Test an action handler** → `agent ui action --handler … --args '…'`.
 
-Everything past this is composition of the eight commands under `agent ui` and `agent slots`. No hidden surface.
+Everything past this is composition of the commands under `agent ui` and `agent slots`. No hidden surface. The full list today:
+
+| Command | Purpose |
+|---|---|
+| `agent ui vocabulary` | Dump the `Component` JSON Schema (component union) |
+| `agent ui resolve` | Resolve a `ui.page` node into `{render, subscriptions, meta}`; `--dry-run` validates without emitting subscriptions |
+| `agent ui render` | Render a node's default kind view (from `views:` on the manifest) — fails if the view template is malformed |
+| `agent ui table` | Paginated RSQL table query — same endpoint the authored `table` component uses |
+| `agent ui action` | Dispatch a named handler, inspect the tagged-union response |
+| `agent ui nav` | Fetch the `ui.nav` subtree rooted at a node id — use for sidebar / navigation authoring |
+| `agent ui compose` | Generate or edit a `ui.page` layout with AI (`POST /api/v1/ui/compose`) — LLM-side authoring shortcut |

@@ -1,0 +1,101 @@
+id: sys.ai.run
+display_name: AI Run
+facets:
+  - isCompute
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: trigger
+    role: input
+    value_schema: {}
+    writable: true
+    trigger: true
+  - name: text
+    role: output
+    value_schema:
+      type: object
+      properties:
+        _msgid:
+          type: string
+        topic:
+          type: string
+        payload:
+          type: string
+      required: [_msgid]
+    writable: false
+  - name: done
+    role: output
+    value_schema:
+      type: object
+      properties:
+        _msgid:
+          type: string
+        topic:
+          type: string
+        payload:
+          type: object
+      required: [_msgid]
+    writable: false
+  - name: running
+    role: status
+    value_schema:
+      type: boolean
+    writable: true
+  - name: last_error
+    role: status
+    value_schema:
+      type:
+        - string
+        - "null"
+    writable: true
+  - name: input_tokens
+    role: status
+    value_schema:
+      type: integer
+    writable: true
+  - name: output_tokens
+    role: status
+    value_schema:
+      type: integer
+    writable: true
+  - name: duration_ms
+    role: status
+    value_schema:
+      type: integer
+    writable: true
+trigger_policy: on_any
+settings_schema:
+  type: object
+  properties:
+    prompt:
+      type: string
+      default: ""
+    system_prompt:
+      type:
+        - string
+        - "null"
+      default: null
+    provider:
+      type:
+        - string
+        - "null"
+      default: null
+    model:
+      type:
+        - string
+        - "null"
+      default: null
+    max_tokens:
+      type:
+        - integer
+        - "null"
+      default: null
+msg_overrides:
+  prompt: prompt
+  system_prompt: system_prompt
+  provider: provider
+  model: model
+  max_tokens: max_tokens

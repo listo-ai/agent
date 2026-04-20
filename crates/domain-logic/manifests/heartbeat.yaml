@@ -86,7 +86,7 @@ views:
                 level: 2
               - type: badge
                 id: state
-                label: "{{$target.out.payload.state}}"
+                label: "state: {{$target.out.payload.state}}"
                 intent: info
           - type: row
             id: kpis

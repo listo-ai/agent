@@ -144,6 +144,12 @@ pub enum Component {
         /// `"line"` | `"area"` | `"bar"`. Defaults to `"line"`.
         #[serde(skip_serializing_if = "Option::is_none")]
         kind: Option<String>,
+        /// Declarative backfill config: on mount the client fetches the
+        /// past window then SSE extends the series forward. Absent =
+        /// today's behaviour (ad-hoc 1h default inside the client). See
+        /// docs/sessions/DASHBOARD-BUILDER.md § "Chart history backfill".
+        #[serde(skip_serializing_if = "Option::is_none")]
+        history: Option<ChartHistory>,
     },
 
     /// Compact sparkline — a single line of recent points, no axes, no
@@ -461,6 +467,47 @@ pub struct ChartSeries {
 pub struct ChartRange {
     pub from: i64,
     pub to: i64,
+}
+
+/// Declarative history-backfill config for [`Component::Chart`].
+///
+/// On mount the client fetches the past window defined by
+/// `range_ms` (a rolling window from "now") and seeds the chart's
+/// series; SSE then extends the series forward in place. When
+/// `user_selectable` is set, the chart renders a preset picker above
+/// the plot so the viewer can change the window without re-authoring.
+///
+/// `range_ms` is resolved at fetch time (client clock), so a dashboard
+/// that says `last_1h` stays current every time it mounts — unlike an
+/// authored `ChartRange { from, to }` which goes stale.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChartHistory {
+    /// Rolling window in ms from "now" at fetch time. `None` = "all".
+    /// Takes precedence over `Component::Chart::range` when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range_ms: Option<i64>,
+    /// Render a preset picker above the chart. Clicking a preset
+    /// writes `{from, to}` into `$page[page_state_key]`, same path
+    /// the drag-to-zoom gesture already uses.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub user_selectable: bool,
+    /// Preset options for the picker. Empty → a sensible default set
+    /// (5m / 1h / 6h / 24h / 7d / all) is used by the renderer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<ChartHistoryPreset>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// One row in the chart's preset picker (see [`ChartHistory`]).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChartHistoryPreset {
+    pub label: String,
+    /// Rolling window in ms. `None` means "all time" (from=0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
 }
 
 /// Data source for a [`Component::Table`].

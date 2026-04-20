@@ -19,10 +19,16 @@
 pub mod config;
 pub mod historizer;
 pub mod policy;
+pub mod query;
 
 pub use config::{HistoryConfig, HistoryConfigSettings, SlotPolicy};
 pub use historizer::Historizer;
 pub use policy::{EffectivePolicy, PolicyKind};
+pub use query::{
+    bucketed_history, bucketed_telemetry, grouped_telemetry,
+    GroupedTelemetryResult, HistoryBucketedResult, QueryError, TelemetryBucketedResult,
+    TelemetrySeries,
+};
 
 /// Register every kind manifest this crate contributes.
 pub fn register_kinds(kinds: &graph::KindRegistry) {

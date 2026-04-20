@@ -100,6 +100,12 @@ impl Engine {
             inner.worker = Some(worker);
             inner.control = Some(control_tx);
         }
+        // Boot-init pass: call `on_init` for every node that already exists in
+        // the graph. The graph restore path (`GraphStore::with_repo`) loads
+        // nodes silently — no `NodeCreated` events are emitted — so source
+        // nodes (heartbeat, trigger generators, …) would never arm their
+        // timers without this explicit sweep.
+        self.behaviors.boot_init_all();
         self.transition(EngineState::Running)?;
         Ok(())
     }

@@ -36,6 +36,8 @@ members = [
     "crates/blocks-sdk-macros",
     "crates/blocks-host",
     "crates/apps/agent",
+    "crates/ai-runner",
+    "crates/domain-ai",
     "clients/rs",
 ]
 
@@ -80,6 +82,8 @@ transport-cli = { path = "crates/transport-cli" }
 transport-mcp = { path = "crates/transport-mcp" }
 graph = { path = "crates/graph" }
 engine = { path = "crates/engine" }
+ai-runner = { path = "crates/ai-runner" }
+domain-ai = { path = "crates/domain-ai" }
 blocks-sdk = { path = "crates/blocks-sdk" }
 blocks-sdk-macros = { path = "crates/blocks-sdk-macros" }
 blocks-host = { path = "crates/blocks-host" }

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use ai_runner::{AiDefaults, Registry as AiRegistry};
 use auth::DevNullProvider;
 use blocks_host::{BlockHost, BlockRegistry};
 use data_repos::{HistoryRepo, PreferencesService};
@@ -54,6 +55,12 @@ pub struct AppState {
     /// Historizer service — used for `POST /history/record` (on-demand recording).
     /// `None` until Stage 3 wiring lands; REST currently falls back to direct insert.
     pub historizer: Option<Arc<Historizer>>,
+    /// Unified AI runner registry. `None` disables `/api/v1/ai/*` with
+    /// a deterministic `ai_unavailable` error.
+    pub ai_registry: Option<Arc<AiRegistry>>,
+    /// Defaults (provider selection, keys, model override) used when a
+    /// caller doesn't supply its own.
+    pub ai_defaults: AiDefaults,
 }
 
 impl AppState {
@@ -77,6 +84,8 @@ impl AppState {
             history_repo: None,
             telemetry_repo: None,
             historizer: None,
+            ai_registry: None,
+            ai_defaults: AiDefaults::default(),
         }
     }
 
@@ -104,6 +113,8 @@ impl AppState {
             history_repo: None,
             telemetry_repo: None,
             historizer: None,
+            ai_registry: None,
+            ai_defaults: AiDefaults::default(),
         }
     }
 
@@ -155,6 +166,13 @@ impl AppState {
     /// Attach the historizer service (used for on-demand recording).
     pub fn with_historizer(mut self, h: Arc<Historizer>) -> Self {
         self.historizer = Some(h);
+        self
+    }
+
+    /// Attach the shared AI runner registry + defaults.
+    pub fn with_ai(mut self, registry: Arc<AiRegistry>, defaults: AiDefaults) -> Self {
+        self.ai_registry = Some(registry);
+        self.ai_defaults = defaults;
         self
     }
 }

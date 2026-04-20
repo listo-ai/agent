@@ -15,10 +15,10 @@ graph = { workspace = true }
 dashboard-runtime = { workspace = true }
 ui-ir = { workspace = true }
 query = { workspace = true }
+ai-runner = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
-reqwest = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 thiserror = { workspace = true }

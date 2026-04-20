@@ -21,5 +21,8 @@ pub use error::RepoError;
 pub use flow_repo::{Flow, FlowQuery, FlowRepo};
 pub use flow_revision_repo::FlowRevisionRepo;
 pub use graph_repo::{GraphRepo, GraphSnapshot, PersistedLink, PersistedNode, PersistedSlot};
-pub use history_repo::{HistoryQuery, HistoryRecord, HistoryRepo, HistorySlotKind};
+pub use history_repo::{
+    bucket_history_in_memory, HistoryAgg, HistoryBucketedQuery, HistoryBucketedRow, HistoryQuery,
+    HistoryRecord, HistoryRepo, HistorySlotKind,
+};
 pub use preferences_repo::{PreferencesRepo, PreferencesService};

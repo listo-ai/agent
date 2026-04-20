@@ -11,7 +11,10 @@ BIN           := agent
 CARGO         := cargo
 CROSS         := cross
 # pnpm and node are symlinked into ~/.local/bin (stable across nvm version switches).
-export PATH := $(HOME)/.local/bin:$(PATH)
+# Also extend with the common install locations for AI CLIs (`claude`, `codex`)
+# so `make dev` finds them without the user needing to shim them manually.
+# Override a specific one with `CLAUDE_BINARY=/path/to/claude make dev`.
+export PATH := $(HOME)/.local/bin:$(HOME)/.bun/bin:$(HOME)/.npm-global/bin:$(HOME)/.config/npm/global/bin:/opt/homebrew/bin:/usr/local/bin:$(PATH)
 
 PNPM          := pnpm
 CLIENT_PKG    := @sys/agent-client

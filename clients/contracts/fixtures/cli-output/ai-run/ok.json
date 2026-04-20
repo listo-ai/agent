@@ -1,0 +1,8 @@
+{
+  "text": "VARIES",
+  "provider": "anthropic",
+  "model": "claude-opus-4-5",
+  "input_tokens": null,
+  "output_tokens": null,
+  "duration_ms": null
+}

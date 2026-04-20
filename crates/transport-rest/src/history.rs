@@ -10,7 +10,11 @@
 //!   `slot`    slot name, e.g. `temperature`
 //!   `from`    inclusive start, Unix ms (default: 0)
 //!   `to`      inclusive end,   Unix ms (default: now)
-//!   `limit`   max rows returned (default: 1000)
+//!   `limit`   max rows / buckets returned (default: 1000 raw; uncapped bucketed)
+//!
+//! Telemetry-only bucketing (see docs/design/QUERY-LANG.md § time-series):
+//!   `bucket`  bucket width in ms (wall-clock aligned); presence switches mode
+//!   `agg`     `avg | min | max | sum | last | count` (default `avg`)
 //!
 //! Both repos are optional on `AppState`; when absent the endpoint
 //! returns 503 (no history / telemetry store configured on this agent).
@@ -22,8 +26,12 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use data_repos::{HistoryQuery, HistoryRecord, HistorySlotKind};
-use data_tsdb::{ScalarQuery, ScalarRecord};
+use data_repos::{HistoryBucketedRow, HistoryQuery, HistoryRecord, HistorySlotKind};
+use data_tsdb::{BucketedRow, ScalarQuery, ScalarRecord};
+use domain_history::{
+    bucketed_history, bucketed_telemetry, grouped_telemetry, GroupedTelemetryResult,
+    HistoryBucketedResult, QueryError, TelemetryBucketedResult,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use spi::NodePath;
@@ -40,7 +48,7 @@ pub fn routes() -> Router<AppState> {
 
 // ---- query params ---------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct HistoryParams {
     pub path: String,
     pub slot: String,
@@ -50,6 +58,42 @@ pub struct HistoryParams {
     pub to: Option<i64>,
     /// Max rows to return. Defaults to 1000.
     pub limit: Option<u32>,
+    /// Bucket width in ms. Present → bucketed mode (telemetry only).
+    /// Wall-clock aligned; see docs/design/QUERY-LANG.md § time-series.
+    pub bucket: Option<i64>,
+    /// Aggregation to apply within each bucket: `avg | min | max | sum | last | count`.
+    /// Default when `bucket` is set: `avg` for telemetry, `last` for history.
+    pub agg: Option<String>,
+    /// Group-by-kind fan-out for telemetry only — returns one series
+    /// per node of the given kind instead of a single flat result.
+    /// Mutually exclusive with `path`: pass one or the other.
+    pub kind: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BucketedRowDto {
+    pub ts_ms: i64,
+    /// `null` when no numeric samples fell in the bucket.
+    pub value: Option<f64>,
+    pub count: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BucketedMeta {
+    pub bucket_ms: i64,
+    pub agg: String,
+    pub from: i64,
+    pub to: i64,
+    pub bucket_count: usize,
+    /// True when the first returned bucket's start is earlier than
+    /// `from` — i.e. the leading bucket is only partially inside the
+    /// requested window. Clients can render a dashed/edge marker.
+    pub edge_partial_start: bool,
+    /// True when the last bucket's end (`ts_ms + bucket_ms`) extends
+    /// past `to`. The bucket's aggregate includes samples that are
+    /// inside `[from, to]` only — but the bucket itself straddles the
+    /// right edge of the window.
+    pub edge_partial_end: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,6 +161,132 @@ fn history_to_dto(r: HistoryRecord) -> HistoryRecordDto {
     }
 }
 
+/// Map `QueryError` → `ApiError`. Typed-to-typed conversion; all
+/// transports share the same domain parser/validator, so wire-level
+/// error handling is mechanical here.
+fn query_error_to_api(e: QueryError) -> ApiError {
+    match e {
+        QueryError::Invalid(m) => ApiError::bad_request(m),
+        QueryError::Backend(m) => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, &m),
+    }
+}
+
+/// DTO-only translation of a domain telemetry-bucket result.
+fn telemetry_bucketed_to_json(r: TelemetryBucketedResult) -> serde_json::Value {
+    let data: Vec<BucketedRowDto> = r.rows.into_iter().map(telemetry_row_to_dto).collect();
+    let meta = BucketedMeta {
+        bucket_ms: r.bucket_ms,
+        agg: r.agg.as_str().to_string(),
+        from: r.from_ms,
+        to: r.to_ms,
+        bucket_count: data.len(),
+        edge_partial_start: r.edge_partial_start,
+        edge_partial_end: r.edge_partial_end,
+    };
+    serde_json::json!({ "data": data, "meta": meta })
+}
+
+fn telemetry_row_to_dto(r: BucketedRow) -> BucketedRowDto {
+    BucketedRowDto {
+        ts_ms: r.ts_ms,
+        value: r.value,
+        count: r.count,
+    }
+}
+
+/// DTO-only translation of a domain history-bucket result.
+fn history_bucketed_to_json(r: HistoryBucketedResult) -> serde_json::Value {
+    let data: Vec<HistoryBucketedRowDto> = r.rows.into_iter().map(history_row_to_dto).collect();
+    let meta = HistoryBucketedMeta {
+        bucket_ms: r.bucket_ms,
+        agg: r.agg.as_str().to_string(),
+        from: r.from_ms,
+        to: r.to_ms,
+        bucket_count: data.len(),
+        edge_partial_start: r.edge_partial_start,
+        edge_partial_end: r.edge_partial_end,
+    };
+    serde_json::json!({ "data": data, "meta": meta })
+}
+
+fn history_row_to_dto(r: HistoryBucketedRow) -> HistoryBucketedRowDto {
+    let value = match (r.slot_kind, &r.value_json) {
+        (Some(HistorySlotKind::Binary), _) | (_, None) => None,
+        (_, Some(s)) => serde_json::from_str(s).ok(),
+    };
+    HistoryBucketedRowDto {
+        ts_ms: r.ts_ms,
+        value,
+        slot_kind: r.slot_kind.map(|k| k.as_str().to_string()),
+        count: r.count,
+    }
+}
+
+fn grouped_telemetry_to_json(r: GroupedTelemetryResult) -> serde_json::Value {
+    #[derive(Serialize)]
+    struct SeriesOut {
+        node_id: String,
+        path: String,
+        data: Vec<BucketedRowDto>,
+        bucket_count: usize,
+    }
+    #[derive(Serialize)]
+    struct GroupMetaOut {
+        kind: String,
+        slot: String,
+        bucket_ms: i64,
+        agg: String,
+        from: i64,
+        to: i64,
+        node_count: usize,
+    }
+
+    let series: Vec<SeriesOut> = r
+        .series
+        .into_iter()
+        .map(|s| {
+            let data: Vec<BucketedRowDto> =
+                s.rows.into_iter().map(telemetry_row_to_dto).collect();
+            SeriesOut {
+                node_id: s.node_id.simple().to_string(),
+                path: s.node_path,
+                bucket_count: data.len(),
+                data,
+            }
+        })
+        .collect();
+    let meta = GroupMetaOut {
+        kind: r.kind,
+        slot: r.slot_name,
+        bucket_ms: r.bucket_ms,
+        agg: r.agg.as_str().to_string(),
+        from: r.from_ms,
+        to: r.to_ms,
+        node_count: series.len(),
+    };
+    serde_json::json!({ "series": series, "meta": meta })
+}
+
+/// DTO for a row in the bucketed structured-history response.
+#[derive(Debug, Serialize)]
+pub struct HistoryBucketedRowDto {
+    pub ts_ms: i64,
+    pub value: Option<JsonValue>,
+    pub slot_kind: Option<String>,
+    pub count: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HistoryBucketedMeta {
+    pub bucket_ms: i64,
+    pub agg: String,
+    pub from: i64,
+    pub to: i64,
+    pub bucket_count: usize,
+    pub edge_partial_start: bool,
+    pub edge_partial_end: bool,
+}
+
 fn scalar_to_dto(r: ScalarRecord) -> ScalarRecordDto {
     let value = if let Some(b) = r.bool_value {
         JsonValue::Bool(b)
@@ -140,6 +310,9 @@ fn scalar_to_dto(r: ScalarRecord) -> ScalarRecordDto {
 // ---- handlers -------------------------------------------------------------
 
 /// `GET /api/v1/history` — range query for String/Json/Binary slot history.
+///
+/// Raw mode (no `bucket`): returns `HistoryRecordDto` rows.
+/// Bucketed mode: delegates to [`crate::history_bucketed::bucketed_history`].
 async fn get_history(
     State(state): State<AppState>,
     Query(params): Query<HistoryParams>,
@@ -158,11 +331,29 @@ async fn get_history(
         .get(&path)
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "node not found"))?;
 
+    let from_ms = params.from.unwrap_or(0);
+    let to_ms = params.to.unwrap_or_else(now_ms);
+
+    if let Some(bucket_ms) = params.bucket {
+        let result = bucketed_history(
+            &**repo,
+            node.id.0,
+            params.slot,
+            from_ms,
+            to_ms,
+            bucket_ms,
+            params.agg.as_deref(),
+            params.limit,
+        )
+        .map_err(query_error_to_api)?;
+        return Ok(Json(history_bucketed_to_json(result)));
+    }
+
     let q = HistoryQuery {
         node_id: node.id.0,
         slot_name: params.slot,
-        from_ms: params.from.unwrap_or(0),
-        to_ms: params.to.unwrap_or_else(now_ms),
+        from_ms,
+        to_ms,
         limit: params.limit.or(Some(1000)),
     };
 
@@ -175,6 +366,11 @@ async fn get_history(
 }
 
 /// `GET /api/v1/telemetry` — range query for Bool/Number slot scalar history.
+///
+/// When `bucket` is absent, returns raw `ScalarRecord` rows under
+/// `data`. When `bucket` is set, returns aggregated `BucketedRowDto`
+/// rows with a `meta` envelope (see docs/design/QUERY-LANG.md §
+/// time-series). `agg` defaults to `avg`.
 async fn get_telemetry(
     State(state): State<AppState>,
     Query(params): Query<HistoryParams>,
@@ -186,6 +382,26 @@ async fn get_telemetry(
         )
     })?;
 
+    let from_ms = params.from.unwrap_or(0);
+    let to_ms = params.to.unwrap_or_else(now_ms);
+
+    // `kind` fan-out is mutually exclusive with single-node `path`.
+    if let Some(kind) = params.kind.as_deref() {
+        let result = grouped_telemetry(
+            &**repo,
+            state.graph.as_ref(),
+            kind,
+            params.slot,
+            from_ms,
+            to_ms,
+            params.bucket,
+            params.agg.as_deref(),
+            params.limit,
+        )
+        .map_err(query_error_to_api)?;
+        return Ok(Json(grouped_telemetry_to_json(result)));
+    }
+
     let path = NodePath::from_str(&params.path)
         .map_err(|_| ApiError::bad_request(format!("invalid node path `{}`", params.path)))?;
     let node = state
@@ -193,11 +409,26 @@ async fn get_telemetry(
         .get(&path)
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "node not found"))?;
 
+    if let Some(bucket_ms) = params.bucket {
+        let result = bucketed_telemetry(
+            &**repo,
+            node.id.0,
+            params.slot,
+            from_ms,
+            to_ms,
+            bucket_ms,
+            params.agg.as_deref(),
+            params.limit,
+        )
+        .map_err(query_error_to_api)?;
+        return Ok(Json(telemetry_bucketed_to_json(result)));
+    }
+
     let q = ScalarQuery {
         node_id: node.id.0,
         slot_name: params.slot,
-        from_ms: params.from.unwrap_or(0),
-        to_ms: params.to.unwrap_or_else(now_ms),
+        from_ms,
+        to_ms,
         limit: params.limit.or(Some(1000)),
     };
 
@@ -462,6 +693,7 @@ mod tests {
                 from: None,
                 to: None,
                 limit: None,
+                ..Default::default()
             }),
         )
         .await
@@ -503,6 +735,7 @@ mod tests {
                 from: Some(0),
                 to: Some(9999),
                 limit: Some(10),
+                ..Default::default()
             }),
         )
         .await
@@ -528,6 +761,7 @@ mod tests {
                 from: None,
                 to: None,
                 limit: None,
+                ..Default::default()
             }),
         )
         .await
@@ -548,6 +782,7 @@ mod tests {
                 from: None,
                 to: None,
                 limit: None,
+                ..Default::default()
             }),
         )
         .await
@@ -586,6 +821,7 @@ mod tests {
                 from: Some(0),
                 to: Some(9999),
                 limit: Some(10),
+                ..Default::default()
             }),
         )
         .await
@@ -593,6 +829,182 @@ mod tests {
         let data = resp.0["data"].as_array().unwrap();
         assert_eq!(data.len(), 1);
         assert_eq!(data[0]["value"], 22.5);
+    }
+
+    #[tokio::test]
+    async fn get_telemetry_bucketed_groups_and_averages() {
+        let graph = make_graph();
+        let node_id = sensor_node(&graph);
+        let state = make_state_with_repos(graph);
+
+        // Three samples in bucket [0, 10000): 10, 20, 30 → avg 20.
+        // Two samples  in bucket [10000, 20000): 40, 60 → avg 50.
+        let repo = state.telemetry_repo.as_ref().unwrap();
+        let rows: Vec<ScalarRecord> = [(1_000, 10.0), (3_000, 20.0), (9_000, 30.0), (11_000, 40.0), (15_000, 60.0)]
+            .iter()
+            .map(|(ts, v)| ScalarRecord {
+                node_id: node_id.0,
+                slot_name: "t".into(),
+                ts_ms: *ts,
+                bool_value: None,
+                num_value: Some(*v),
+                ntp_synced: true,
+                last_sync_age_ms: None,
+            })
+            .collect();
+        repo.insert_batch(&rows, 100_000).unwrap();
+
+        let resp = get_telemetry(
+            State(state),
+            Query(HistoryParams {
+                path: "/sensor".into(),
+                slot: "t".into(),
+                from: Some(0),
+                to: Some(20_000),
+                bucket: Some(10_000),
+                agg: Some("avg".into()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+        let data = resp.0["data"].as_array().unwrap();
+        assert_eq!(data.len(), 2);
+        assert_eq!(data[0]["ts_ms"], 0);
+        assert!((data[0]["value"].as_f64().unwrap() - 20.0).abs() < 1e-9);
+        assert_eq!(data[0]["count"], 3);
+        assert_eq!(data[1]["ts_ms"], 10_000);
+        assert!((data[1]["value"].as_f64().unwrap() - 50.0).abs() < 1e-9);
+        assert_eq!(data[1]["count"], 2);
+
+        assert_eq!(resp.0["meta"]["bucket_ms"], 10_000);
+        assert_eq!(resp.0["meta"]["agg"], "avg");
+        assert_eq!(resp.0["meta"]["bucket_count"], 2);
+    }
+
+    #[tokio::test]
+    async fn get_telemetry_bucketed_reports_edge_partial() {
+        let graph = make_graph();
+        let node_id = sensor_node(&graph);
+        let state = make_state_with_repos(graph);
+        let repo = state.telemetry_repo.as_ref().unwrap();
+        // Two samples at ts=7000 and ts=17000; bucket width 10s. The
+        // first bucket starts at 0 (not partial), last bucket starts
+        // at 10000 and extends to 20000; if we query to=18_000, the
+        // trailing bucket straddles → partial_end = true.
+        let rows: Vec<ScalarRecord> = [(7_000, 10.0), (17_000, 20.0)]
+            .iter()
+            .map(|(ts, v)| ScalarRecord {
+                node_id: node_id.0,
+                slot_name: "t".into(),
+                ts_ms: *ts,
+                bool_value: None,
+                num_value: Some(*v),
+                ntp_synced: true,
+                last_sync_age_ms: None,
+            })
+            .collect();
+        repo.insert_batch(&rows, 100_000).unwrap();
+
+        let resp = get_telemetry(
+            State(state.clone()),
+            Query(HistoryParams {
+                path: "/sensor".into(),
+                slot: "t".into(),
+                from: Some(0),
+                to: Some(18_000),
+                bucket: Some(10_000),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(resp.0["meta"]["edge_partial_start"], false);
+        assert_eq!(resp.0["meta"]["edge_partial_end"], true);
+
+        // Now query from=5000, to=20_000. First bucket's ts=0 < from
+        // → partial_start; last bucket ends at exactly 20_000 → not partial.
+        let resp = get_telemetry(
+            State(state),
+            Query(HistoryParams {
+                path: "/sensor".into(),
+                slot: "t".into(),
+                from: Some(5_000),
+                to: Some(20_000),
+                bucket: Some(10_000),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(resp.0["meta"]["edge_partial_start"], true);
+        assert_eq!(resp.0["meta"]["edge_partial_end"], false);
+    }
+
+    #[tokio::test]
+    async fn get_history_bucketed_returns_last_value_per_bucket() {
+        let graph = make_graph();
+        let node_id = sensor_node(&graph);
+        let state = make_state_with_repos(graph);
+        let repo = state.history_repo.as_ref().unwrap();
+        // Two buckets at 10s width: records at ts=1000/5000 + ts=11000.
+        for (ts, value) in [(1_000i64, "a"), (5_000, "b"), (11_000, "c")] {
+            repo.insert_batch(
+                &[data_repos::HistoryRecord {
+                    id: 0,
+                    node_id: node_id.0,
+                    slot_name: "notes".into(),
+                    slot_kind: data_repos::HistorySlotKind::String,
+                    ts_ms: ts,
+                    value_json: Some(format!("\"{value}\"")),
+                    blob_bytes: None,
+                    byte_size: 1,
+                    ntp_synced: true,
+                    last_sync_age_ms: None,
+                }],
+                100_000,
+            )
+            .unwrap();
+        }
+        let resp = get_history(
+            State(state),
+            Query(HistoryParams {
+                path: "/sensor".into(),
+                slot: "notes".into(),
+                from: Some(0),
+                to: Some(20_000),
+                bucket: Some(10_000),
+                agg: Some("last".into()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+        let data = resp.0["data"].as_array().unwrap();
+        assert_eq!(data.len(), 2);
+        assert_eq!(data[0]["value"], "b"); // newest in [0, 10k)
+        assert_eq!(data[1]["value"], "c"); // newest in [10k, 20k)
+        assert_eq!(resp.0["meta"]["agg"], "last");
+    }
+
+    #[tokio::test]
+    async fn get_telemetry_bucketed_rejects_unknown_agg() {
+        let graph = make_graph();
+        sensor_node(&graph);
+        let state = make_state_with_repos(graph);
+        let err = get_telemetry(
+            State(state),
+            Query(HistoryParams {
+                path: "/sensor".into(),
+                slot: "t".into(),
+                bucket: Some(10_000),
+                agg: Some("bogus".into()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
@@ -609,6 +1021,7 @@ mod tests {
                 from: None,
                 to: None,
                 limit: None,
+                ..Default::default()
             }),
         )
         .await

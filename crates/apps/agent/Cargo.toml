@@ -42,6 +42,8 @@ domain-fleet = { workspace = true }
 dashboard-nodes = { workspace = true }
 dashboard-runtime = { workspace = true }
 dashboard-transport = { workspace = true }
+ai-runner = { workspace = true }
+domain-ai = { workspace = true }
 blocks-sdk = { workspace = true }
 blocks-host = { workspace = true }
 axum = { workspace = true }

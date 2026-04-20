@@ -43,10 +43,17 @@ export type TableNode = {
 export type ChartSource = { node_id: string; slot: string; field?: string };
 export type ChartSeries = { label: string; points: [number, number][] };
 export type ChartRange = { from: number; to: number };
+export type ChartHistoryPreset = { label: string; duration_ms?: number | null };
+export type ChartHistory = {
+  range_ms?: number | null;
+  user_selectable?: boolean;
+  presets?: ChartHistoryPreset[];
+};
 export type ChartNode = {
   type: "chart"; id?: string; source: ChartSource;
   series: ChartSeries[]; range?: ChartRange;
   page_state_key?: string; kind?: string;
+  history?: ChartHistory;
 };
 export type SparklineNode = {
   type: "sparkline"; id?: string; values: number[];

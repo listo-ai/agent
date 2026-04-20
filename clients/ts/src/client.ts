@@ -14,6 +14,7 @@ import { createKindsApi } from "./domain/kinds.js";
 import { createAuthApi } from "./domain/auth.js";
 import { createUiApi } from "./domain/ui.js";
 import { createHistoryApi } from "./domain/history.js";
+import { createAiApi } from "./domain/ai.js";
 import type { NodesApi } from "./domain/nodes.js";
 import type { SlotsApi } from "./domain/slots.js";
 import type { HistoryApi } from "./domain/history.js";
@@ -26,6 +27,7 @@ import type { BlocksApi } from "./domain/blocks.js";
 import type { KindsApi } from "./domain/kinds.js";
 import type { AuthApi } from "./domain/auth.js";
 import type { UiApi } from "./domain/ui.js";
+import type { AiApi } from "./domain/ai.js";
 import { REST_API_VERSION } from "./version.js";
 import { FleetScope } from "./schemas/fleet.js";
 import type { FleetScope as FleetScopeType } from "./schemas/fleet.js";
@@ -97,6 +99,7 @@ export class AgentClient {
   readonly auth: AuthApi;
   readonly ui: UiApi;
   readonly history: HistoryApi;
+  readonly ai: AiApi;
 
   private constructor(
     transport: RequestTransport,
@@ -115,6 +118,16 @@ export class AgentClient {
     this.auth = createAuthApi(transport, REST_API_VERSION);
     this.ui = createUiApi(transport, REST_API_VERSION);
     this.history = createHistoryApi(transport, REST_API_VERSION);
+    this.ai = createAiApi(
+      transport,
+      REST_API_VERSION,
+      // SSE streaming bypasses the transport — only wired when running
+      // locally. Remote/fleet scopes throw from stream() until fleet
+      // streaming lands.
+      FleetScope.isLocal(scope)
+        ? { baseUrl: opts.baseUrl, ...(opts.token !== undefined && { token: opts.token }) }
+        : undefined,
+    );
 
     if (FleetScope.isLocal(scope)) {
       // Local: real SSE stream against baseUrl.

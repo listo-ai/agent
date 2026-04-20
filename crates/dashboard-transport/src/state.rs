@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use ai_runner::{AiDefaults, Registry};
 use dashboard_runtime::NodeReader;
 use graph::KindRegistry;
 
@@ -27,12 +28,12 @@ pub struct DashboardState {
     /// `KindManifest.views`. `None` while the agent bootstrap has not
     /// wired it in — render requests degrade to 503 in that case.
     pub kinds: Option<Arc<KindRegistry>>,
-    /// Anthropic API key for `/api/v1/ui/compose`. Populated from the
-    /// `ANTHROPIC_API_KEY` env var at agent startup; `None` disables
-    /// AI compose with a deterministic `compose_unavailable` error.
-    pub ai_api_key: Option<String>,
-    /// Override model for compose. `None` uses the crate default.
-    pub ai_model: Option<String>,
+    /// Unified AI runner registry. `None` disables AI endpoints with a
+    /// deterministic `ai_unavailable` error.
+    pub ai_registry: Option<Arc<Registry>>,
+    /// Defaults (provider selection, keys, model override) used when a
+    /// caller doesn't supply its own.
+    pub ai_defaults: AiDefaults,
 }
 
 impl DashboardState {
@@ -44,18 +45,14 @@ impl DashboardState {
             audit: Arc::new(TracingAudit),
             invalidate: Arc::new(TracingInvalidate),
             kinds: None,
-            ai_api_key: None,
-            ai_model: None,
+            ai_registry: None,
+            ai_defaults: AiDefaults::default(),
         }
     }
 
-    pub fn with_ai_api_key(mut self, key: Option<String>) -> Self {
-        self.ai_api_key = key;
-        self
-    }
-
-    pub fn with_ai_model(mut self, model: Option<String>) -> Self {
-        self.ai_model = model;
+    pub fn with_ai(mut self, registry: Arc<Registry>, defaults: AiDefaults) -> Self {
+        self.ai_registry = Some(registry);
+        self.ai_defaults = defaults;
         self
     }
 

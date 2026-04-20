@@ -51,6 +51,7 @@ pub fn mount(state: AppState) -> Router {
         .route("/", get(ui::index))
         // Block REST + MF bundle serving — contributed by the blocks
         // module, merged in so the tower layers below apply uniformly.
+        .merge(crate::ai::routes())
         .merge(crate::blocks::routes())
         .merge(crate::kinds::routes())
         .merge(crate::auth_routes::routes())

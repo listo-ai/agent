@@ -11,9 +11,10 @@ description = "Reusable Rust HTTP client for the agent REST API"
 workspace = true
 
 [dependencies]
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["stream"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 semver = { workspace = true }
 schemars = { workspace = true }
+futures-util = { workspace = true }

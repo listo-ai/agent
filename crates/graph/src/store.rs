@@ -29,15 +29,15 @@ use crate::persist;
 
 pub struct GraphStore {
     kinds: KindRegistry,
-    sink: Arc<dyn EventSink>,
-    repo: Option<Arc<dyn GraphRepo>>,
-    inner: RwLock<StoreInner>,
+    pub(crate) sink: Arc<dyn EventSink>,
+    pub(crate) repo: Option<Arc<dyn GraphRepo>>,
+    pub(crate) inner: RwLock<StoreInner>,
 }
 
-struct StoreInner {
-    by_id: HashMap<NodeId, NodeRecord>,
-    by_path: HashMap<NodePath, NodeId>,
-    links: HashMap<LinkId, Link>,
+pub(crate) struct StoreInner {
+    pub(crate) by_id: HashMap<NodeId, NodeRecord>,
+    pub(crate) by_path: HashMap<NodePath, NodeId>,
+    pub(crate) links: HashMap<LinkId, Link>,
 }
 
 impl GraphStore {
@@ -123,7 +123,7 @@ impl GraphStore {
         Ok(())
     }
 
-    fn repo_save_node(&self, rec: &NodeRecord) -> Result<(), GraphError> {
+    pub(crate) fn repo_save_node(&self, rec: &NodeRecord) -> Result<(), GraphError> {
         if let Some(repo) = &self.repo {
             persist::repo_call(repo.save_node(&persist::node_to_persisted(rec)))?;
         }
@@ -665,7 +665,7 @@ impl GraphStore {
             .ok_or_else(|| GraphError::UnknownKind(id.clone()))
     }
 
-    fn write_inner(&self) -> std::sync::RwLockWriteGuard<'_, StoreInner> {
+    pub(crate) fn write_inner(&self) -> std::sync::RwLockWriteGuard<'_, StoreInner> {
         self.inner.write().expect("GraphStore lock poisoned")
     }
 
@@ -674,7 +674,11 @@ impl GraphStore {
     }
 }
 
-fn collect_subtree(by_id: &HashMap<NodeId, NodeRecord>, root: NodeId, out: &mut Vec<NodeId>) {
+pub(crate) fn collect_subtree(
+    by_id: &HashMap<NodeId, NodeRecord>,
+    root: NodeId,
+    out: &mut Vec<NodeId>,
+) {
     // Post-order: children first, root last.
     if let Some(rec) = by_id.get(&root) {
         for c in rec.children.clone() {

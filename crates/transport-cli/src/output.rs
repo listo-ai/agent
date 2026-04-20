@@ -141,7 +141,13 @@ fn classify_http(status: u16, message: &str) -> (String, i32) {
             };
             (code.into(), EXIT_USER_ERROR)
         }
-        503 if lower.contains("compose") || lower.contains("anthropic_api_key") => {
+        503 if lower.contains("ai_unavailable") => {
+            ("ai_unavailable".into(), EXIT_INFRA_ERROR)
+        }
+        503 if lower.contains("compose")
+            || lower.contains("anthropic_api_key")
+            || lower.contains("ai runner not configured") =>
+        {
             ("compose_unavailable".into(), EXIT_INFRA_ERROR)
         }
         502 if lower.contains("anthropic") || lower.contains("upstream") => {

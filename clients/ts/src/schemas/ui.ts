@@ -105,6 +105,24 @@ export const UiChartRangeSchema = z.object({
 });
 export type UiChartRange = z.infer<typeof UiChartRangeSchema>;
 
+/** One preset in a chart history picker — mirrors `ui_ir::ChartHistoryPreset`. */
+export const UiChartHistoryPresetSchema = z.object({
+  label: z.string(),
+  /** Rolling window in ms. Omit/null for "all time". */
+  duration_ms: z.number().int().nullable().optional(),
+});
+export type UiChartHistoryPreset = z.infer<typeof UiChartHistoryPresetSchema>;
+
+/** Chart history-backfill config — mirrors `ui_ir::ChartHistory`. */
+export const UiChartHistorySchema = z.object({
+  /** Rolling window in ms from "now". Omit for "all time". */
+  range_ms: z.number().int().nullable().optional(),
+  /** Render a preset picker above the chart. */
+  user_selectable: z.boolean().default(false),
+  presets: z.array(UiChartHistoryPresetSchema).default([]),
+});
+export type UiChartHistory = z.infer<typeof UiChartHistorySchema>;
+
 export type UiTreeItem = {
   id: string;
   label: string;
@@ -237,6 +255,7 @@ export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
       range: UiChartRangeSchema.optional(),
       page_state_key: z.string().optional(),
       kind: z.string().optional(),
+      history: UiChartHistorySchema.optional(),
     }),
     z.object({
       type: z.literal("sparkline"),
@@ -482,6 +501,8 @@ export const UiComposeRequestSchema = z.object({
   prompt: z.string(),
   current_layout: z.unknown().optional(),
   context_hints: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
 });
 export type UiComposeRequest = z.infer<typeof UiComposeRequestSchema>;
 
@@ -489,6 +510,7 @@ export type UiComposeRequest = z.infer<typeof UiComposeRequestSchema>;
 export const UiComposeResponseSchema = z.object({
   layout: z.unknown(),
   note: z.string().optional(),
+  provider: z.string(),
 });
 export type UiComposeResponse = z.infer<typeof UiComposeResponseSchema>;
 

@@ -515,11 +515,19 @@ async fn run_daemon(
     let dashboard_reader: Arc<dyn dashboard_runtime::NodeReader + Send + Sync> =
         Arc::new(dashboard_transport::GraphReader::new(graph.clone()));
     let dashboard_kinds = Arc::new(graph.kinds().clone());
+    let ai_registry = Arc::new(ai_runner::Registry::with_defaults());
+    let ai_defaults = ai_runner::AiDefaults {
+        provider: Some(ai_runner::Provider::Anthropic),
+        model: std::env::var("COMPOSE_MODEL").ok(),
+        anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
+        openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+    };
+    domain_ai::runtime::init(ai_registry.clone(), ai_defaults.clone());
+    app_state = app_state.with_ai(ai_registry.clone(), ai_defaults.clone());
     let router = transport_rest::router(app_state).merge(dashboard_transport::router(
         dashboard_transport::DashboardState::new(dashboard_reader)
             .with_kinds(dashboard_kinds)
-            .with_ai_api_key(std::env::var("ANTHROPIC_API_KEY").ok())
-            .with_ai_model(std::env::var("COMPOSE_MODEL").ok()),
+            .with_ai(ai_registry, ai_defaults),
     ));
     let listener = tokio::net::TcpListener::bind(http).await?;
     info!(addr = %http, "http surface listening");
@@ -594,6 +602,7 @@ async fn bootstrap(
     domain_blocks::register_kinds(&kinds);
     domain_fleet::register_kinds(&kinds);
     dashboard_nodes::register_kinds(&kinds);
+    domain_ai::register_kinds(&kinds);
 
     // Scan blocks *before* opening the graph so block-contributed
     // kinds are in the registry the graph later validates against.
@@ -666,6 +675,13 @@ async fn bootstrap(
             domain_compute::add_behavior(),
         )
         .context("registering math.add behaviour")?;
+    engine
+        .behaviors()
+        .register(
+            <domain_ai::AiRun as blocks_sdk::NodeKind>::kind_id(),
+            domain_ai::behavior(),
+        )
+        .context("registering sys.ai.run behaviour")?;
 
     Ok((engine, graph, bcast, ring, blocks))
 }

@@ -23,6 +23,7 @@ data-entities = { workspace = true }
 data-repos = { workspace = true }
 data-tsdb = { workspace = true }
 domain-history = { workspace = true }
+ai-runner = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }

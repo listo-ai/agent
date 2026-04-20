@@ -16,7 +16,7 @@ use std::sync::Mutex;
 use rusqlite::{params, Connection, TransactionBehavior};
 use uuid::Uuid;
 
-use crate::{ScalarQuery, ScalarRecord, TelemetryRepo, TsdbError};
+use crate::{AggKind, BucketedQuery, BucketedRow, ScalarQuery, ScalarRecord, TelemetryRepo, TsdbError};
 
 pub struct SqliteTelemetryRepo {
     conn: Mutex<Connection>,
@@ -192,6 +192,83 @@ impl TelemetryRepo for SqliteTelemetryRepo {
         })
     }
 
+    fn query_bucketed(&self, q: &BucketedQuery) -> Result<Vec<BucketedRow>, TsdbError> {
+        if q.bucket_ms <= 0 {
+            return Err(TsdbError::Invalid("bucket_ms must be > 0".into()));
+        }
+        // Coalesce bool_value into num_value for aggregation so the same
+        // query works for Bool and Number slots. `last` is picked with a
+        // correlated subquery on the max `ts_ms` within each bucket.
+        let value_expr = "COALESCE(num_value, CASE WHEN bool_value IS NULL THEN NULL ELSE CAST(bool_value AS REAL) END)";
+        let agg_expr = match q.agg {
+            AggKind::Avg => format!("AVG({value_expr})"),
+            AggKind::Min => format!("MIN({value_expr})"),
+            AggKind::Max => format!("MAX({value_expr})"),
+            AggKind::Sum => format!("SUM({value_expr})"),
+            AggKind::Count => "CAST(COUNT(*) AS REAL)".to_string(),
+            // `last` = value whose ts_ms is the max in the bucket. We
+            // emulate this with MAX(ts_ms * 1e9 + row_index) then join
+            // back, but the cheaper portable form is a window function.
+            // SQLite 3.25+ supports window functions; assume that.
+            AggKind::Last => format!(
+                "(SELECT {value_expr} FROM slot_timeseries t2
+                   WHERE t2.node_id = ?1 AND t2.slot_name = ?2
+                     AND (t2.ts_ms / ?5) * ?5 = (t.ts_ms / ?5) * ?5
+                   ORDER BY t2.ts_ms DESC, t2.id DESC LIMIT 1)"
+            ),
+        };
+
+        // Don't push LIMIT into SQL: ASC+LIMIT keeps the oldest, we
+        // want the most-recent. Truncate in Rust after fetch.
+        let _ = q.limit;
+
+        // `Last` is a per-row correlated subquery; we still group, but
+        // every row in a bucket reports the same value so a simple
+        // `MIN(...)` wrapper collapses them harmlessly.
+        let select_expr = if matches!(q.agg, AggKind::Last) {
+            format!("MIN({agg_expr})")
+        } else {
+            agg_expr
+        };
+
+        let sql = format!(
+            "SELECT (ts_ms / ?5) * ?5 AS bucket_ts,
+                    {select_expr}  AS agg_val,
+                    COUNT(*)       AS cnt
+               FROM slot_timeseries t
+              WHERE node_id = ?1 AND slot_name = ?2
+                AND ts_ms BETWEEN ?3 AND ?4
+              GROUP BY bucket_ts
+              ORDER BY bucket_ts ASC"
+        );
+
+        self.with_conn(|conn| {
+            let nid = q.node_id.simple().to_string();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(
+                params![nid, q.slot_name, q.from_ms, q.to_ms, q.bucket_ms],
+                |row| {
+                    Ok(BucketedRow {
+                        ts_ms: row.get(0)?,
+                        value: row.get::<_, Option<f64>>(1)?,
+                        count: row.get::<_, i64>(2)? as u64,
+                    })
+                },
+            )?;
+            let mut out: Vec<BucketedRow> = rows.collect::<Result<_, _>>()?;
+            // If the caller capped buckets, keep the most-recent ones
+            // (SQLite LIMIT on ASC would keep the oldest). Swap if needed.
+            if let Some(l) = q.limit {
+                let l = l as usize;
+                if out.len() > l {
+                    let drop = out.len() - l;
+                    out.drain(0..drop);
+                }
+            }
+            Ok(out)
+        })
+    }
+
     fn count(&self, node_id: Uuid, slot_name: &str) -> Result<u64, TsdbError> {
         self.with_conn(|conn| {
             let n: i64 = conn.query_row(
@@ -265,6 +342,9 @@ mod tests {
         repo.insert_batch(&batch, 3).unwrap();
         assert_eq!(repo.count(Uuid::nil(), "temp").unwrap(), 3);
     }
+
+    // Bucketing tests live in `tests/bucketing.rs` (integration
+    // tests) to keep this file under the 400-line cap.
 
     #[test]
     fn evict_oldest() {

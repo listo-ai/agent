@@ -701,6 +701,8 @@ pub enum UiComponent {
         page_state_key: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         kind: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        history: Option<UiChartHistory>,
     },
     Sparkline {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -896,6 +898,29 @@ pub struct UiChartRange {
     pub to: i64,
 }
 
+/// Chart history-backfill config — mirrors `ui_ir::ChartHistory`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiChartHistory {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "ui_is_false")]
+    pub user_selectable: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<UiChartHistoryPreset>,
+}
+
+fn ui_is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// One preset in a chart history picker — mirrors `ui_ir::ChartHistoryPreset`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiChartHistoryPreset {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+}
+
 /// Table data source — mirrors `ui_ir::TableSource`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UiTableSource {
@@ -1001,6 +1026,12 @@ pub struct UiComposeRequest {
     pub current_layout: Option<JsonValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_hints: Option<String>,
+    /// Override the default provider (`anthropic` | `openai` | `claude` | `codex`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Override the default model for this call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 /// Response from `POST /api/v1/ui/compose` — the generated
@@ -1010,6 +1041,8 @@ pub struct UiComposeResponse {
     pub layout: JsonValue,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Provider that served the request (`anthropic`, `openai`, …).
+    pub provider: String,
 }
 
 /// Response from `GET /api/v1/ui/vocabulary` — the JSON Schema of the
@@ -1197,4 +1230,86 @@ pub struct FlowRevisionDto {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FlowMutationResult {
     pub head_revision_id: String,
+}
+
+/// AI provider status entry — `GET /api/v1/ai/providers`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AiProviderStatus {
+    pub provider: String,
+    pub available: bool,
+}
+
+/// Request body for `POST /api/v1/ai/run`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AiRunRequest {
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    /// Extended thinking / reasoning effort: `low` | `medium` | `high`
+    /// | `off` or a raw token-budget integer as a string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_budget: Option<String>,
+}
+
+/// Response body from `POST /api/v1/ai/run`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AiRunResponse {
+    pub text: String,
+    pub provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub duration_ms: u64,
+}
+
+/// One frame from `POST /api/v1/ai/stream`. Tagged by `type`, mirroring
+/// `ai_runner::EventKind`. The final frame of every stream is a
+/// `AiStreamEvent::Result` carrying the aggregated response (same shape
+/// as [`AiRunResponse`]).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AiStreamEvent {
+    Connected {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+    },
+    Text {
+        content: String,
+    },
+    ToolCall {
+        name: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: JsonValue,
+    },
+    Done {
+        duration_ms: u64,
+        cost_usd: f64,
+        input_tokens: u32,
+        output_tokens: u32,
+    },
+    Error {
+        message: String,
+    },
+    /// Terminal frame — always the last event of the stream. Flat shape
+    /// matching [`AiRunResponse`] (not wrapped) so the variant decodes
+    /// from the same inline JSON the server emits.
+    Result {
+        text: String,
+        provider: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        input_tokens: u32,
+        output_tokens: u32,
+        duration_ms: u64,
+    },
 }

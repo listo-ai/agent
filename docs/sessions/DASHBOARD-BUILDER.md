@@ -619,4 +619,62 @@ Context for the tiers: the friend's reference system (their YAML linked from ses
 
 Once issue #1 is resolved, the quickest visible win is Tier 1 #1 + #3 together: **query templating** + **date-range preset picker**. That's exactly the shape of the reference system's `Readings` chart — a row of time-range buttons above a chart whose `source.range` reads `$page.range`. Implement those two; every subsequent filter feature reuses the same substrate.
 
+---
+
+## Chart history backfill + live stream (proposal)
+
+**Problem.** Today a `chart` mounts with an empty series and only grows as SSE `slot_changed` events arrive. Open the page, you see nothing until the next tick. Close/reopen, the prior points are gone. Every live chart is effectively amnesiac — "live" without "history" is only half a chart.
+
+**Shape.** Add a `history` block to the `chart` IR. Declarative, additive: `source` continues to describe the live stream (unchanged), `history` describes the initial backfill. The two compose: on mount the client fetches history, then SSE extends the same series forward.
+
+```json
+{
+  "id": "hist",
+  "type": "chart",
+  "source": {
+    "node_id": "973dab…",
+    "slot": "out",
+    "field": "payload.count"
+  },
+  "history": {
+    "enabled": true,
+    "range": "last_1h",
+    "bucket": "10s",
+    "agg": "avg",
+    "user_selectable": true
+  },
+  "live": { "subscribe": true, "max_points": 500 }
+}
+```
+
+**Fields.**
+
+- `range` — preset (`last_5m | last_1h | last_6h | last_24h | last_7d`) **or** `{ from, to }` ISO timestamps. Also accepts a `$page.<key>` binding so one picker drives many charts (see Tier 1 #3).
+- `bucket` + `agg` — server-side downsampling. `agg ∈ {avg, min, max, sum, last, count}`. Non-negotiable: without bucketing, 7 days of 1 Hz data is 600k points per chart per client.
+- `user_selectable` — renders a per-chart range picker above the chart. Cheap escape hatch for one-off drill-downs without a page-level `$page.range`.
+- `live.subscribe` — whether to open an SSE subscription after the backfill lands. Default `true`.
+- `live.max_points` — ring-buffer cap for the merged (history + live) series. Default ~500; older points drop off the left as new ticks arrive.
+
+**Flow.**
+
+1. Mount. Client calls `GET /api/v1/history?node=…&slot=out&field=payload.count&from=…&to=…&bucket=10s&agg=avg`. Response is a seeded `[[ts, value], …]` array.
+2. Subscribe. Client opens SSE from `to` (or `now`) forward. Appends each event to the same series; trims to `max_points`.
+3. Range change (picker or `$page.range` write). Cancel SSE, refetch history, resubscribe from the new `to`. One codepath, not two.
+
+**Why this shape.**
+
+- `source` semantics stay unchanged — existing dashboards keep working; `history` is purely additive. Authors without a history store can simply omit the block.
+- Server does the bucketing. Browser never sees raw events older than `max_points` worth of live ticks.
+- The same `history` block works for `sparkline` and `timeline` with zero IR changes — they consume the same `[ts, value]` shape.
+- `range` accepting a `$page` binding means one date-range picker (Tier 1 #3) drives every chart on a page. No special wiring per chart.
+
+**Open questions before implementation.**
+
+- **Storage.** Is there a timeseries store for `payload.*` fields today, or does history need to be derived from the revision/event log? If the latter, bucketing has to happen on top of a scan of `slot` revisions — acceptable for `last_1h` shapes, painful for `last_7d`.
+- **Dedup at the seam.** If the backfill ends at `to = now` and the first SSE event fires during the history fetch, we need a monotonic cursor (`ts > last_history_ts`) to avoid a duplicate point. The merge belongs in the chart renderer, not per-caller.
+- **Default when unset.** If `history` is omitted, preserve today's behavior (empty on mount, populate from SSE). Don't silently turn this on — authors who want it should opt in.
+- **Where the endpoint lives.** `crates/transport-rest` is the natural home; the reader abstraction probably belongs in `crates/dashboard-transport` alongside the existing table/chart plan emitters so the CLI can exercise it through the same fixture-gate path.
+
+**Smallest shippable slice.** `history.range` as preset-only (no bindings yet), server-side bucketing, no picker UI. A single new client call, one new endpoint, chart appends history to its series before SSE mounts. Bindings + picker fall out naturally on top of Tier 1 #3.
+
 

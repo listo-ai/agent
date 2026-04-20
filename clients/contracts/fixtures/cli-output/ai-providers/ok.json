@@ -1,0 +1,18 @@
+[
+  {
+    "provider": "anthropic",
+    "available": true
+  },
+  {
+    "provider": "claude",
+    "available": true
+  },
+  {
+    "provider": "codex",
+    "available": true
+  },
+  {
+    "provider": "openai",
+    "available": true
+  }
+]

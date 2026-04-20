@@ -100,6 +100,20 @@ impl HttpClient {
         Ok(res)
     }
 
+    /// Raw POST returning the `reqwest::Response` — used by SSE.
+    pub async fn post_raw<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<Response, ClientError> {
+        let req = self.apply_auth(self.client.post(self.url(path)).json(body));
+        let res = req.send().await?;
+        if !res.status().is_success() {
+            return Err(to_http_error(res).await);
+        }
+        Ok(res)
+    }
+
     pub fn base_url(&self) -> &str {
         &self.base_url
     }

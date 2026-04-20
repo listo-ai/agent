@@ -135,6 +135,26 @@ impl BehaviorRegistry {
             .map_err(|e| EngineError::Behavior(e.to_string()))
     }
 
+    /// Run `on_init` for every node that already exists in the graph and has
+    /// a registered behaviour. Called once during [`Engine::start`] so that
+    /// source nodes (heartbeat, timer generators, …) arm their timers after a
+    /// process restart — the graph restore path does *not* emit `NodeCreated`
+    /// for pre-existing nodes, so this is the only trigger site for them.
+    pub fn boot_init_all(&self) {
+        let nodes = self.graph.snapshots();
+        for snap in nodes {
+            if self.lookup(&snap.kind).is_none() {
+                continue;
+            }
+            if let Err(err) = self.dispatch_init(snap.id) {
+                tracing::warn!(
+                    node = %snap.id, kind = %snap.kind, error = %err,
+                    "boot on_init failed",
+                );
+            }
+        }
+    }
+
     /// Run the behaviour's `on_init` for the named node. Caller looks
     /// up `NodeId` and `path` from the graph store.
     pub fn dispatch_init(&self, node: NodeId) -> Result<(), EngineError> {

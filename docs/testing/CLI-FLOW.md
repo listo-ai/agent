@@ -2,10 +2,12 @@
 
 Goal: drive flow + node graph state end-to-end with `agent <cmd>` — no Studio, no hand-crafted HTTP. This is the surface AI assistants (Claude Code, Cursor, aider, shell-integrated LLMs) should use when a user prompt says *"create a flow that …"* or *"wire this sensor to that alarm"*.
 
+**Before anything else, read [docs/testing/TESTING.md](./TESTING.md)** — it's the source of truth for local dev: which agent runs where (`make run` = 8080; `make dev` = cloud 8081 + edge 8082), which Studio port pairs with which agent (3000 / 3001 / 3002), and wipe/reset rules. Every CLI example below targets `localhost:8080` by default; point elsewhere with `AGENT_URL=http://localhost:<port>` or `agent -u http://localhost:<port> …`.
+
 See also:
 
 - [docs/design/CLI.md](../design/CLI.md) — command tree, global flags, output contracts (deterministic JSON, stable exit codes, `--help-json`, `agent schema`).
-- [docs/testing/DASHBOARD.md](./DASHBOARD.md) — sibling doc for `ui.page` authoring.
+- [docs/testing/CLI-DASHBOARD.md](./CLI-DASHBOARD.md) — sibling doc for `ui.page` authoring.
 
 ---
 
@@ -59,14 +61,19 @@ agent nodes create / sys.core.flow flow-1
 Output (`-o json`):
 
 ```json
-{ "id": "c506ba79-…", "path": "/flow-1" }
+{ "id": "c506ba79bbcf4b189280dc20fab6c0d0", "path": "/flow-1" }
 ```
+
+Note: ids are the canonical un-hyphenated 32-char form. Don't hand-format them with dashes.
 
 ### Step 2 — add behaviour nodes
 
+Heartbeat emits a `Msg` envelope (`{_msgid, payload: {state, count}}`), not a bare number. To feed its tick-count into `math.add` (which expects a scalar on `a`/`b`), drop a `sys.compute.pluck` node between them and configure its `path` to `payload.count`.
+
 ```bash
-agent nodes create /flow-1 sys.logic.heartbeat   heartbeat
-agent nodes create /flow-1 sys.compute.math.add  add
+agent nodes create /flow-1 sys.logic.heartbeat  heartbeat
+agent nodes create /flow-1 sys.compute.pluck    pluck
+agent nodes create /flow-1 sys.compute.math.add add
 ```
 
 Check what's allowed under `/flow-1` before guessing:
@@ -81,28 +88,32 @@ Each kind's `settings_schema` (from `agent kinds list`) tells you the config sha
 
 ```bash
 agent config set /flow-1/heartbeat '{"interval_ms": 500, "enabled": true, "start_state": false}'
+agent config set /flow-1/pluck     '{"path": "payload.count"}'
 ```
 
 Individual slot writes — use for trigger inputs or status overrides:
 
 ```bash
-agent slots write /flow-1/add a 10
-agent slots write /flow-1/add b 32
+agent slots write /flow-1/add b 100
 ```
 
 The value is parsed as JSON first, string fallback. `'"hello"'` is a JSON string; `hello` is too but only if the slot accepts strings.
 
 ### Step 4 — wire nodes together
 
-Links route slot outputs to slot inputs:
+Links route slot outputs to slot inputs. Chain heartbeat → pluck → add so the pluck node reshapes the msg before it reaches the scalar-expecting `a` input:
 
 ```bash
 agent links create \
   --source-path /flow-1/heartbeat --source-slot out \
-  --target-path /flow-1/add       --target-slot a
+  --target-path /flow-1/pluck     --target-slot in
+
+agent links create \
+  --source-path /flow-1/pluck --source-slot out \
+  --target-path /flow-1/add   --target-slot a
 ```
 
-Heartbeat's single `out` port carries `{ state, count }` as a Node-RED-style `msg.payload`. Downstream nodes read `msg.payload.count` / `msg.payload.state`.
+Heartbeat's single `out` port carries `{ state, count }` as a Node-RED-style `msg.payload`. `sys.compute.pluck` walks the configured dot-path (`payload.count`) into the incoming msg and emits a child msg whose `payload` is the scalar — exactly what `math.add` wants.
 
 List links to verify:
 
@@ -112,13 +123,15 @@ agent links list -o table
 
 ### Step 5 — start the flow
 
-Nodes default to `created` lifecycle. Flip them to `active` to start ticking:
+Nodes default to `created` lifecycle. **Every node in the chain** must be flipped to `active` — a source that's ticking into a downstream node in `created` state will push msgs onto its input slot but the behaviour's `on_message` handler won't run, so nothing propagates further.
 
 ```bash
 agent lifecycle /flow-1/heartbeat active
+agent lifecycle /flow-1/pluck     active
+agent lifecycle /flow-1/add       active
 ```
 
-`sys.logic.heartbeat` auto-runs `on_init` on `NodeCreated`, so in practice it's already ticking — but explicitly activating keeps LLM-generated scripts idempotent across restarts.
+`sys.logic.heartbeat` auto-runs `on_init` on `NodeCreated`, so in practice it's already ticking — but explicitly activating every node keeps LLM-generated scripts idempotent across restarts *and* ensures downstream propagation.
 
 ### Step 6 — observe
 
@@ -240,7 +253,7 @@ Common codes you'll hit while authoring flows:
 | Code | Cause | Fix |
 |---|---|---|
 | `bad_path` | Malformed node path | Use `/`-separated segments, each `[a-zA-Z_][a-zA-Z0-9_-]*` |
-| `kind_not_found` | Unknown kind id | `agent kinds list` — copy the exact id |
+| `bad_request` | Unknown kind id (e.g. `sys.nonexistent.kind`) | `agent kinds list` — copy the exact id |
 | `placement_refused` | Kind can't live under this parent | Check `containment.must_live_under` on the kind |
 | `not_found` | Path doesn't exist | `agent nodes list --filter 'parent_path==/flow-1'` to see what's there |
 | `conflict` (on `flows edit`) | Stale `--expected-head` | Re-fetch, retry |
@@ -271,7 +284,8 @@ agent links create \
   --source-path /ticker-demo/ticker  --source-slot out \
   --target-path /ticker-demo/counter --target-slot in
 
-# 5. Activate
+# 5. Activate every node in the chain (downstream nodes in `created` state
+#    won't run their on_message handler)
 agent lifecycle /ticker-demo/ticker  active
 agent lifecycle /ticker-demo/counter active
 

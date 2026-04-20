@@ -2,24 +2,18 @@
 //!
 //! Takes a natural-language prompt (plus an optional current layout
 //! to edit) and returns a validated ComponentTree. The agent owns
-//! the Anthropic API key via env var; the client never sees it. This
-//! is the canonical AI surface — the CLI (`agent ui compose`) and
-//! the Studio builder's Compose panel both call through here.
+//! the provider selection + API key via the shared `Registry`; the
+//! client never sees keys. This is the canonical AI surface — the
+//! CLI (`agent ui compose`) and the Studio builder's Compose panel
+//! both call through here.
 //!
 //! The tool call's input_schema is the live `ui_ir::Component` JSON
 //! Schema, so the model is physically unable to emit a component
 //! variant we don't render.
-//!
-//! Current scope — MVP:
-//! - non-streaming (one-shot response body),
-//! - Anthropic-only backend (Claude Sonnet by default, overridable
-//!   via `COMPOSE_MODEL` env),
-//! - no server-side graph grounding beyond what the caller passes
-//!   in `context_hints`.
-//!
-//! Streaming, graph auto-grounding, and multi-turn chat are
-//! follow-ups that live behind this same endpoint.
 
+use std::sync::Arc;
+
+use ai_runner::{Provider, RunConfig, ToolChoice, ToolDef};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -30,11 +24,7 @@ use ui_ir::Component;
 
 use crate::state::DashboardState;
 
-const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION: &str = "2023-06-01";
-const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 const MAX_TOKENS: u32 = 8000;
-const UPSTREAM_TIMEOUT_SECS: u64 = 60;
 
 #[derive(Debug, Deserialize)]
 pub struct ComposeRequest {
@@ -45,29 +35,33 @@ pub struct ComposeRequest {
     #[serde(default)]
     pub current_layout: Option<JsonValue>,
     /// Optional free-text hints about the surrounding graph
-    /// (node paths, kinds, slots) the author wants referenced. Pure
-    /// pass-through — the server does not auto-enrich in this pass.
+    /// (node paths, kinds, slots) the author wants referenced.
     #[serde(default)]
     pub context_hints: Option<String>,
+    /// Override the default provider for this call (e.g. `openai`).
+    #[serde(default)]
+    pub provider: Option<Provider>,
+    /// Override the default model for this call.
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ComposeResponse {
-    /// Generated ComponentTree JSON — always shape-valid against the
-    /// emit_layout tool's input_schema.
+    /// Generated ComponentTree JSON — shape-valid against emit_layout's
+    /// input_schema.
     pub layout: JsonValue,
     /// Free-text the model emitted alongside the tool call, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Provider that served the request.
+    pub provider: String,
 }
-
-// ---- error shape ----------------------------------------------------------
 
 #[derive(Debug)]
 enum ComposeError {
     Unavailable(String),
-    Upstream { status: StatusCode, message: String },
-    BadResponse(String),
+    Upstream(String),
     BadRequest(String),
 }
 
@@ -75,16 +69,7 @@ impl IntoResponse for ComposeError {
     fn into_response(self) -> Response {
         let (status, code, message) = match self {
             Self::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, "compose_unavailable", m),
-            Self::Upstream { status, message } => (
-                if status.is_server_error() {
-                    StatusCode::BAD_GATEWAY
-                } else {
-                    StatusCode::BAD_GATEWAY
-                },
-                "upstream_error",
-                message,
-            ),
-            Self::BadResponse(m) => (StatusCode::BAD_GATEWAY, "upstream_error", m),
+            Self::Upstream(m) => (StatusCode::BAD_GATEWAY, "upstream_error", m),
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, "bad_request", m),
         };
         (
@@ -94,8 +79,6 @@ impl IntoResponse for ComposeError {
             .into_response()
     }
 }
-
-// ---- handler --------------------------------------------------------------
 
 pub async fn handler(
     State(state): State<DashboardState>,
@@ -115,103 +98,83 @@ async fn compose_inner(
         return Err(ComposeError::BadRequest("prompt is required".into()));
     }
 
-    let api_key = state.ai_api_key.clone().ok_or_else(|| {
-        ComposeError::Unavailable(
-            "ANTHROPIC_API_KEY not set on the agent — AI compose is disabled".into(),
-        )
+    let registry = state.ai_registry.clone().ok_or_else(|| {
+        ComposeError::Unavailable("AI runner not configured on the agent".into())
     })?;
-    let model = state
-        .ai_model
+
+    let provider = req
+        .provider
         .clone()
-        .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        .or_else(|| state.ai_defaults.provider.clone())
+        .unwrap_or(Provider::Anthropic);
+
+    let runner = registry.get(&provider).ok_or_else(|| {
+        ComposeError::Unavailable(format!("provider `{provider}` not registered"))
+    })?;
 
     let component_schema = serde_json::to_value(schemars::schema_for!(Component))
         .expect("schemars component schema is infallible");
 
-    let body = serde_json::json!({
-        "model": model,
-        "max_tokens": MAX_TOKENS,
-        "system": system_prompt(),
-        "tools": [{
-            "name": "emit_layout",
-            "description": "Emit the complete ui.page layout — always respond via this tool, never in prose.",
-            "input_schema": {
-                "type": "object",
-                "required": ["ir_version", "root"],
-                "properties": {
-                    "ir_version": { "type": "integer" },
-                    "root": component_schema,
-                    "vars": {
-                        "type": "object",
-                        "description": "Author-declared constants referenced via {{$vars.<key>}}. Use for repeated node ids, filter literals, etc."
-                    }
+    let emit_layout = ToolDef {
+        name: "emit_layout".into(),
+        description: Some(
+            "Emit the complete ui.page layout — always respond via this tool, never in prose."
+                .into(),
+        ),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "required": ["ir_version", "root"],
+            "properties": {
+                "ir_version": { "type": "integer" },
+                "root": component_schema,
+                "vars": {
+                    "type": "object",
+                    "description": "Author-declared constants referenced via {{$vars.<key>}}. Use for repeated node ids, filter literals, etc."
                 }
             }
-        }],
-        "tool_choice": { "type": "tool", "name": "emit_layout" },
-        "messages": [{ "role": "user", "content": user_message(&req) }]
-    });
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(UPSTREAM_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| ComposeError::BadResponse(format!("http client build: {e}")))?;
-
-    let http_resp = client
-        .post(ANTHROPIC_URL)
-        .header("x-api-key", api_key)
-        .header("anthropic-version", ANTHROPIC_VERSION)
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| ComposeError::BadResponse(format!("anthropic: {e}")))?;
-
-    let status = http_resp.status();
-    if !status.is_success() {
-        let text = http_resp.text().await.unwrap_or_default();
-        return Err(ComposeError::Upstream {
-            status,
-            message: format!("anthropic HTTP {status}: {text}"),
-        });
-    }
-
-    let payload: AnthropicResponse = http_resp
-        .json()
-        .await
-        .map_err(|e| ComposeError::BadResponse(format!("decoding anthropic response: {e}")))?;
-
-    let mut tool_input: Option<JsonValue> = None;
-    let mut text_notes: Vec<String> = Vec::new();
-    for block in payload.content {
-        match block {
-            AnthropicBlock::ToolUse { name, input } if name == "emit_layout" => {
-                tool_input = Some(input);
-            }
-            AnthropicBlock::Text { text } => {
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    text_notes.push(trimmed.to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let layout = tool_input.ok_or_else(|| {
-        ComposeError::BadResponse("model did not call emit_layout — no layout to return".into())
-    })?;
-
-    let note = if text_notes.is_empty() {
-        None
-    } else {
-        Some(text_notes.join("\n\n"))
+        }),
     };
 
-    Ok(ComposeResponse { layout, note })
-}
+    let cfg = RunConfig {
+        prompt: user_message(&req),
+        system_prompt: Some(system_prompt()),
+        model: req.model.clone().or_else(|| state.ai_defaults.model.clone()),
+        api_key: state.ai_defaults.api_key_for(&provider),
+        max_tokens: Some(MAX_TOKENS),
+        tools: vec![emit_layout],
+        tool_choice: Some(ToolChoice::Tool { name: "emit_layout".into() }),
+        ..Default::default()
+    };
 
-// ---- prompt construction --------------------------------------------------
+    let session_id = format!("compose-{}", uuid_like());
+    let result = runner
+        .run(cfg, session_id, Arc::new(|_ev| {}))
+        .await;
+
+    if let Some(err) = result.error {
+        return Err(ComposeError::Upstream(err));
+    }
+
+    let layout = result
+        .tool_uses
+        .into_iter()
+        .find(|t| t.name == "emit_layout")
+        .map(|t| t.input)
+        .ok_or_else(|| {
+            ComposeError::Upstream(
+                "model did not call emit_layout — no layout to return".into(),
+            )
+        })?;
+
+    let note_text = result.text.trim().to_string();
+    let note = if note_text.is_empty() { None } else { Some(note_text) };
+
+    Ok(ComposeResponse {
+        layout,
+        note,
+        provider: provider.to_string(),
+    })
+}
 
 fn system_prompt() -> String {
     [
@@ -278,23 +241,11 @@ fn user_message(req: &ComposeRequest) -> String {
     parts.join("\n")
 }
 
-// ---- Anthropic response shapes (subset we care about) --------------------
-
-#[derive(Debug, Deserialize)]
-struct AnthropicResponse {
-    content: Vec<AnthropicBlock>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum AnthropicBlock {
-    Text {
-        text: String,
-    },
-    ToolUse {
-        name: String,
-        input: JsonValue,
-    },
-    #[serde(other)]
-    Unknown,
+fn uuid_like() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{nanos:x}")
 }

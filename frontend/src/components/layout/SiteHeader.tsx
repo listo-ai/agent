@@ -2,7 +2,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useUiStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useAuth } from "@/providers/auth";
-import { ArrowLeft, LogOut, Moon, Sun } from "lucide-react";
+import { ArrowLeft, LogOut, Moon, Sparkles, Sun } from "lucide-react";
+import { useGlobalAiChat } from "@/features/global-ai-chat";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -94,6 +95,8 @@ export function SiteHeader() {
   const { login, logout } = useAuth();
 
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+  const toggleAiChat = useGlobalAiChat((s) => s.toggle);
+  const aiChatOpen = useGlobalAiChat((s) => s.open);
   const email = user?.profile["email"] as string | undefined;
   const canGoBack = breadcrumbs.length > 1;
 
@@ -144,6 +147,20 @@ export function SiteHeader() {
 
       {/* Right-hand controls */}
       <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={aiChatOpen ? "secondary" : "ghost"}
+              size="icon-xs"
+              onClick={toggleAiChat}
+              aria-label="AI assistant"
+              aria-pressed={aiChatOpen}
+            >
+              <Sparkles size={15} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">AI assistant</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

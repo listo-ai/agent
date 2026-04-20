@@ -7,6 +7,7 @@ use anyhow::Result;
 
 use crate::output::OutputFormat;
 
+mod ai;
 mod auth;
 mod blocks;
 mod capabilities;
@@ -104,6 +105,10 @@ pub enum CliCommand {
     #[command(subcommand)]
     Flows(flows::FlowsCmd),
 
+    /// AI runner operations — list providers, run one-shot prompts.
+    #[command(subcommand)]
+    Ai(ai::AiCmd),
+
     /// Seed a preset graph for testing.
     Seed {
         /// Preset name: `count_chain` or `trigger_demo`.
@@ -135,6 +140,7 @@ impl CliCommand {
             Self::Auth(sub) => sub.command_name(),
             Self::Ui(sub) => sub.command_name(),
             Self::Flows(sub) => sub.command_name(),
+            Self::Ai(sub) => sub.command_name(),
             Self::Lifecycle { .. } => "lifecycle",
             Self::Seed { .. } => "seed",
             Self::Schema { .. } => "schema",
@@ -156,6 +162,7 @@ pub async fn dispatch(client: &AgentClient, global: &GlobalOpts, cmd: &CliComman
         CliCommand::Auth(sub) => auth::run(client, fmt, sub).await,
         CliCommand::Ui(sub) => ui::run(client, fmt, sub).await,
         CliCommand::Flows(sub) => flows::run(client, fmt, sub).await,
+        CliCommand::Ai(sub) => ai::run(client, fmt, sub).await,
         CliCommand::Lifecycle { path, to } => lifecycle::run(client, fmt, path, to).await,
         CliCommand::Seed { preset } => seed::run(client, fmt, preset).await,
         CliCommand::Schema { all, command } => schema::run(fmt, *all, command),

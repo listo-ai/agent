@@ -29,19 +29,26 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import type { ChartNode, ChartSeries } from "../types";
+import type { ChartHistoryPreset, ChartNode, ChartSeries } from "../types";
 import { useSdui } from "../context";
 import { extractField } from "../field";
+import {
+  DEFAULT_HISTORY_PRESETS,
+  matchActivePreset,
+  pickAutoBucket,
+  resolveHistoryRange,
+  resolveRange,
+} from "./chart-history";
+import {
+  buildChartData,
+  coerceNumber,
+  formatTimeTick,
+  formatValueTick,
+} from "./chart-data";
 
 const DEFAULT_WINDOW_MS = 60 * 60 * 1000;
 const DEFAULT_LIMIT = 500;
-
-// Shadcn's chart CSS variables — `var(--chart-1)` etc. resolve to
-// theme-aware palette colours, so the same component looks right in
-// both light and dark mode without hand-picking hex codes.
-const PALETTE_KEYS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"] as const;
 
 export function ChartComponent({ node }: { node: ChartNode }) {
   const { pageState, setPageState } = useSdui();
@@ -52,26 +59,37 @@ export function ChartComponent({ node }: { node: ChartNode }) {
   const authoredSeries = node.series ?? [];
   const hasAuthored = authoredSeries.some((s) => s.points.length > 0);
 
-  const effectiveRange = resolveRange(pageState, stateKey, node.range);
+  // `history.range_ms` rolls from "now at mount". Snapping to a 10s
+  // bucket keeps the queryKey stable across renders; SSE appends
+  // forward from there, so fine-grained drift isn't needed.
+  const historyRange = useMemo(
+    () => resolveHistoryRange(node.history?.range_ms),
+    // range_ms is a primitive; recompute when the IR changes.
+    [node.history?.range_ms],
+  );
+
+  const effectiveRange = resolveRange(
+    pageState,
+    stateKey,
+    node.range ?? historyRange,
+  );
   const fetched = useChartFetch(node, hasAuthored, effectiveRange);
   const series = hasAuthored ? authoredSeries : fetched.series;
+
+  const presets = node.history?.user_selectable
+    ? node.history.presets && node.history.presets.length > 0
+      ? node.history.presets
+      : DEFAULT_HISTORY_PRESETS
+    : null;
+
+  const activePresetLabel = presets
+    ? matchActivePreset(effectiveRange, presets)
+    : null;
 
   const { data, config, seriesKeys } = useMemo(
     () => buildChartData(series),
     [series],
   );
-
-  if (data.length === 0) {
-    return (
-      <div className="rounded border border-dashed border-muted-foreground/30 px-3 py-6 text-center text-xs text-muted-foreground">
-        {fetched.isLoading
-          ? "Loading…"
-          : fetched.isError
-          ? "Failed to load telemetry."
-          : "No data in the visible window."}
-      </div>
-    );
-  }
 
   function commitZoom() {
     if (dragFrom !== null && dragTo !== null && dragFrom !== dragTo) {
@@ -83,8 +101,60 @@ export function ChartComponent({ node }: { node: ChartNode }) {
     setDragTo(null);
   }
 
+  function applyPreset(p: ChartHistoryPreset) {
+    const to = Date.now();
+    const from = p.duration_ms == null ? 0 : to - p.duration_ms;
+    setPageState({ [stateKey]: { from, to } });
+  }
+
+  const picker = presets ? (
+    <div className="flex flex-wrap gap-1 pb-2 text-xs">
+      {presets.map((p) => {
+        const active = p.label === activePresetLabel;
+        return (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => applyPreset(p)}
+            className={
+              "rounded border px-2 py-0.5 transition-colors " +
+              (active
+                ? "border-foreground bg-foreground text-background"
+                : "border-muted-foreground/30 text-muted-foreground hover:bg-muted")
+            }
+          >
+            {p.label}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  if (data.length === 0) {
+    const historyRequested =
+      node.history?.range_ms != null && node.history.range_ms > 0;
+    return (
+      <div>
+        {picker}
+        <div className="rounded border border-dashed border-muted-foreground/30 px-3 py-6 text-center text-xs text-muted-foreground">
+          {fetched.isLoading ? (
+            "Loading…"
+          ) : fetched.isError ? (
+            "Failed to load telemetry."
+          ) : historyRequested ? (
+            <HistoryEmptyHint node={node} />
+          ) : (
+            "No data in the visible window."
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+    <div>
+      {picker}
+      <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
       <LineChart
         data={data}
         margin={{ top: 8, right: 12, bottom: 0, left: 8 }}
@@ -158,60 +228,40 @@ export function ChartComponent({ node }: { node: ChartNode }) {
         ) : null}
       </LineChart>
     </ChartContainer>
+    </div>
   );
 }
 
-type ChartRow = { ts: number } & Record<string, number | null>;
-
-function buildChartData(series: ChartSeries[]): {
-  data: ChartRow[];
-  config: ChartConfig;
-  seriesKeys: string[];
-} {
-  const seriesKeys: string[] = [];
-  const config: ChartConfig = {};
-  const byTs = new Map<number, ChartRow>();
-
-  series.forEach((s, i) => {
-    if (s.points.length === 0) return;
-    const key = safeKey(s.label, i);
-    seriesKeys.push(key);
-    config[key] = {
-      label: s.label,
-      color: `hsl(var(--${PALETTE_KEYS[i % PALETTE_KEYS.length]}))`,
-    };
-    for (const [ts, v] of s.points) {
-      let row = byTs.get(ts);
-      if (!row) {
-        row = { ts };
-        byTs.set(ts, row);
-      }
-      row[key] = v;
-    }
-  });
-
-  const data = [...byTs.values()].sort((a, b) => a.ts - b.ts);
-  return { data, config, seriesKeys };
-}
-
-// Recharts `dataKey` must be a valid property name — squash anything
-// exotic in `series.label` (spaces, dots, unicode) to a stable key.
-function safeKey(label: string, idx: number): string {
-  const cleaned = label.replace(/[^a-zA-Z0-9_]/g, "_");
-  return cleaned.length > 0 ? `s_${cleaned}` : `s_${idx}`;
-}
-
-function formatTimeTick(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatValueTick(v: number): string {
-  if (!Number.isFinite(v)) return "";
-  const abs = Math.abs(v);
-  if (abs >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  if (abs >= 10) return v.toFixed(1);
-  return v.toFixed(2);
+/**
+ * Shown when a chart with `history.range_ms` set gets zero points back.
+ * The SSE stream can still be delivering live ticks fine — what's
+ * missing is *recorded* data in the agent's history/telemetry store.
+ * This almost always means the source slot has no
+ * `sys.core.history.config` policy, so the historizer never wrote
+ * anything. Tell the user that directly instead of "no data".
+ */
+function HistoryEmptyHint({ node }: { node: ChartNode }) {
+  const { node_id, slot, field } = node.source;
+  return (
+    <div className="space-y-1 text-left">
+      <div className="font-medium text-foreground">
+        No recorded history for this slot yet.
+      </div>
+      <div>
+        The chart backfill reads from the agent's history/telemetry store.
+        Configure a historization policy so values start getting recorded.
+      </div>
+      <div className="text-muted-foreground/70">
+        node <code>{node_id.slice(0, 8)}…</code> · slot <code>{slot}</code>
+        {field ? (
+          <>
+            {" "}
+            · field <code>{field}</code>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function useChartFetch(
@@ -241,26 +291,75 @@ function useChartFetch(
   const sourceRef = useRef<"telemetry" | "history" | "both">("both");
   const path = pathQuery.data ?? null;
 
+  // History policies with `paths:` store each under `<slot>.<field>`
+  // (see `effective_path_name` in domain-history/historizer.rs).
+  const telemetrySlot = field ? `${slot}.${field}` : slot;
+
+  // Auto-bucket once the window is large enough that raw rows would
+  // blow past DEFAULT_LIMIT. Below the threshold we keep today's raw
+  // fetch (no visual change); above it we downsample server-side.
+  const effectiveTo = to ?? Date.now();
+  const effectiveFrom = from ?? effectiveTo - DEFAULT_WINDOW_MS;
+  const bucketMs = pickAutoBucket(
+    effectiveTo - effectiveFrom,
+    DEFAULT_LIMIT * 1000,
+  );
+
   const query = useQuery({
-    queryKey: ["sdui-chart", widgetId, node_id, slot, from ?? null, to ?? null],
+    queryKey: [
+      "sdui-chart",
+      widgetId,
+      node_id,
+      slot,
+      from ?? null,
+      to ?? null,
+      bucketMs ?? null,
+    ],
     enabled: !hasAuthored && !!slot && !!path,
     staleTime: 5_000,
     queryFn: async (): Promise<ChartSeries[]> => {
       if (!path) return [{ label: slot, points: [] }];
       const client = await agentPromise;
-      const effectiveTo = to ?? Date.now();
-      const effectiveFrom = from ?? effectiveTo - DEFAULT_WINDOW_MS;
       const opts = {
         from: effectiveFrom,
         to: effectiveTo,
         limit: DEFAULT_LIMIT,
       };
 
+      if (bucketMs && sourceRef.current !== "history") {
+        // Bucketed path — server aggregates, so the client just
+        // stitches `(ts_ms, value)` pairs into the series shape.
+        // Use the expanded slot name so we find historizer-expanded
+        // per-path samples, not the un-recorded parent slot.
+        try {
+          const resp = await client.history.listTelemetryBucketed(
+            path,
+            telemetrySlot,
+            { ...opts, bucket: bucketMs, agg: "avg" },
+          );
+          if (resp.data.length > 0) {
+            sourceRef.current = "telemetry";
+            const points: [number, number][] = [];
+            for (const r of resp.data) {
+              if (r.value !== null && Number.isFinite(r.value)) {
+                points.push([r.ts_ms, r.value]);
+              }
+            }
+            return [{ label: slot, points }];
+          }
+        } catch {
+          // Fall through to raw path — bucketed endpoint failure
+          // shouldn't black out an otherwise-working chart.
+        }
+      }
+
       const want = sourceRef.current;
       const [telemetry, history] = await Promise.all([
         want === "history"
           ? Promise.resolve([])
-          : client.history.listTelemetry(path, slot, opts).catch(() => []),
+          : client.history
+              .listTelemetry(path, telemetrySlot, opts)
+              .catch(() => []),
         want === "telemetry"
           ? Promise.resolve([])
           : client.history.listHistory(path, slot, opts).catch(() => []),
@@ -272,11 +371,16 @@ function useChartFetch(
       }
 
       const points: [number, number][] = [];
+      // We query the expanded slot name when `field` is set, so the
+      // telemetry value is already the extracted scalar. Only
+      // fallback-extract if the row came back under the raw slot.
       for (const r of telemetry) {
-        const v = coerceNumber(field ? extractField(r.value, field) : r.value);
+        const v = coerceNumber(r.value);
         if (v !== null) points.push([r.ts_ms, v]);
       }
       if (points.length === 0) {
+        // Raw history store holds the whole JSON envelope — extract
+        // the declared `field` to land on the numeric payload.
         for (const r of history) {
           const v = coerceNumber(extractField(r.value, field));
           if (v !== null) points.push([r.ts_ms, v]);
@@ -291,37 +395,5 @@ function useChartFetch(
     isLoading: pathQuery.isLoading || query.isLoading,
     isError: pathQuery.isError || query.isError,
   };
-}
-
-function resolveRange(
-  pageState: unknown,
-  key: string,
-  authored: { from: number; to: number } | undefined,
-): { from: number; to: number } | undefined {
-  const state =
-    pageState && typeof pageState === "object"
-      ? (pageState as Record<string, unknown>)[key]
-      : undefined;
-  if (
-    state &&
-    typeof state === "object" &&
-    state !== null &&
-    "from" in state &&
-    "to" in state
-  ) {
-    const s = state as { from: unknown; to: unknown };
-    if (typeof s.from === "number" && typeof s.to === "number") {
-      return { from: s.from, to: s.to };
-    }
-    if (s.from === null && s.to === null) return undefined;
-  }
-  return authored;
-}
-
-function coerceNumber(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (v === true) return 1;
-  if (v === false) return 0;
-  return null;
 }
 

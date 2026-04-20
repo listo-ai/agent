@@ -1,10 +1,20 @@
 import type { RequestTransport } from "../transport/request.js";
 import {
+  BucketedTelemetryResponseSchema,
+  GroupedTelemetryResponseSchema,
+  HistoryBucketedResponseSchema,
   HistoryResponseSchema,
   TelemetryResponseSchema,
   RecordResultSchema,
 } from "../schemas/history.js";
-import type { HistoryRecord, ScalarRecord, RecordResult } from "../schemas/history.js";
+import type {
+  BucketedTelemetryResponse,
+  GroupedTelemetryResponse,
+  HistoryBucketedResponse,
+  HistoryRecord,
+  RecordResult,
+  ScalarRecord,
+} from "../schemas/history.js";
 
 /**
  * History and telemetry endpoints.
@@ -28,6 +38,32 @@ export interface HistoryQueryOptions {
   limit?: number;
 }
 
+/** `avg | min | max | sum | last | count` — see QUERY-LANG.md § time-series. */
+export type TelemetryAgg = "avg" | "min" | "max" | "sum" | "last" | "count";
+
+/** Structured history only supports `last` or `count`. */
+export type HistoryAgg = "last" | "count";
+
+export interface BucketedQueryOptions extends HistoryQueryOptions {
+  /** Bucket width in ms (wall-clock aligned). Required. */
+  bucket: number;
+  /** Aggregation within each bucket. Defaults to `avg`. */
+  agg?: TelemetryAgg;
+}
+
+export interface HistoryBucketedQueryOptions extends HistoryQueryOptions {
+  /** Bucket width in ms. Required. */
+  bucket: number;
+  /** `last` (default) or `count`. */
+  agg?: HistoryAgg;
+}
+
+export interface GroupedTelemetryQueryOptions extends HistoryQueryOptions {
+  /** Bucket width in ms. Required — raw rows across many nodes are ambiguous. */
+  bucket: number;
+  agg?: TelemetryAgg;
+}
+
 export interface HistoryApi {
   /**
    * Fetch recorded history for a String, Json, or Binary slot.
@@ -48,6 +84,40 @@ export interface HistoryApi {
     slot: string,
     opts?: HistoryQueryOptions,
   ): Promise<ScalarRecord[]>;
+
+  /**
+   * Fetch bucketed/aggregated telemetry for a Bool or Number slot.
+   * Buckets are wall-clock-aligned by `bucket` ms. See
+   * `docs/design/QUERY-LANG.md` § "Time-series query shape".
+   */
+  listTelemetryBucketed(
+    path: string,
+    slot: string,
+    opts: BucketedQueryOptions,
+  ): Promise<BucketedTelemetryResponse>;
+
+  /**
+   * Fetch bucketed structured history (String/Json slots) with
+   * `agg=last` or `agg=count`. `avg`/`min`/`max`/`sum` are not
+   * meaningful for JSON payloads and rejected server-side.
+   */
+  listHistoryBucketed(
+    path: string,
+    slot: string,
+    opts: HistoryBucketedQueryOptions,
+  ): Promise<HistoryBucketedResponse>;
+
+  /**
+   * Fan out a bucketed telemetry query across every node of `kind`.
+   * Returns one series per matching node. Node-kind is the pragmatic
+   * analog to the `group_by=tag` primitive — we don't have tags, but
+   * we do have node kinds.
+   */
+  listTelemetryGrouped(
+    kind: string,
+    slot: string,
+    opts: GroupedTelemetryQueryOptions,
+  ): Promise<GroupedTelemetryResponse>;
 
   /**
    * Read the slot's current live value from the graph and persist it to the
@@ -77,6 +147,17 @@ export function createHistoryApi(
     return qs.toString();
   }
 
+  function appendBucketed(
+    qs: URLSearchParams,
+    opts: HistoryQueryOptions & { bucket: number; agg?: string },
+  ): void {
+    if (opts.from !== undefined) qs.set("from", String(opts.from));
+    if (opts.to !== undefined) qs.set("to", String(opts.to));
+    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    qs.set("bucket", String(opts.bucket));
+    if (opts.agg) qs.set("agg", opts.agg);
+  }
+
   return {
     async listHistory(path, slot, opts) {
       const raw = await http.get<unknown>(
@@ -90,6 +171,27 @@ export function createHistoryApi(
         `${base}/telemetry?${buildQs(path, slot, opts)}`,
       );
       return TelemetryResponseSchema.parse(raw).data;
+    },
+
+    async listTelemetryBucketed(path, slot, opts) {
+      const qs = new URLSearchParams({ path, slot });
+      appendBucketed(qs, opts);
+      const raw = await http.get<unknown>(`${base}/telemetry?${qs.toString()}`);
+      return BucketedTelemetryResponseSchema.parse(raw);
+    },
+
+    async listHistoryBucketed(path, slot, opts) {
+      const qs = new URLSearchParams({ path, slot });
+      appendBucketed(qs, opts);
+      const raw = await http.get<unknown>(`${base}/history?${qs.toString()}`);
+      return HistoryBucketedResponseSchema.parse(raw);
+    },
+
+    async listTelemetryGrouped(kind, slot, opts) {
+      const qs = new URLSearchParams({ kind, slot });
+      appendBucketed(qs, opts);
+      const raw = await http.get<unknown>(`${base}/telemetry?${qs.toString()}`);
+      return GroupedTelemetryResponseSchema.parse(raw);
     },
 
     async record(path, slot) {

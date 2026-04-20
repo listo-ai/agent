@@ -1,0 +1,7 @@
+{
+  "code": "ai_unavailable",
+  "message": "VARIES",
+  "details": {
+    "http_status": 503
+  }
+}

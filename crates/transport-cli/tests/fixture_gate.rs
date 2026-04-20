@@ -977,6 +977,8 @@ async fn ui_compose_unavailable_without_api_key() {
         prompt: "anything".into(),
         current_layout: None,
         context_hints: None,
+        provider: None,
+        model: None,
     };
     let err = c.ui().compose(&req).await.unwrap_err();
     let cli_err = transport_cli::CliError::from_client(&err);
@@ -984,6 +986,40 @@ async fn ui_compose_unavailable_without_api_key() {
     let fixture = load_fixture("ui-compose/unavailable.json");
     assert_shape_match(&actual, &fixture, "$");
     assert_eq!(cli_err.code, "compose_unavailable");
+}
+
+#[tokio::test]
+async fn ai_providers_unavailable() {
+    // `start_test_server` does not wire an AI registry into AppState,
+    // so /api/v1/ai/providers returns 503 `ai_unavailable` deterministically.
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let err = c.ai().providers().await.unwrap_err();
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("ai-providers/unavailable.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "ai_unavailable");
+}
+
+#[tokio::test]
+async fn ai_run_unavailable() {
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let req = agent_client::types::AiRunRequest {
+        prompt: "hello".into(),
+        system_prompt: None,
+        provider: None,
+        model: None,
+        max_tokens: None,
+        thinking_budget: None,
+    };
+    let err = c.ai().run(&req).await.unwrap_err();
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("ai-run/unavailable.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "ai_unavailable");
 }
 
 #[tokio::test]
@@ -1263,6 +1299,8 @@ fn every_variant_has_a_fixture() {
         "ui-render",
         "ui-vocabulary",
         "ui-compose",
+        "ai-providers",
+        "ai-run",
     ];
     let dir = fixtures_dir();
     for cmd in required {
