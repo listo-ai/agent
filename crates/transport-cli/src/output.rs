@@ -141,6 +141,12 @@ fn classify_http(status: u16, message: &str) -> (String, i32) {
             };
             (code.into(), EXIT_USER_ERROR)
         }
+        503 if lower.contains("compose") || lower.contains("anthropic_api_key") => {
+            ("compose_unavailable".into(), EXIT_INFRA_ERROR)
+        }
+        502 if lower.contains("anthropic") || lower.contains("upstream") => {
+            ("upstream_error".into(), EXIT_INFRA_ERROR)
+        }
         s if s >= 500 => ("server_error".into(), EXIT_INFRA_ERROR),
         _ => ("unknown_error".into(), EXIT_USER_ERROR),
     }

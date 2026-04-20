@@ -959,6 +959,25 @@ pub struct UiResolveIssue {
     pub message: String,
 }
 
+/// Request body for `POST /api/v1/ui/compose`. Agent-side AI authoring.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiComposeRequest {
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_layout: Option<JsonValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_hints: Option<String>,
+}
+
+/// Response from `POST /api/v1/ui/compose` — the generated
+/// ComponentTree plus any free-text the model wrote alongside.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UiComposeResponse {
+    pub layout: JsonValue,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
 /// Response from `GET /api/v1/ui/vocabulary` — the JSON Schema of the
 /// `ui_ir::Component` union. Consumed by Monaco, Studio's palette, and
 /// LLM authors so they can discover the full component vocabulary from

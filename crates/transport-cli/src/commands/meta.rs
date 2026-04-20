@@ -154,6 +154,7 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &UI_TABLE,
         &UI_RENDER,
         &UI_VOCABULARY,
+        &UI_COMPOSE,
         &FLOWS_LIST,
         &FLOWS_GET,
         &FLOWS_CREATE,
@@ -1542,6 +1543,65 @@ static UI_VOCABULARY: CommandMeta = CommandMeta {
         code: "agent_unreachable",
         exit_code: 2,
     }],
+};
+
+static UI_COMPOSE: CommandMeta = CommandMeta {
+    name: "ui compose",
+    summary: "Generate or edit a ui.page layout with AI.",
+    args: &[
+        ArgInfo {
+            name: "prompt",
+            required: true,
+            type_name: "string",
+            description: "Natural-language instruction",
+        },
+        ArgInfo {
+            name: "--page",
+            required: false,
+            type_name: "string",
+            description: "Page id or path to use as edit context",
+        },
+        ArgInfo {
+            name: "--context",
+            required: false,
+            type_name: "string",
+            description: "Free-text hints about surrounding graph state",
+        },
+        ArgInfo {
+            name: "--apply",
+            required: false,
+            type_name: "bool",
+            description: "Write the generated layout back to --page with an OCC guard",
+        },
+    ],
+    examples: &[
+        "agent ui compose \"heartbeat dashboard for /flow-1/heartbeat\"",
+        "agent ui compose \"add a severity filter above the table\" --page /dashboards/alarms",
+        "agent ui compose \"refresh the dashboard\" --page /pages/overview --apply",
+    ],
+    related: &["ui resolve", "ui vocabulary", "slots write"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["prompt"],
+            "properties": {
+                "prompt":         { "type": "string" },
+                "page":           { "type": "string" },
+                "context":        { "type": "string" },
+                "apply":          { "type": "boolean" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::UiComposeResponse>,
+    errors: &[
+        ErrorInfo { code: "compose_unavailable", exit_code: 2 },
+        ErrorInfo { code: "upstream_error", exit_code: 2 },
+        ErrorInfo { code: "bad_request", exit_code: 1 },
+        ErrorInfo { code: "not_found", exit_code: 1 },
+        ErrorInfo { code: "generation_mismatch", exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
 };
 
 static AUTH_WHOAMI: CommandMeta = CommandMeta {

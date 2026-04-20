@@ -235,13 +235,13 @@ async fn create_node(
 ) -> Result<Json<CreatedNodeResp>, ApiError> {
     let parent = parse_path(&req.parent)?;
     let kind = KindId::new(req.kind);
-    let id = s
+    let (id, actual_name) = s
         .graph
-        .create_child(&parent, kind, &req.name)
+        .create_child_unique(&parent, kind, &req.name)
         .map_err(ApiError::from_graph)?;
     Ok(Json(CreatedNodeResp {
         id: id.to_string(),
-        path: parent.child(&req.name).to_string(),
+        path: parent.child(&actual_name).to_string(),
     }))
 }
 

@@ -8,8 +8,8 @@
 use crate::error::ClientError;
 use crate::http::HttpClient;
 use crate::types::{
-    UiActionRequest, UiActionResponse, UiNavNode, UiResolveRequest, UiResolveResponse,
-    UiTableParams, UiTableResponse, UiVocabulary,
+    UiActionRequest, UiActionResponse, UiComposeRequest, UiComposeResponse, UiNavNode,
+    UiResolveRequest, UiResolveResponse, UiTableParams, UiTableResponse, UiVocabulary,
 };
 
 pub struct Ui<'c> {
@@ -87,6 +87,16 @@ impl<'c> Ui<'c> {
             qp.push(("view", v.to_string()));
         }
         self.http.get_query(&format!("{}/render", self.base), &qp).await
+    }
+
+    /// AI-authored page generation. The agent owns the LLM API key —
+    /// callers never see it. Returns a validated ComponentTree the
+    /// caller can apply through `slots.write_with_generation`.
+    pub async fn compose(
+        &self,
+        req: &UiComposeRequest,
+    ) -> Result<UiComposeResponse, ClientError> {
+        self.http.post(&format!("{}/compose", self.base), req).await
     }
 
     /// Fetch the JSON Schema of the `ui_ir::Component` union. Drives

@@ -6,8 +6,8 @@
 //! completes.
 
 use agent_client::types::{
-    UiActionContext, UiActionRequest, UiComponent, UiResolveRequest, UiResolveResponse,
-    UiTableParams,
+    UiActionContext, UiActionRequest, UiComponent, UiComposeRequest, UiResolveRequest,
+    UiResolveResponse, UiTableParams,
 };
 use agent_client::AgentClient;
 use anyhow::{anyhow, Result};
@@ -79,6 +79,36 @@ pub enum UiCmd {
     /// Dump the `ui_ir::Component` JSON Schema (`GET /api/v1/ui/vocabulary`).
     Vocabulary,
 
+    /// Generate or edit a `ui.page` layout with AI
+    /// (`POST /api/v1/ui/compose`).
+    ///
+    /// Without `--apply`: prints the generated ComponentTree on stdout
+    /// (pipe into `agent slots write ... layout @-`).
+    ///
+    /// With `--apply` + `--page`: reads the page's current layout,
+    /// sends it as edit context, and writes the result back with an
+    /// OCC-guarded slot write.
+    Compose {
+        /// Natural-language instruction.
+        prompt: String,
+
+        /// Page to use as edit context (id or path). Layout is read
+        /// and passed to the model; without this, generation is
+        /// cold-start.
+        #[arg(long)]
+        page: Option<String>,
+
+        /// Free-text hints about surrounding graph state that the
+        /// model should reference (node paths, kinds, slots).
+        #[arg(long)]
+        context: Option<String>,
+
+        /// After generating, write the result to `--page`'s `layout`
+        /// slot with an OCC guard. Requires `--page`.
+        #[arg(long)]
+        apply: bool,
+    },
+
     /// Render a node's default SDUI view (`GET /api/v1/ui/render`).
     Render {
         /// Target node id (UUID).
@@ -128,6 +158,7 @@ impl UiCmd {
             Self::Table { .. } => "ui table",
             Self::Render { .. } => "ui render",
             Self::Vocabulary => "ui vocabulary",
+            Self::Compose { .. } => "ui compose",
         }
     }
 }
@@ -263,6 +294,65 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &UiCmd) -> Result
                 }
             }
         }
+        UiCmd::Compose { prompt, page, context, apply } => {
+            if *apply && page.is_none() {
+                return Err(anyhow!("--apply requires --page"));
+            }
+            // When editing, read the current layout + generation.
+            let (current_layout, current_path, base_gen) = if let Some(p) = page {
+                let snap = resolve_page_snapshot(client, p).await?;
+                let slot = snap
+                    .slots
+                    .iter()
+                    .find(|s| s.name == "layout");
+                let layout = slot
+                    .and_then(|s| if s.value.is_null() { None } else { Some(s.value.clone()) });
+                let gen = slot.map(|s| s.generation).unwrap_or(0);
+                (layout, Some(snap.path.clone()), gen)
+            } else {
+                (None, None, 0)
+            };
+
+            let req = UiComposeRequest {
+                prompt: prompt.clone(),
+                current_layout,
+                context_hints: context.clone(),
+            };
+            let resp = client.ui().compose(&req).await?;
+
+            if *apply {
+                let path = current_path
+                    .ok_or_else(|| anyhow!("--apply requires --page"))?;
+                client
+                    .slots()
+                    .write_with_generation(&path, "layout", &resp.layout, base_gen)
+                    .await?;
+                output::ok_msg(
+                    fmt,
+                    &serde_json::json!({
+                        "applied": true,
+                        "path": path,
+                        "note": resp.note,
+                    }),
+                    &format!("applied to {path}"),
+                )?;
+            } else {
+                // Pipe-friendly: JSON mode prints the whole response;
+                // table mode prints the layout itself so `| agent slots write` works.
+                match fmt {
+                    OutputFormat::Json => output::ok(fmt, &resp)?,
+                    OutputFormat::Table => {
+                        println!( // NO_PRINTLN_LINT:allow
+                            "{}",
+                            serde_json::to_string_pretty(&resp.layout)?,
+                        );
+                        if let Some(note) = &resp.note {
+                            eprintln!("{note}"); // NO_PRINTLN_LINT:allow
+                        }
+                    }
+                }
+            }
+        }
         UiCmd::Render { target, view } => {
             let resp = client.ui().render(target, view.as_deref()).await?;
             match (&resp, fmt) {
@@ -354,6 +444,32 @@ fn flatten(n: &agent_client::types::UiNavNode, depth: usize) -> Vec<NavRow> {
         out.extend(flatten(c, depth + 1));
     }
     out
+}
+
+/// Accept either a node path (starts with `/`) or an id (UUID). The
+/// compose CLI needs the node's full snapshot to read its layout and
+/// generation, so we normalise up-front.
+async fn resolve_page_snapshot(
+    client: &AgentClient,
+    page_ref: &str,
+) -> Result<agent_client::types::NodeSnapshot> {
+    if page_ref.starts_with('/') {
+        Ok(client.nodes().get(page_ref).await?)
+    } else {
+        let resp = client
+            .nodes()
+            .list_page(&agent_client::NodeListParams {
+                filter: Some(format!("kind==ui.page")),
+                sort: None,
+                page: None,
+                size: Some(500),
+            })
+            .await?;
+        resp.data
+            .into_iter()
+            .find(|n| n.id == page_ref)
+            .ok_or_else(|| anyhow!("no ui.page node with id {page_ref}"))
+    }
 }
 
 #[derive(serde::Serialize)]

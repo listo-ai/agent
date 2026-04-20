@@ -307,6 +307,51 @@ impl GraphStore {
         Ok(id)
     }
 
+    /// Like [`create_child`] but automatically appends `-2`, `-3`, … to the
+    /// requested name until a free slot is found (all within the same write
+    /// lock, so there is no TOCTOU race).
+    ///
+    /// Returns the `NodeId` and the **actual** name that was used.
+    pub fn create_child_unique(
+        &self,
+        parent: &NodePath,
+        kind: KindId,
+        name: &str,
+    ) -> Result<(NodeId, String), GraphError> {
+        const MAX_TRIES: u32 = 1000;
+
+        // Strip an existing numeric suffix so repeated drops of the same
+        // kind never pile up: "count" → base "count", "count-3" → base "count".
+        let (base, start) = if let Some(pos) = name.rfind('-') {
+            let suffix = &name[pos + 1..];
+            if let Ok(n) = suffix.parse::<u32>() {
+                (&name[..pos], n.max(2))
+            } else {
+                (name, 2u32)
+            }
+        } else {
+            (name, 2u32)
+        };
+
+        // Try the original name first, then base-2, base-3, …
+        let candidates = std::iter::once(name.to_string()).chain(
+            (start..=start + MAX_TRIES).map(|n| format!("{base}-{n}"))
+        );
+
+        for candidate in candidates {
+            match self.create_child(parent, kind.clone(), &candidate) {
+                Ok(id) => return Ok((id, candidate)),
+                Err(GraphError::NameCollision { .. }) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(GraphError::NameCollision {
+            parent: parent.clone(),
+            name: name.to_string(),
+        })
+    }
+
     /// Delete the node at `path` (and its subtree if cascade policy allows).
     pub fn delete(&self, path: &NodePath) -> Result<(), GraphError> {
         let mut g = self.write_inner();

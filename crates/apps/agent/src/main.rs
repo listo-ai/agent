@@ -503,7 +503,10 @@ async fn run_daemon(
         Arc::new(dashboard_transport::GraphReader::new(graph.clone()));
     let dashboard_kinds = Arc::new(graph.kinds().clone());
     let router = transport_rest::router(app_state).merge(dashboard_transport::router(
-        dashboard_transport::DashboardState::new(dashboard_reader).with_kinds(dashboard_kinds),
+        dashboard_transport::DashboardState::new(dashboard_reader)
+            .with_kinds(dashboard_kinds)
+            .with_ai_api_key(std::env::var("ANTHROPIC_API_KEY").ok())
+            .with_ai_model(std::env::var("COMPOSE_MODEL").ok()),
     ));
     let listener = tokio::net::TcpListener::bind(http).await?;
     info!(addr = %http, "http surface listening");

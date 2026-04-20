@@ -7,10 +7,10 @@
 // validator and autosave hooks do their own side effects against
 // the store; the shell just mounts them.
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { agentPromise } from "@/lib/agent";
 import { useBuilderStore } from "./store/builder-store";
 import { LivePreview } from "./preview/LivePreview";
@@ -18,6 +18,7 @@ import { EditorPane } from "./panels/EditorPane";
 import { ValidationList } from "./panels/ValidationList";
 import { ConflictBanner } from "./panels/ConflictBanner";
 import { SaveStatus } from "./panels/SaveStatus";
+import { ComposePanel } from "./panels/ComposePanel";
 import { useValidator } from "./persistence/use-validator";
 import { useAutosave } from "./persistence/use-autosave";
 import type { DraftPage } from "./model/types";
@@ -76,6 +77,8 @@ export function PageBuilderPage() {
   useValidator();
   useAutosave();
 
+  const [composeOpen, setComposeOpen] = useState(false);
+
   const reload = useCallback(() => {
     queryClient.invalidateQueries({ queryKey });
   }, [queryClient, queryKey]);
@@ -113,6 +116,16 @@ export function PageBuilderPage() {
         <h1 className="text-sm font-semibold">{data.nodePath}</h1>
         <div className="ml-auto flex items-center gap-3">
           <SaveStatus />
+          <button
+            type="button"
+            onClick={() => setComposeOpen((v) => !v)}
+            aria-pressed={composeOpen}
+            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+            title="Generate or edit the layout with AI"
+          >
+            <Sparkles size={12} />
+            Compose
+          </button>
         </div>
       </header>
       <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border">
@@ -121,6 +134,7 @@ export function PageBuilderPage() {
       </div>
       <ValidationList />
       <ConflictBanner onReload={reload} />
+      <ComposePanel open={composeOpen} onClose={() => setComposeOpen(false)} />
     </div>
   );
 }

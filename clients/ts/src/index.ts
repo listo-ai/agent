@@ -58,6 +58,8 @@ export type {
   UiComponentTree,
   UiResolveMeta,
   UiResolveIssue,
+  UiComposeRequest,
+  UiComposeResponse,
   UiResolveRequest,
   UiResolveResponse,
   UiSubscriptionPlan,

@@ -909,6 +909,27 @@ async fn ui_action_not_found() {
 }
 
 #[tokio::test]
+async fn ui_compose_unavailable_without_api_key() {
+    // `start_test_server` constructs DashboardState without an AI key
+    // (the agent bootstrap reads env only at startup, test servers
+    // default to None), so compose always returns `compose_unavailable`.
+    // Deterministic + env-free.
+    let (addr, _srv) = start_test_server().await;
+    let c = client(addr);
+    let req = agent_client::types::UiComposeRequest {
+        prompt: "anything".into(),
+        current_layout: None,
+        context_hints: None,
+    };
+    let err = c.ui().compose(&req).await.unwrap_err();
+    let cli_err = transport_cli::CliError::from_client(&err);
+    let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
+    let fixture = load_fixture("ui-compose/unavailable.json");
+    assert_shape_match(&actual, &fixture, "$");
+    assert_eq!(cli_err.code, "compose_unavailable");
+}
+
+#[tokio::test]
 async fn ui_vocabulary_ok() {
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
@@ -1183,6 +1204,7 @@ fn every_variant_has_a_fixture() {
         "ui-action",
         "ui-render",
         "ui-vocabulary",
+        "ui-compose",
     ];
     let dir = fixtures_dir();
     for cmd in required {

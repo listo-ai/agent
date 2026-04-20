@@ -471,6 +471,23 @@ export const UiActionResponseSchema = z.discriminatedUnion("type", [
 ]);
 export type UiActionResponse = z.infer<typeof UiActionResponseSchema>;
 
+// ---- compose ---------------------------------------------------------------
+
+/** Request body for `POST /api/v1/ui/compose`. */
+export const UiComposeRequestSchema = z.object({
+  prompt: z.string(),
+  current_layout: z.unknown().optional(),
+  context_hints: z.string().optional(),
+});
+export type UiComposeRequest = z.infer<typeof UiComposeRequestSchema>;
+
+/** Response from `POST /api/v1/ui/compose`. */
+export const UiComposeResponseSchema = z.object({
+  layout: z.unknown(),
+  note: z.string().optional(),
+});
+export type UiComposeResponse = z.infer<typeof UiComposeResponseSchema>;
+
 // ---- vocabulary ------------------------------------------------------------
 
 /** Response from `GET /api/v1/ui/vocabulary`. */

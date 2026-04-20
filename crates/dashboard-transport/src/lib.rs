@@ -14,6 +14,7 @@ pub mod acl;
 pub mod action;
 pub mod audit;
 pub mod binding_walk;
+pub mod compose;
 pub mod error;
 pub mod handler_registry;
 pub mod invalidate;
@@ -51,6 +52,7 @@ pub fn router(state: DashboardState) -> Router {
         .route("/api/v1/ui/table", get(table::handler))
         .route("/api/v1/ui/render", get(render::handler))
         .route("/api/v1/ui/vocabulary", get(vocabulary::handler))
+        .route("/api/v1/ui/compose", post(compose::handler))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

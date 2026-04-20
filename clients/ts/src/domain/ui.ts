@@ -4,12 +4,15 @@
 import type { RequestTransport } from "../transport/request.js";
 import {
   UiActionResponseSchema,
+  UiComposeResponseSchema,
   UiNavNodeSchema,
   UiResolveResponseSchema,
   UiTableResponseSchema,
   UiVocabularySchema,
   type UiActionRequest,
   type UiActionResponse,
+  type UiComposeRequest,
+  type UiComposeResponse,
   type UiNavNode,
   type UiResolveRequest,
   type UiResolveResponse,
@@ -58,6 +61,14 @@ export interface UiApi {
    * and LLM authoring tools.
    */
   vocabulary(): Promise<UiVocabulary>;
+
+  /**
+   * AI-author a page layout. Agent owns the LLM API key; the response
+   * is a validated ComponentTree + optional model-emitted note. No
+   * side effects — the caller chooses whether to apply via
+   * `slots.writeSlot`.
+   */
+  compose(req: UiComposeRequest): Promise<UiComposeResponse>;
 }
 
 export function createUiApi(http: RequestTransport, apiVersion: number): UiApi {
@@ -104,6 +115,11 @@ export function createUiApi(http: RequestTransport, apiVersion: number): UiApi {
     async vocabulary(): Promise<UiVocabulary> {
       const raw = await http.get<unknown>(`${base}/vocabulary`);
       return UiVocabularySchema.parse(raw);
+    },
+
+    async compose(req: UiComposeRequest): Promise<UiComposeResponse> {
+      const raw = await http.post<unknown>(`${base}/compose`, req);
+      return UiComposeResponseSchema.parse(raw);
     },
   };
 }

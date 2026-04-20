@@ -27,6 +27,12 @@ pub struct DashboardState {
     /// `KindManifest.views`. `None` while the agent bootstrap has not
     /// wired it in — render requests degrade to 503 in that case.
     pub kinds: Option<Arc<KindRegistry>>,
+    /// Anthropic API key for `/api/v1/ui/compose`. Populated from the
+    /// `ANTHROPIC_API_KEY` env var at agent startup; `None` disables
+    /// AI compose with a deterministic `compose_unavailable` error.
+    pub ai_api_key: Option<String>,
+    /// Override model for compose. `None` uses the crate default.
+    pub ai_model: Option<String>,
 }
 
 impl DashboardState {
@@ -38,7 +44,19 @@ impl DashboardState {
             audit: Arc::new(TracingAudit),
             invalidate: Arc::new(TracingInvalidate),
             kinds: None,
+            ai_api_key: None,
+            ai_model: None,
         }
+    }
+
+    pub fn with_ai_api_key(mut self, key: Option<String>) -> Self {
+        self.ai_api_key = key;
+        self
+    }
+
+    pub fn with_ai_model(mut self, model: Option<String>) -> Self {
+        self.ai_model = model;
+        self
     }
 
     pub fn with_kinds(mut self, kinds: Arc<KindRegistry>) -> Self {
