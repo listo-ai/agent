@@ -130,24 +130,37 @@ export function PagesListPage() {
       )}
 
       {pages && pages.length === 0 && (
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle>No pages yet</CardTitle>
-            <CardDescription>
-              Click <strong>New page</strong> above, or create one via the CLI:
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <pre className="rounded bg-muted p-2 text-xs leading-relaxed">
-              {`agent nodes create / ui.page my-page\nagent slots write /my-page layout \\\n  '{"ir_version":1,"root":{"type":"page","id":"root","title":"Hello","children":[{"type":"text","content":"Hello from SDUI!"}]}}'`}
-            </pre>
-            <p className="mt-2 text-xs text-muted-foreground">
-              If you expected a page to appear here, make sure its kind is
-              exactly <code>ui.page</code> — the list filters on kind, not
-              name.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="flex flex-1 items-center justify-center">
+          <Card className="max-w-md text-center">
+            <CardHeader>
+              <FileText
+                size={32}
+                className="mx-auto mb-2 text-muted-foreground"
+              />
+              <CardTitle>No pages yet</CardTitle>
+              <CardDescription>
+                A page is a UI layout — a tree of widgets (text, chart,
+                table, form, …) stored in a <code>ui.page</code> node.
+                Create one to get started.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-3">
+              <button
+                type="button"
+                onClick={createPage}
+                disabled={creating}
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Plus size={14} />
+                Create your first page
+              </button>
+              <p className="text-xs text-muted-foreground">
+                Want to do it from the terminal instead? Run{" "}
+                <code className="rounded bg-muted px-1">agent nodes create / ui.page my-page</code>.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {pages && pages.length > 0 && (
