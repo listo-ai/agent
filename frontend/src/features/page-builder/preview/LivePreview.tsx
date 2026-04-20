@@ -21,21 +21,39 @@ const emptyRegistry: CustomRegistry = new Map();
 const DEBOUNCE_MS = 250;
 
 /**
- * The HTTP transport wraps server errors as
- * `{kind:"HttpError", status, message}`. Its `message` is the raw
- * response body, which the agent returns as `{"error":"..."}`. Dig
- * the human-readable `error` field out for display.
+ * Peel a useful error string out of whatever react-query threw.
+ * Precedence:
+ *   1. HttpError plain object from our TS transport → status + body's
+ *      `error` field ("malformed page node ...").
+ *   2. `Error.message`.
+ *   3. Last-resort stringify.
+ * The HTTP transport wraps non-2xx as
+ * `{kind:"HttpError", status, message}` where `message` is the raw
+ * body — typically `{"error":"..."}` from the agent.
  */
-function extractServerMessage(raw: string): string {
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && typeof parsed.error === "string") {
-      return parsed.error;
+function extractServerMessage(err: unknown): string {
+  if (err && typeof err === "object") {
+    const anyErr = err as { message?: unknown; status?: unknown };
+    if (typeof anyErr.message === "string") {
+      const body = anyErr.message;
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed && typeof parsed === "object" && typeof parsed.error === "string") {
+          const prefix = typeof anyErr.status === "number" ? `HTTP ${anyErr.status}: ` : "";
+          return `${prefix}${parsed.error}`;
+        }
+      } catch {
+        /* body isn't JSON — fall through to raw message */
+      }
+      return body;
     }
-  } catch {
-    /* fall through */
   }
-  return raw;
+  if (err instanceof Error) return err.message;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 export function LivePreview() {
@@ -127,12 +145,11 @@ export function LivePreview() {
   }
 
   if (isError) {
-    const msg = error instanceof Error ? error.message : String(error);
     return (
       <div className="p-6 text-sm">
         <p className="mb-1 font-semibold text-destructive">Preview failed</p>
         <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
-          {extractServerMessage(msg)}
+          {extractServerMessage(error)}
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
           Fix the layout in the editor — check the validation strip

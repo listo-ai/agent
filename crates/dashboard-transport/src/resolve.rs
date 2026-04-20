@@ -154,12 +154,21 @@ pub async fn handler(
         return Ok(Json(ResolveResponse::DryRun { errors }));
     }
 
-    let render: ComponentTree = serde_json::from_value(layout.clone()).map_err(|e| {
-        TransportError::MalformedPage(
-            page.id,
-            format!("layout is not a valid ComponentTree: {e}"),
-        )
-    })?;
+    // Shape errors on the live path return a structured DryRun-style
+    // response instead of a 422 — clients render `errors[]` cleanly
+    // via their existing dry-run branch and the preview surface
+    // doesn't need a separate error pane.
+    let render: ComponentTree = match serde_json::from_value(layout.clone()) {
+        Ok(t) => t,
+        Err(e) => {
+            return Ok(Json(ResolveResponse::DryRun {
+                errors: vec![ResolveIssue {
+                    location: format!("page/{}/layout", page.id),
+                    message: format!("layout is not a valid ComponentTree: {e}"),
+                }],
+            }));
+        }
+    };
 
     enforce_render_tree_size(&render)?;
     enforce_tree_shape(&render)?;
