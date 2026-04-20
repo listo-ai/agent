@@ -15,6 +15,7 @@ import { createAuthApi } from "./domain/auth.js";
 import { createUiApi } from "./domain/ui.js";
 import { createHistoryApi } from "./domain/history.js";
 import { createAiApi } from "./domain/ai.js";
+import { createUsersApi } from "./domain/users.js";
 import type { NodesApi } from "./domain/nodes.js";
 import type { SlotsApi } from "./domain/slots.js";
 import type { HistoryApi } from "./domain/history.js";
@@ -28,6 +29,7 @@ import type { KindsApi } from "./domain/kinds.js";
 import type { AuthApi } from "./domain/auth.js";
 import type { UiApi } from "./domain/ui.js";
 import type { AiApi } from "./domain/ai.js";
+import type { UsersApi } from "./domain/users.js";
 import { REST_API_VERSION } from "./version.js";
 import { FleetScope } from "./schemas/fleet.js";
 import type { FleetScope as FleetScopeType } from "./schemas/fleet.js";
@@ -100,6 +102,7 @@ export class AgentClient {
   readonly ui: UiApi;
   readonly history: HistoryApi;
   readonly ai: AiApi;
+  readonly users: UsersApi;
 
   private constructor(
     transport: RequestTransport,
@@ -128,6 +131,7 @@ export class AgentClient {
         ? { baseUrl: opts.baseUrl, ...(opts.token !== undefined && { token: opts.token }) }
         : undefined,
     );
+    this.users = createUsersApi(transport, REST_API_VERSION);
 
     if (FleetScope.isLocal(scope)) {
       // Local: real SSE stream against baseUrl.

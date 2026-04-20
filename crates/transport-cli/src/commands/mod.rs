@@ -24,6 +24,7 @@ mod seed;
 mod slots;
 mod tags;
 mod ui;
+mod users;
 
 /// Global options shared by every CLI subcommand.
 #[derive(Debug, Clone, clap::Args)]
@@ -110,6 +111,10 @@ pub enum CliCommand {
     #[command(subcommand)]
     Tags(tags::TagsCmd),
 
+    /// User management operations.
+    #[command(subcommand)]
+    Users(users::UsersCmd),
+
     /// AI runner operations — list providers, run one-shot prompts.
     #[command(subcommand)]
     Ai(ai::AiCmd),
@@ -146,6 +151,7 @@ impl CliCommand {
             Self::Ui(sub) => sub.command_name(),
             Self::Flows(sub) => sub.command_name(),
             Self::Tags(sub) => sub.command_name(),
+            Self::Users(sub) => sub.command_name(),
             Self::Ai(sub) => sub.command_name(),
             Self::Lifecycle { .. } => "lifecycle",
             Self::Seed { .. } => "seed",
@@ -169,6 +175,7 @@ pub async fn dispatch(client: &AgentClient, global: &GlobalOpts, cmd: &CliComman
         CliCommand::Ui(sub) => ui::run(client, fmt, sub).await,
         CliCommand::Flows(sub) => flows::run(client, fmt, sub).await,
         CliCommand::Tags(sub) => tags::run(client, fmt, sub).await,
+        CliCommand::Users(sub) => users::run(client, fmt, sub).await,
         CliCommand::Ai(sub) => ai::run(client, fmt, sub).await,
         CliCommand::Lifecycle { path, to } => lifecycle::run(client, fmt, path, to).await,
         CliCommand::Seed { preset } => seed::run(client, fmt, preset).await,

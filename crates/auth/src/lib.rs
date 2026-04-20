@@ -9,8 +9,10 @@
 mod dev_null;
 #[cfg(feature = "static-token")]
 mod static_token;
+pub mod schema;
 
 #[cfg(feature = "dev-null")]
 pub use dev_null::DevNullProvider;
 #[cfg(feature = "static-token")]
 pub use static_token::{StaticTokenEntry, StaticTokenProvider};
+pub use schema::auth_resolution_query_schema;

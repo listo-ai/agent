@@ -1,0 +1,58 @@
+id: sys.auth.user
+display_name: User
+facets:
+  - isSystem
+  - isIdentity
+containment:
+  must_live_under:
+    - kind: sys.auth.tenant
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: display_name
+    role: config
+    writable: true
+    value_schema:
+      type: string
+  - name: email
+    role: config
+    writable: true
+    nullable: true
+    value_schema:
+      type: string
+      format: email
+  - name: scopes
+    role: config
+    writable: true
+    value_schema:
+      type: array
+      items:
+        type: string
+  - name: last_seen
+    role: status
+    writable: false
+    nullable: true
+    value_schema:
+      type: string
+      format: date-time
+  - name: enabled
+    role: config
+    writable: true
+    value_schema:
+      type: boolean
+      default: true
+  - name: config.tags
+    role: config
+    writable: true
+    value_schema:
+      type: object
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+        kv:
+          type: object
+          additionalProperties:
+            type: string

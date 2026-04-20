@@ -101,3 +101,5 @@ export type { AiApi, AiStreamOptions } from "./domain/ai.js";
 export type { LinkEndpointRef } from "./domain/links.js";
 export type { SeedPreset } from "./domain/seed.js";
 export type { NodeConfig } from "./domain/config.js";
+export type { User, UserTags, UserListResponse, GrantRoleReq, GrantRoleResp } from "./schemas/user.js";
+export type { UsersApi } from "./domain/users.js";

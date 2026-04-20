@@ -38,6 +38,7 @@ domain-compute = { workspace = true }
 domain-logic = { workspace = true }
 domain-history = { workspace = true }
 domain-blocks = { workspace = true }
+domain-auth = { workspace = true }
 domain-fleet = { workspace = true }
 dashboard-nodes = { workspace = true }
 dashboard-runtime = { workspace = true }

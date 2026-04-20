@@ -1313,3 +1313,50 @@ pub enum AiStreamEvent {
         duration_ms: u64,
     },
 }
+
+// ---- users ----------------------------------------------------------------
+
+/// Tags extracted from the `config.tags` slot of a `sys.auth.user` node.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UserTags {
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub kv: std::collections::BTreeMap<String, String>,
+}
+
+/// One `sys.auth.user` node as seen by the user-management list view.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UserDto {
+    pub id: String,
+    pub path: String,
+    pub display_name: Option<String>,
+    pub email: Option<String>,
+    pub enabled: bool,
+    pub tags: UserTags,
+}
+
+/// Paged response envelope for user list queries.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UserListResponse {
+    pub data: Vec<UserDto>,
+    pub meta: PageMeta,
+}
+
+/// Request body for `POST /api/v1/users/{id}/grants`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GrantRoleReq {
+    pub role: String,
+    /// Studio-generated correlation id for the bulk-action session.
+    pub bulk_action_id: String,
+}
+
+/// Response for `POST /api/v1/users/{id}/grants`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GrantRoleResp {
+    pub user_id: String,
+    pub role: String,
+    pub bulk_action_id: String,
+    /// Always `"accepted"` — Zitadel call happens asynchronously.
+    pub status: String,
+}

@@ -31,6 +31,7 @@ use data_sqlite::SqliteHistoryRepo;
 use data_sqlite::SqlitePreferencesRepo;
 use data_tsdb::sqlite::SqliteTelemetryRepo;
 use domain_flows::FlowService;
+use domain_auth;
 use domain_history::{Historizer, HistoryConfig, HistoryConfigSettings};
 use engine::{kinds as engine_kinds, Engine};
 use graph::{seed, GraphStore, KindRegistry};
@@ -600,6 +601,7 @@ async fn bootstrap(
     domain_logic::register_kinds(&kinds);
     domain_history::register_kinds(&kinds);
     domain_blocks::register_kinds(&kinds);
+    domain_auth::register_kinds(&kinds);
     domain_fleet::register_kinds(&kinds);
     dashboard_nodes::register_kinds(&kinds);
     domain_ai::register_kinds(&kinds);

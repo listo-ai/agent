@@ -146,7 +146,9 @@ Studio depends on this package.
 
 ---
 
-## Worked example — the `kinds` endpoint landing
+## Worked examples
+
+### `kinds` endpoint (existing reference)
 
 Concrete reference to copy (the `GET /api/v1/kinds` endpoint):
 
@@ -157,6 +159,25 @@ Concrete reference to copy (the `GET /api/v1/kinds` endpoint):
 - CLI: [`crates/transport-cli/src/commands/kinds.rs`](../../crates/transport-cli/src/commands/kinds.rs)
 
 Use it as the template for the next endpoint.
+
+### `users` endpoints — tags on users + grant wire shape
+
+Added in the tags-on-users + auth-enforcement PR. Two routes:
+- `GET  /api/v1/users`              — user-management list with tag filtering
+- `POST /api/v1/users/{id}/grants`  — per-user role-grant wire shape
+
+Five-touchpoint mapping:
+
+| Touchpoint | File |
+|---|---|
+| REST handler | [`crates/transport-rest/src/users.rs`](../../crates/transport-rest/src/users.rs) |
+| Route registration | `.merge(crate::users::routes())` in [`routes.rs`](../../crates/transport-rest/src/routes.rs) |
+| Rust client | [`clients/rs/src/users.rs`](../../clients/rs/src/users.rs) + `UserDto`, `UserTags`, `GrantRoleReq`, `GrantRoleResp`, `UserListResponse` in [`types.rs`](../../clients/rs/src/types.rs) |
+| TS client | [`clients/ts/src/schemas/user.ts`](../../clients/ts/src/schemas/user.ts) + [`clients/ts/src/domain/users.ts`](../../clients/ts/src/domain/users.ts) |
+| CLI | [`crates/transport-cli/src/commands/users.rs`](../../crates/transport-cli/src/commands/users.rs) |
+| Fixtures | [`clients/contracts/fixtures/cli-output/users-list/`](../../clients/contracts/fixtures/cli-output/users-list/) + [`users-grant/`](../../clients/contracts/fixtures/cli-output/users-grant/) |
+
+**Query schema note:** `user_management_query_schema()` (in `users.rs`) exposes `tags.labels` and pattern `tags.kv.*`. The auth-resolution schema (`auth::auth_resolution_query_schema()`) has an explicit allowlist that does NOT include `tags.*`. They are different schemas serving different query paths — this is the structural enforcement boundary described in [`docs/design/AUTH.md § "Enforcement boundary"`](AUTH.md).
 
 ---
 

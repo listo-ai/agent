@@ -12,6 +12,7 @@ import type { NavigateFunction } from "react-router-dom";
 import { queryClient } from "@/providers/query";
 import { useAgent } from "@/hooks/useAgent";
 import { useInvalidateGraph } from "@/lib/node";
+import { useGraphStoreOptional } from "@/store/graph-hooks";
 import { formatError } from "@/lib/utils";
 import {
   autoLayout,
@@ -48,6 +49,7 @@ export function useFlowPageActions({
   setSelectedEdges,
 }: UseFlowPageActionsOptions) {
   const agent = useAgent().data;
+  const graphStore = useGraphStoreOptional();
   const flowRef = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
   const moveTimers = useRef(new Map<string, number>());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -64,7 +66,25 @@ export function useFlowPageActions({
         kind: kind.id,
         name,
       });
-      await agent.slots.writeSlot(created.path, POSITION_SLOT, position);
+      // Immediately inject an optimistic snapshot with the drop position so
+      // the canvas renders the node at the correct location right away —
+      // before the SSE node_created → batch-fetch round-trip completes.
+      graphStore?.getState()._mergeNodes([{
+        id: created.id,
+        kind: kind.id,
+        path: created.path,
+        parent_path: openFlowPath,
+        parent_id: null,
+        has_children: false,
+        lifecycle: "created",
+        slots: [{ name: POSITION_SLOT, value: position, generation: 0 }],
+      }]);
+      // Use graphStore.writeSlot so the position is protected by the pending
+      // map and won't be clobbered if the SSE batch-fetch arrives before the
+      // server processes the slot write.
+      await (graphStore
+        ? graphStore.getState().writeSlot(created.path, POSITION_SLOT, position)
+        : agent.slots.writeSlot(created.path, POSITION_SLOT, position));
     },
     onSuccess: async () => {
       await invalidateGraphQueries();

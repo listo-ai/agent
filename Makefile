@@ -19,6 +19,7 @@ export PATH := $(HOME)/.local/bin:$(HOME)/.bun/bin:$(HOME)/.npm-global/bin:$(HOM
 PNPM          := pnpm
 CLIENT_PKG    := @sys/agent-client
 FRONTEND_DIR  := frontend
+AGENT_CLI_MANIFEST := ../agent-cli/Cargo.toml
 
 # ── release flag ──────────────────────────────────────────────────────────────
 ifdef RELEASE
@@ -110,13 +111,38 @@ dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)
 	@echo "dev/ reset — next boot will seed fresh graphs."
 
 # ── mcp sync ──────────────────────────────────────────────────────────────────
+.PHONY: mcp-init
+mcp-init: ## Write a starter mcp-compose.yaml via agent-cli (STACK=rust|frontend|react|shadcn-ui)
+	@if command -v agent-cli >/dev/null 2>&1; then \
+	  agent-cli init $(STACK); \
+	elif [ -f "$(AGENT_CLI_MANIFEST)" ]; then \
+	  $(CARGO) run --manifest-path $(AGENT_CLI_MANIFEST) -- init $(STACK); \
+	else \
+	  echo "agent-cli not found. Install it or clone github.com/NubeDev/agent-cli to ../agent-cli."; \
+	  exit 1; \
+	fi
+
 .PHONY: mcp-sync
 mcp-sync: ## Sync mcp-compose.yaml to all connected coding agents
-	$(CARGO) run -p mcp-sync -- sync
+	@if command -v agent-cli >/dev/null 2>&1; then \
+	  agent-cli sync; \
+	elif [ -f "$(AGENT_CLI_MANIFEST)" ]; then \
+	  $(CARGO) run --manifest-path $(AGENT_CLI_MANIFEST) -- sync; \
+	else \
+	  echo "agent-cli not found. Install it or clone github.com/NubeDev/agent-cli to ../agent-cli."; \
+	  exit 1; \
+	fi
 
 .PHONY: mcp-test
 mcp-test: ## Test the health of all servers in mcp-compose.yaml
-	$(CARGO) run -p mcp-sync -- test
+	@if command -v agent-cli >/dev/null 2>&1; then \
+	  agent-cli test; \
+	elif [ -f "$(AGENT_CLI_MANIFEST)" ]; then \
+	  $(CARGO) run --manifest-path $(AGENT_CLI_MANIFEST) -- test; \
+	else \
+	  echo "agent-cli not found. Install it or clone github.com/NubeDev/agent-cli to ../agent-cli."; \
+	  exit 1; \
+	fi
 
 # ── check / lint ──────────────────────────────────────────────────────────────
 .PHONY: check

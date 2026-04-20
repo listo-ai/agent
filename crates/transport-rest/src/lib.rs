@@ -54,6 +54,7 @@ pub mod seed;
 pub mod sink;
 pub mod state;
 pub mod ui;
+pub mod users;
 
 pub use capabilities::{host_capabilities, CapabilityManifest, REST_API_VERSION};
 pub use event::{HelloFrame, SequencedEvent};

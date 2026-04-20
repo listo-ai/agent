@@ -45,6 +45,34 @@ Rules:
 
 This keeps auth simple: the JWT's `org_id` + `roles` are the only inputs to any permission decision. Tags exist above that layer, for humans, not for enforcement.
 
+### Enforcement boundary
+
+The separation is enforced structurally, not just by convention:
+
+- `QuerySchema` for `AuthProvider::resolve` and `ScopeSet` assembly has an explicit field allowlist. `tags.*` fields are absent from that allowlist and the validator rejects them at compile time on that path.
+- A Clippy lint (`forbid_tags_in_auth`) prevents any function in `crates/auth/` or any caller of `AuthProvider::resolve` / `ScopeSet::from_claims` from referencing tag field accessors. Fires in `make lint` / CI.
+- The query filter `tags.labels=contains=team/admin` is valid on the *user-management* query path (for Studio list views). It is structurally absent from the auth-resolution path. There is no code path where a tag filter reaches a permission decision.
+
+### Bulk-action fan-out — UX contract
+
+N individual Zitadel role-grant calls require explicit handling:
+
+| Concern | Contract |
+|---|---|
+| Idempotency | Zitadel grants are idempotent — retrying already-granted users is safe |
+| Progress UI | Per-grant status during fan-out: total / succeeded / failed / pending |
+| Partial failure | Dialog stays open; operator retries failed subset with one click |
+| Audit correlation | Studio generates a `bulk_action_id`; each grant event carries it — the full operation is reconstructible from Zitadel's log |
+| Wording | Always *"grant role X to these N users now"*, never *"sync"* |
+
+### Versioned tag history (compliance extension)
+
+Tag writes are slot writes, which are already audited (`who/when/before/after`). A time-travel query over slot-write history answers "who was on the platform team on March 1st" without changing the trust model:
+
+- Endpoint: `GET /api/v1/slots/history?node=<id>&at=<iso8601>` — returns point-in-time slot state.
+- This answers the *operator-intent* audit question. Zitadel's grant log answers the *access* audit question. Both are answerable from their respective stores.
+- Required for SOC2/HIPAA customers who need historical grouping evidence. Additive — does not affect the base tags model.
+
 ## UX and syntax
 
 Accepted user-facing shorthand:

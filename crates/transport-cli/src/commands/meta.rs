@@ -172,6 +172,8 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &TAGS_GET,
         &TAGS_SET,
         &TAGS_CLEAR,
+        &USERS_LIST,
+        &USERS_GRANT,
     ];
     ALL
 }
@@ -2532,6 +2534,95 @@ static TAGS_CLEAR: CommandMeta = CommandMeta {
     output_schema: schema_for_type::<types::WriteSlotResponse>,
     errors: &[
         ErrorInfo { code: "not_found", exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+// ---- users ----------------------------------------------------------------
+
+static USERS_LIST: CommandMeta = CommandMeta {
+    name: "users list",
+    summary: "List sys.auth.user nodes with optional tag-aware filtering.",
+    args: &[
+        ArgInfo {
+            name: "filter",
+            required: false,
+            type_name: "rsql-filter",
+            description: "RSQL filter, e.g. tags.labels=contains=ops or tags.kv.site==abc",
+        },
+        ArgInfo {
+            name: "sort",
+            required: false,
+            type_name: "sort-expr",
+            description: "Sort expression, e.g. path or -path",
+        },
+    ],
+    examples: &[
+        "agent users list",
+        "agent users list --filter 'tags.labels=contains=oncall'",
+        "agent users list --filter 'tags.kv.site==abc'",
+        "agent users list --filter 'tags.labels=contains=ops;enabled==true'",
+    ],
+    related: &["users grant", "tags set"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+                "filter": { "type": "string" },
+                "sort": { "type": "string" }
+            }
+        })
+    },
+    output_schema: schema_for_vec::<types::UserDto>,
+    errors: &[ErrorInfo {
+        code: "agent_unreachable",
+        exit_code: 2,
+    }],
+};
+
+static USERS_GRANT: CommandMeta = CommandMeta {
+    name: "users grant",
+    summary: "Grant a role to a user (wire shape; Zitadel fan-out is a future landing).",
+    args: &[
+        ArgInfo {
+            name: "user_id",
+            required: true,
+            type_name: "uuid",
+            description: "User node id (UUID).",
+        },
+        ArgInfo {
+            name: "role",
+            required: true,
+            type_name: "string",
+            description: "Role to grant, e.g. org_admin.",
+        },
+        ArgInfo {
+            name: "bulk_action_id",
+            required: true,
+            type_name: "uuid",
+            description: "Studio-generated correlation id for the bulk-action session.",
+        },
+    ],
+    examples: &[
+        "agent users grant <user-uuid> --role org_admin --bulk-action-id <session-uuid>",
+    ],
+    related: &["users list"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["user_id", "role", "bulk_action_id"],
+            "properties": {
+                "user_id": { "type": "string", "format": "uuid" },
+                "role": { "type": "string" },
+                "bulk_action_id": { "type": "string", "format": "uuid" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::GrantRoleResp>,
+    errors: &[
+        ErrorInfo { code: "bad_request", exit_code: 1 },
         ErrorInfo { code: "agent_unreachable", exit_code: 2 },
     ],
 };

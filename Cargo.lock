@@ -38,6 +38,7 @@ dependencies = [
  "data-sqlite",
  "data-tsdb",
  "domain-ai",
+ "domain-auth",
  "domain-blocks",
  "domain-compute",
  "domain-fleet",
@@ -356,6 +357,7 @@ name = "auth"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "query",
  "serde",
  "spi",
  "tokio",
@@ -1237,6 +1239,17 @@ dependencies = [
  "spi",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "domain-auth"
+version = "0.0.1"
+dependencies = [
+ "blocks-sdk",
+ "domain-tags",
+ "graph",
+ "spi",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2475,20 +2488,6 @@ name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
-
-[[package]]
-name = "mcp-sync"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "serde",
- "serde_json",
- "serde_yml",
- "shellexpand",
- "thiserror 1.0.69",
- "tokio",
-]
 
 [[package]]
 name = "memchr"

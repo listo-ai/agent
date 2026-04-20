@@ -1,0 +1,18 @@
+id: sys.auth.tenant
+display_name: Tenant
+facets:
+  - isSystem
+  - isContainer
+containment:
+  must_live_under: []
+  may_contain:
+    - kind: sys.auth.user
+    - kind: sys.auth.service_account
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: display_name
+    role: config
+    writable: true
+    value_schema:
+      type: string

@@ -19,6 +19,7 @@ members = [
     "crates/domain-devices",
     "crates/domain-blocks",
     "crates/domain-tags",
+    "crates/domain-auth",
     "crates/domain-presentation",
     "crates/domain-fleet",
     "crates/domain-history",
@@ -38,7 +39,6 @@ members = [
     "crates/blocks-sdk-macros",
     "crates/blocks-host",
     "crates/apps/agent",
-    "crates/apps/mcp-sync",
     "crates/ai-runner",
     "crates/domain-ai",
     "clients/rs",
@@ -72,6 +72,7 @@ domain-flows = { path = "crates/domain-flows" }
 domain-devices = { path = "crates/domain-devices" }
 domain-blocks = { path = "crates/domain-blocks" }
 domain-tags = { path = "crates/domain-tags" }
+domain-auth = { path = "crates/domain-auth" }
 domain-presentation = { path = "crates/domain-presentation" }
 domain-fleet = { path = "crates/domain-fleet" }
 domain-history = { path = "crates/domain-history" }

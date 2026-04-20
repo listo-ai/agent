@@ -38,13 +38,16 @@ Welcome! This file provides essential context, rules, and instructions for any A
 2. **Incremental Development**: Do not rewrite massive files at once. Make targeted edits.
 3. **Run Checks Frequently**: After changing Rust code, always run `make check` or `make lint`. After changing TS, ensure no type errors remain.
 
-## 🔧 MCP Sync Service
+## 🔧 Agent CLI
 
-The `mcp-sync` CLI tool (located in `crates/apps/mcp-sync`) synchronizes MCP server configurations across coding agents (VS Code, Claude Desktop, Cursor, etc.). It reads `mcp-compose.yaml` and ensures each agent's configuration is up‑to‑date.
+The MCP bootstrap tooling now lives in the standalone `agent-cli` repo (`github.com/NubeDev/agent-cli`), not inside this workspace. It stays agent-agnostic and handles both MCP config sync and stack-specific skills/docs installs.
+
+**Use it through the Makefile**
+- `make mcp-init STACK=rust` to write a starter `mcp-compose.yaml`
+- `make mcp-sync` to sync `mcp-compose.yaml` into supported agent configs
+- `make mcp-test` to health-check configured MCP servers
 
 **Why reuse it?**
-- Centralized source‑of‑truth for MCP services.
-- Proven Rust implementation with robust error handling (`anyhow`, `thiserror`).
-- Integrates with the existing Makefile (`make mcp-sync`, `make mcp-test`).
-
-**References**: see [`MCP.md`](../../docs/design/MCP.md) and [`SKILLS.md`](../../docs/design/SKILLS.md) for the broader MCP and block architecture that this service supports.
+- Centralized source-of-truth for MCP services and agent skills.
+- Standalone Rust CLI with robust error handling (`anyhow`, `thiserror`).
+- The Makefile will use an installed `agent-cli` binary or fall back to `../agent-cli` during local development.

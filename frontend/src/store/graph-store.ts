@@ -303,7 +303,9 @@ export function createGraphStore(client: AgentClient) {
       set((s) => {
         const nodes = new Map(s.nodes);
         for (const n of snapshots) {
-          nodes.set(n.path, n);
+          // Re-apply any in-flight optimistic slot writes so a late batch-fetch
+          // doesn't clobber a pending writeSlot.
+          nodes.set(n.path, applyPendingSlots(n, s.pending));
         }
         return { nodes };
       });
@@ -694,6 +696,27 @@ export function createGraphStore(client: AgentClient) {
       default:
         break;
     }
+  }
+
+  /** Re-apply any pending optimistic slot writes on top of an incoming snapshot. */
+  function applyPendingSlots(snapshot: NodeSnapshot, pending: Map<string, PendingWrite>): NodeSnapshot {
+    const prefix = snapshot.path + "::"; 
+    const entries = [...pending.entries()].filter(([k]) => k.startsWith(prefix));
+    if (entries.length === 0) return snapshot;
+    const slots = [...snapshot.slots];
+    for (const [key, pw] of entries) {
+      const slotName = key.slice(prefix.length);
+      const idx = slots.findIndex((s) => s.name === slotName);
+      const existing = slots[idx];
+      if (existing !== undefined) {
+        if (existing.generation < pw.expectedGen) {
+          slots[idx] = { name: slotName, value: pw.value, generation: pw.expectedGen };
+        }
+      } else {
+        slots.push({ name: slotName, value: pw.value, generation: pw.expectedGen });
+      }
+    }
+    return { ...snapshot, slots };
   }
 
   // Keep set reference for helpers

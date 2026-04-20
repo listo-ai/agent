@@ -58,6 +58,7 @@ pub fn mount(state: AppState) -> Router {
         .merge(crate::flows::routes())
         .merge(crate::preferences::routes())
         .merge(crate::history::routes())
+        .merge(crate::users::routes())
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

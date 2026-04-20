@@ -48,6 +48,7 @@ mod seed;
 mod slots;
 pub mod types;
 mod ui;
+mod users;
 
 pub use capabilities::CapabilityRequirement;
 pub use error::ClientError;
@@ -153,5 +154,9 @@ impl AgentClient {
 
     pub fn ai(&self) -> ai::Ai<'_> {
         ai::Ai::new(&self.http, API_VERSION)
+    }
+
+    pub fn users(&self) -> users::Users<'_> {
+        users::Users::new(&self.http, API_VERSION)
     }
 }
