@@ -237,3 +237,97 @@ fn count_kind_id_matches_manifest() {
         KindId::new("sys.compute.count")
     );
 }
+
+// ---- pluck ----------------------------------------------------------------
+
+fn make_pluck(initial_path: &str) -> (Arc<GraphStore>, Arc<VecSink>, BehaviorRegistry, NodePath) {
+    let kinds = KindRegistry::new();
+    domain_compute::register_kinds(&kinds);
+    let sink = Arc::new(VecSink::new());
+    let graph = Arc::new(GraphStore::new(kinds, sink.clone()));
+
+    let kind = <domain_compute::Pluck as NodeKind>::kind_id();
+    graph.create_root(kind.clone()).unwrap();
+    let path = NodePath::root();
+    let id = graph.get(&path).unwrap().id;
+
+    let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
+    behaviors
+        .register(kind, domain_compute::pluck_behavior())
+        .unwrap();
+    behaviors
+        .set_config(id, json!({ "path": initial_path }))
+        .unwrap();
+    behaviors.dispatch_init(id).unwrap();
+    let _ = sink.take();
+
+    (graph, sink, behaviors, path)
+}
+
+fn last_emit(sink: &VecSink) -> Option<JsonValue> {
+    sink.take().into_iter().rev().find_map(|ev| match ev {
+        GraphEvent::SlotChanged { slot, value, .. } if slot == "out" => Some(value),
+        _ => None,
+    })
+}
+
+#[test]
+fn pluck_projects_payload_subpath() {
+    // Simulates a heartbeat→add wire: heartbeat emits
+    // `{payload: {state, count}}`, pluck extracts `payload.count` into
+    // the child's payload so the downstream Add sees a bare number.
+    let (graph, sink, behaviors, path) = make_pluck("payload.count");
+
+    let msg = Msg::new(json!({ "state": true, "count": 354 }));
+    graph
+        .write_slot(&path, "in", serde_json::to_value(&msg).unwrap())
+        .unwrap();
+    fire(&behaviors, &sink);
+
+    let out = last_emit(&sink).expect("pluck should emit on out");
+    assert_eq!(out.get("payload"), Some(&json!(354)));
+    assert!(out.get("_msgid").is_some());
+}
+
+#[test]
+fn pluck_missing_path_drops_silently() {
+    let (graph, sink, behaviors, path) = make_pluck("payload.not_there");
+
+    let msg = Msg::new(json!({ "state": true, "count": 1 }));
+    graph
+        .write_slot(&path, "in", serde_json::to_value(&msg).unwrap())
+        .unwrap();
+    fire(&behaviors, &sink);
+
+    assert!(
+        last_emit(&sink).is_none(),
+        "pluck must not emit when the path is missing"
+    );
+}
+
+#[test]
+fn pluck_empty_path_passes_whole_msg() {
+    // `path: ""` → root: the child's payload becomes the *entire*
+    // incoming msg (envelope and all). Useful for topic-only rewrites.
+    let (graph, sink, behaviors, path) = make_pluck("");
+
+    let msg = Msg::new(json!(42));
+    graph
+        .write_slot(&path, "in", serde_json::to_value(&msg).unwrap())
+        .unwrap();
+    fire(&behaviors, &sink);
+
+    let out = last_emit(&sink).unwrap();
+    let inner = out.get("payload").unwrap();
+    // The plucked payload is the whole original msg serialisation.
+    assert!(inner.get("payload").is_some(), "got {inner:?}");
+    assert_eq!(inner.get("payload").unwrap(), &json!(42));
+}
+
+#[test]
+fn pluck_kind_id_matches_manifest() {
+    assert_eq!(
+        <domain_compute::Pluck as NodeKind>::kind_id(),
+        KindId::new("sys.compute.pluck")
+    );
+}

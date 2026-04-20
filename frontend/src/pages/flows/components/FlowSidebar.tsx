@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Kind } from "@sys/agent-client";
 import { facetGroup, titleForKind } from "../flow-model";
-import { Badge, Input, ScrollArea } from "@/components/ui";
+import { Badge, Input } from "@/components/ui";
 
 interface FlowSidebarProps {
   kinds: Kind[];
@@ -55,7 +55,7 @@ export function FlowSidebar({ kinds, onCreateNode }: FlowSidebarProps) {
           placeholder="Search kinds"
           className="mb-3"
         />
-        <ScrollArea className="min-h-0 flex-1 pr-1">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="space-y-4">
             {groups.map(([group, entries]) => (
               <section key={group}>
@@ -93,7 +93,7 @@ export function FlowSidebar({ kinds, onCreateNode }: FlowSidebarProps) {
               </section>
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </section>
     </aside>
   );

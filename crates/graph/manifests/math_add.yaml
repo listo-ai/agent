@@ -10,14 +10,14 @@ containment:
 slots:
   - name: a
     role: input
-    value_schema:
-      type: number
-    writable: false
+    value_schema: {}
+    writable: true
+    trigger: true
   - name: b
     role: input
-    value_schema:
-      type: number
-    writable: false
+    value_schema: {}
+    writable: true
+    trigger: true
   - name: sum
     role: output
     # Msg envelope mirror of domain-compute counterpart.

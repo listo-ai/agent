@@ -652,6 +652,20 @@ async fn bootstrap(
             domain_logic::heartbeat_behavior(),
         )
         .context("registering heartbeat behaviour")?;
+    engine
+        .behaviors()
+        .register(
+            <domain_compute::Pluck as blocks_sdk::NodeKind>::kind_id(),
+            domain_compute::pluck_behavior(),
+        )
+        .context("registering pluck behaviour")?;
+    engine
+        .behaviors()
+        .register(
+            <domain_compute::Add as blocks_sdk::NodeKind>::kind_id(),
+            domain_compute::add_behavior(),
+        )
+        .context("registering math.add behaviour")?;
 
     Ok((engine, graph, bcast, ring, blocks))
 }

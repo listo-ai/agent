@@ -1,0 +1,64 @@
+id: sys.compute.pluck
+display_name: Pluck
+facets:
+  - isCompute
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+slots:
+  - name: in
+    role: input
+    value_schema: {}
+    writable: true
+    trigger: true
+  - name: out
+    role: output
+    # Msg envelope with the plucked sub-value as the payload. Shape
+    # depends on the configured `path`; consumers typically bind to
+    # `payload` for the scalar.
+    value_schema:
+      type: object
+      properties:
+        _msgid:
+          type: string
+        topic:
+          type: string
+        payload: {}
+      required: [_msgid]
+    writable: false
+trigger_policy: on_any
+settings_schema:
+  type: object
+  title: Pluck settings
+  description: >
+    Extract a sub-value of every incoming Msg by dot-path and emit it as
+    the payload of a child Msg. The minimal Node-RED-style "change /
+    pick" node — drop one between a source that emits a Msg envelope
+    and a downstream node that expects a scalar (or a differently-
+    shaped object).
+  properties:
+    path:
+      type: string
+      title: Path
+      description: >
+        Dot-path into the incoming msg. `payload.count` walks into the
+        payload object. Empty string passes the whole msg value through
+        unchanged (useful to override topic without reshaping).
+      default: payload
+      examples: [payload, payload.count, payload.state, topic]
+    topic:
+      type:
+        - string
+        - "null"
+      title: Topic override
+      description: >
+        If set, replaces `msg.topic` on the emitted child. Leave null to
+        preserve the incoming topic.
+      default: null
+  required: [path]
+  additionalProperties: false
+msg_overrides:
+  path: pluck_path
+  topic: topic

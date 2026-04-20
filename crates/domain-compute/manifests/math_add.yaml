@@ -10,14 +10,16 @@ containment:
 slots:
   - name: a
     role: input
-    value_schema:
-      type: number
-    writable: false
+    # Accepts a Msg envelope whose payload is a number. The behaviour
+    # unwraps `msg.payload` via `as_f64()`.
+    value_schema: {}
+    writable: true
+    trigger: true
   - name: b
     role: input
-    value_schema:
-      type: number
-    writable: false
+    value_schema: {}
+    writable: true
+    trigger: true
   - name: sum
     role: output
     # Msg envelope emitted when both inputs have been seen. Payload is

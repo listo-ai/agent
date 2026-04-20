@@ -4,7 +4,6 @@ import "@xyflow/react/dist/style.css";
 import { AGENT_BASE_URL } from "@/lib/agent";
 import { CenteredMessage, formatError } from "./flow-page-shared";
 import { FlowCanvas } from "./components/FlowCanvas";
-import { FlowBreadcrumbBar } from "./components/FlowBreadcrumbBar";
 import { FlowPropertyPanel } from "./components/FlowPropertyPanel";
 import { NodeHistoryPanel } from "./components/NodeHistoryPanel";
 import { FlowSidebar } from "./components/FlowSidebar";
@@ -100,8 +99,6 @@ export function FlowsPage() {
       <FlowSidebar kinds={kinds} onCreateNode={createNode} />
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <FlowBreadcrumbBar openFlowPath={openFlowPath} onBack={() => navigate("/flows")} />
-
         <FlowToolbar
           selectedFlowPath={openFlowPath}
           nodeCount={visibleNodes.length}

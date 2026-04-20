@@ -8,13 +8,10 @@ type Theme = "light" | "dark" | "system";
 type SidebarSection = "flows" | "dashboard" | "blocks" | "settings";
 
 interface UiState {
-  sidebarCollapsed: boolean;
   activeSection: SidebarSection;
   theme: Theme;
   commandPaletteOpen: boolean;
 
-  setSidebarCollapsed: (collapsed: boolean) => void;
-  toggleSidebar: () => void;
   setActiveSection: (section: SidebarSection) => void;
   setTheme: (theme: Theme) => void;
   setCommandPaletteOpen: (open: boolean) => void;
@@ -23,20 +20,17 @@ interface UiState {
 export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
-      sidebarCollapsed: false,
       activeSection: "flows",
       theme: "system",
       commandPaletteOpen: false,
 
-      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setActiveSection: (activeSection) => set({ activeSection }),
       setTheme: (theme) => set({ theme }),
       setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
     }),
     {
       name: "us-ui",
-      partialize: (state) => ({ theme: state.theme, sidebarCollapsed: state.sidebarCollapsed }),
+      partialize: (state) => ({ theme: state.theme }),
     }
   )
 );

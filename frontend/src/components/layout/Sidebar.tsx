@@ -6,15 +6,12 @@ import {
   FileText,
   Puzzle,
   Settings,
-  PanelLeftClose,
-  PanelLeft,
   ChevronRight,
   ChevronDown,
   Loader2,
   Box,
 } from "lucide-react";
 import type { Link, NodeSnapshot } from "@sys/agent-client";
-import { useUiStore } from "@/store/ui";
 import { useGraphStoreOptional } from "@/store/graph-hooks";
 import { useAgent } from "@/hooks/useAgent";
 import { isFlowNode } from "@/pages/flows/flow-model";
@@ -22,16 +19,24 @@ import { buildNodeContextItems, NodeContextMenu } from "@/components/node-contex
 import { AddChildNodeDialog } from "@/components/AddChildNodeDialog";
 import { cn } from "@/lib/utils";
 import {
-  Button,
-  ScrollArea,
-  Separator,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarRail,
 } from "@/components/ui";
 
 // ---------------------------------------------------------------------------
-// Static nav items rendered below the flows tree
+// Static nav items
 // ---------------------------------------------------------------------------
 
 interface NavItem { label: string; to: string; icon: React.ElementType; }
@@ -43,79 +48,57 @@ const BOTTOM_NAV: NavItem[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Root sidebar
+// AppSidebar
 // ---------------------------------------------------------------------------
 
-export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar } = useUiStore();
-
+export function AppSidebar() {
   return (
-    <aside
-      style={{ width: sidebarCollapsed ? "48px" : "var(--sidebar-width)" }}
-      className="flex h-full flex-col border-r border-border bg-card transition-all duration-200 overflow-hidden"
-    >
-      <ScrollArea className="flex-1">
-        <nav className="flex min-h-0 flex-col gap-0.5 p-2">
-          <FlowsTree collapsed={sidebarCollapsed} />
-
-          {!sidebarCollapsed && <Separator className="my-1" />}
-
-          {BOTTOM_NAV.map(({ label, to, icon: Icon }) =>
-            sidebarCollapsed ? (
-              <Tooltip key={to}>
-                <TooltipTrigger asChild>
-                  <NavLink
-                    to={to}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex items-center justify-center rounded-md p-1.5 transition-colors",
-                        "hover:bg-accent hover:text-accent-foreground",
-                        isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground",
-                      )
-                    }
-                  >
-                    <Icon size={16} className="shrink-0" />
-                  </NavLink>
-                </TooltipTrigger>
-                <TooltipContent side="right">{label}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                    "hover:bg-accent hover:text-accent-foreground",
-                    isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground",
-                  )
-                }
-              >
-                <Icon size={16} className="shrink-0" />
-                <span>{label}</span>
+    <Sidebar collapsible="icon" variant="inset">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              <NavLink to="/">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground group-data-[collapsible=icon]:size-6 group-data-[collapsible=icon]:rounded-md">
+                  <GitBranch size={16} />
+                </div>
+                <span className="font-semibold tracking-tight">Studio</span>
               </NavLink>
-            ),
-          )}
-        </nav>
-      </ScrollArea>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggleSidebar}
-            className="mx-auto mb-1 text-muted-foreground"
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          {sidebarCollapsed ? "Expand" : "Collapse"} sidebar
-        </TooltipContent>
-      </Tooltip>
-    </aside>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Flows</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <FlowsTree />
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {BOTTOM_NAV.map(({ label, to, icon: Icon }) => (
+                <SidebarMenuItem key={to}>
+                  <SidebarMenuButton asChild tooltip={label}>
+                    <NavLink to={to}>
+                      <Icon />
+                      <span>{label}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter />
+      <SidebarRail />
+    </Sidebar>
   );
 }
 
@@ -134,7 +117,6 @@ interface CtxMenu {
 // Flows tree
 // ---------------------------------------------------------------------------
 
-/** Stable empty store used while the GraphStore is still connecting. */
 const emptyStore = create(() => ({
   nodes: new Map<string, NodeSnapshot>(),
   links: new Map<string, Link>(),
@@ -142,7 +124,7 @@ const emptyStore = create(() => ({
   loadingPaths: new Set<string>(),
 }));
 
-function FlowsTree({ collapsed }: { collapsed: boolean }) {
+function FlowsTree() {
   const navigate = useNavigate();
   const graphStore = useGraphStoreOptional();
   const agent = useAgent();
@@ -164,7 +146,6 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
 
   const { flows, childrenOf } = useMemo(() => {
     const flows: NodeSnapshot[] = [];
-    // Build parent→children index for all cached nodes
     const childrenOf = new Map<string, NodeSnapshot[]>();
     for (const n of nodeMap.values()) {
       if (isFlowNode(n)) flows.push(n);
@@ -179,7 +160,6 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
     return { flows, childrenOf };
   }, [nodeMap]);
 
-  // Eagerly fetch root children so flow rows appear as soon as the store connects.
   useEffect(() => {
     if (!graphStore) return;
     graphStore.getState().expand("/");
@@ -191,29 +171,10 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
     expanded.has(flowPath) ? s.collapse(flowPath) : s.expand(flowPath);
   }
 
-  // Collapsed sidebar: single icon that links to /flows
-  if (collapsed) {
-    return (
-      <NavLink
-        to="/flows"
-        className={({ isActive }) =>
-          cn(
-            "flex items-center justify-center rounded-md p-1.5 transition-colors",
-            "hover:bg-accent hover:text-accent-foreground",
-            isActive ? "text-accent-foreground" : "text-muted-foreground",
-          )
-        }
-      >
-        <GitBranch size={16} />
-      </NavLink>
-    );
-  }
-
   const rootLoading = loadingPaths.has("/") && flows.length === 0;
 
   return (
     <>
-      {/* Portalled overlays: context menu + add-child dialog */}
       {ctxMenu && (
         <NodeContextMenu
           x={ctxMenu.x}
@@ -228,7 +189,6 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
               closeCtx();
               if (!agent.data) return;
               await agent.data.nodes.removeNode(ctxMenu.node.path);
-              // GraphStore updates reactively from the SSE node_removed event.
             },
           })}
         />
@@ -242,27 +202,19 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
         />
       )}
 
-      <div>
-        {/* "Flows" section header */}
-        <NavLink
-          to="/flows"
-          end
-          className={({ isActive }) =>
-            cn(
-              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
-              "hover:bg-accent hover:text-accent-foreground",
-              isActive ? "bg-accent text-accent-foreground" : "text-foreground",
-            )
-          }
-        >
-          <GitBranch size={16} className="shrink-0" />
-          <span>Flows</span>
-          {rootLoading && <Loader2 size={12} className="ml-auto animate-spin text-muted-foreground" />}
-        </NavLink>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild tooltip="Flows">
+            <NavLink to="/flows" end>
+              <GitBranch />
+              <span>All flows</span>
+              {rootLoading && <Loader2 size={12} className="ml-auto animate-spin text-muted-foreground" />}
+            </NavLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
 
-        {/* One row per flow, each recursively expandable */}
         {flows.map((flow) => (
-          <TreeNode
+          <FlowTreeNode
             key={flow.path}
             node={flow}
             depth={0}
@@ -275,7 +227,7 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
             onContextMenu={handleContextMenu}
           />
         ))}
-      </div>
+      </SidebarMenu>
     </>
   );
 }
@@ -284,7 +236,7 @@ function FlowsTree({ collapsed }: { collapsed: boolean }) {
 // Recursive tree node
 // ---------------------------------------------------------------------------
 
-interface TreeNodeProps {
+interface FlowTreeNodeProps {
   node: NodeSnapshot;
   depth: number;
   flowPath: string;
@@ -296,93 +248,90 @@ interface TreeNodeProps {
   onContextMenu(e: React.MouseEvent, node: NodeSnapshot, flowPath: string): void;
 }
 
-function TreeNode({ node, depth, flowPath, childrenOf, expanded, loadingPaths, onToggle, navigate, onContextMenu }: TreeNodeProps) {
+function FlowTreeNode({
+  node, depth, flowPath, childrenOf, expanded, loadingPaths, onToggle, navigate, onContextMenu,
+}: FlowTreeNodeProps) {
   const isOpen    = expanded.has(node.path);
   const isLoading = loadingPaths.has(node.path);
   const children  = childrenOf.get(node.path) ?? [];
   const name      = nodeName(node.path);
   const isFlow    = depth === 0;
 
-  // Match any sub-path under this flow for active highlight
-  const match = useMatch(`/flows/edit${node.path === flowPath ? flowPath : node.path}`);
+  const match    = useMatch(`/flows/edit${node.path === flowPath ? flowPath : node.path}`);
   const subMatch = useMatch(`/flows/edit${node.path}/*`);
   const isActive = !!(match || subMatch);
 
   const Icon = isFlow ? GitBranch : Box;
-  const iconSize = isFlow ? 13 : 11;
-  const textClass = isFlow ? "text-sm" : "text-xs";
+
+  if (depth === 0) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          isActive={isActive}
+          tooltip={node.path}
+          onContextMenu={(e) => onContextMenu(e, node, flowPath)}
+          onClick={() => {
+            onToggle(node.path);
+            navigate(`/flows/edit${flowPath}`);
+          }}
+        >
+          <Icon />
+          <span>{name}</span>
+          {(node.has_children || isOpen) && (
+            isLoading && !isOpen
+              ? <Loader2 size={12} className="ml-auto animate-spin" />
+              : isOpen
+                ? <ChevronDown size={12} className="ml-auto" />
+                : <ChevronRight size={12} className="ml-auto" />
+          )}
+        </SidebarMenuButton>
+
+        {isOpen && (
+          <SidebarMenuSub>
+            {isLoading && children.length === 0 && (
+              <SidebarMenuSubItem>
+                <span className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-muted-foreground">
+                  <Loader2 size={11} className="animate-spin" />Loading…
+                </span>
+              </SidebarMenuSubItem>
+            )}
+            {children.map((child) => (
+              <FlowTreeNode
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                flowPath={flowPath}
+                childrenOf={childrenOf}
+                expanded={expanded}
+                loadingPaths={loadingPaths}
+                onToggle={onToggle}
+                navigate={navigate}
+                onContextMenu={onContextMenu}
+              />
+            ))}
+            {!isLoading && children.length === 0 && (
+              <SidebarMenuSubItem>
+                <span className="block px-2 py-0.5 text-xs italic text-muted-foreground/50">empty</span>
+              </SidebarMenuSubItem>
+            )}
+          </SidebarMenuSub>
+        )}
+      </SidebarMenuItem>
+    );
+  }
 
   return (
-    <div>
-      <div
-        className={cn(
-          "flex items-center gap-0.5 rounded-md transition-colors",
-          "hover:bg-accent hover:text-accent-foreground",
-          isActive
-            ? "bg-accent/60 text-accent-foreground font-medium"
-            : "text-muted-foreground",
-          textClass,
-        )}
-        style={{ paddingLeft: depth > 0 ? `${depth * 8}px` : undefined }}
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton
+        isActive={isActive}
         onContextMenu={(e) => onContextMenu(e, node, flowPath)}
+        onClick={() => navigate(`/flows/edit${flowPath}`)}
+        className={cn("cursor-pointer", depth > 1 ? "pl-4" : undefined)}
       >
-        {/* chevron / dot */}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggle(node.path); }}
-          className="flex h-6 w-5 shrink-0 items-center justify-center rounded hover:text-foreground"
-          aria-label={isOpen ? "Collapse" : "Expand"}
-        >
-          {isLoading && !isOpen
-            ? <Loader2 size={11} className="animate-spin" />
-            : (node.has_children || isOpen)
-              ? isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />
-              : <span className="block h-1.5 w-1.5 rounded-full bg-border" />
-          }
-        </button>
-
-        {/* label */}
-        <button
-          type="button"
-          onClick={() => navigate(`/flows/edit${flowPath}`)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 pr-2 text-left"
-          title={node.path}
-        >
-          <Icon size={iconSize} className="shrink-0 opacity-50" />
-          <span className="truncate">{name}</span>
-        </button>
-      </div>
-
-      {/* Children (recursive) */}
-      {isOpen && (
-        <div className="border-l border-border" style={{ marginLeft: `${(depth + 1) * 8 + 10}px` }}>
-          {isLoading && children.length === 0 && (
-            <span className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-muted-foreground">
-              <Loader2 size={11} className="animate-spin" />Loading…
-            </span>
-          )}
-          {children.map((child) => (
-            <TreeNode
-              key={child.path}
-              node={child}
-              depth={depth + 1}
-              flowPath={flowPath}
-              childrenOf={childrenOf}
-              expanded={expanded}
-              loadingPaths={loadingPaths}
-              onToggle={onToggle}
-              navigate={navigate}
-              onContextMenu={onContextMenu}
-            />
-          ))}
-          {!isLoading && children.length === 0 && (
-            <span className="block px-2 py-0.5 text-xs italic text-muted-foreground/50">
-              empty
-            </span>
-          )}
-        </div>
-      )}
-    </div>
+        <Icon className="size-3 shrink-0 opacity-50" />
+        <span>{name}</span>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
   );
 }
 

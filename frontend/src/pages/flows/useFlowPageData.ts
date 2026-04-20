@@ -45,7 +45,15 @@ export function useFlowPageData({ pathFromUrl, navigate }: UseFlowPageDataOption
 
   const nodes = useMemo(() => [...nodeMap.values()], [nodeMap]);
   const links = useMemo(() => [...linkMap.values()], [linkMap]);
-  const isLoading = !graphStore || (!!openFlowPath && loadingPaths.has(openFlowPath));
+
+  // Sync the URL's flow path into the flow store immediately so the
+  // GraphStore starts fetching before we check whether the node exists.
+  useEffect(() => {
+    if (!pathFromUrl) return;
+    if (openFlowPath !== pathFromUrl) {
+      setOpenFlow(pathFromUrl);
+    }
+  }, [pathFromUrl, openFlowPath, setOpenFlow]);
 
   // Tell the GraphStore which flow path is open so it auto-fetches the subtree.
   useEffect(() => {
@@ -53,22 +61,28 @@ export function useFlowPageData({ pathFromUrl, navigate }: UseFlowPageDataOption
     graphStore.getState().setOpenFlow(openFlowPath);
   }, [graphStore, openFlowPath]);
 
+  // Consider loading when:
+  //  - GraphStore hasn't connected yet, OR
+  //  - A flow is open and its subtree is still being fetched, OR
+  //  - We have a URL path but nodes haven't arrived yet (initial fetch)
+  const isLoading =
+    !graphStore ||
+    (!!openFlowPath && loadingPaths.has(openFlowPath)) ||
+    (!!pathFromUrl && nodes.length === 0);
+
   const kinds = kindsQuery.data ?? [];
   const kindsById = useMemo(() => new Map(kinds.map((kind) => [kind.id, kind])), [kinds]);
 
   useEffect(() => {
     if (!pathFromUrl) return;
+    // Still loading — don't redirect yet.
+    if (isLoading) return;
     const exists = nodes.some((node) => node.path === pathFromUrl);
     if (!exists) {
-      if (!isLoading) {
-        navigate("/flows", { replace: true });
-      }
+      navigate("/flows", { replace: true });
       return;
     }
-    if (openFlowPath !== pathFromUrl) {
-      setOpenFlow(pathFromUrl);
-    }
-  }, [pathFromUrl, nodes, isLoading, openFlowPath, setOpenFlow, navigate]);
+  }, [pathFromUrl, nodes, isLoading, navigate]);
 
   const visibleNodes = useMemo(
     () => (openFlowPath ? nodes.filter((node) => isDirectChildOfFlow(node, openFlowPath)) : []),

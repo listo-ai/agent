@@ -25,9 +25,11 @@ use blocks_sdk::prelude::*;
 
 pub mod count;
 pub mod math_add;
+pub mod pluck;
 
 pub use count::{Count, CountConfig};
 pub use math_add::{Add, AddConfig};
+pub use pluck::{Pluck, PluckConfig};
 
 blocks_sdk::requires! {
     "spi.msg" => "1",
@@ -37,6 +39,7 @@ blocks_sdk::requires! {
 pub fn register_kinds(kinds: &graph::KindRegistry) {
     kinds.register(<Count as NodeKind>::manifest());
     kinds.register(<Add as NodeKind>::manifest());
+    kinds.register(<Pluck as NodeKind>::manifest());
 }
 
 /// Construct the dispatchable behaviour for [`Count`]. Cheap; behaviour
@@ -48,4 +51,9 @@ pub fn behavior() -> Arc<dyn DynBehavior> {
 /// Construct the dispatchable behaviour for [`Add`] — `sys.compute.math.add`.
 pub fn add_behavior() -> Arc<dyn DynBehavior> {
     Arc::new(TypedBehavior(Add))
+}
+
+/// Construct the dispatchable behaviour for [`Pluck`] — `sys.compute.pluck`.
+pub fn pluck_behavior() -> Arc<dyn DynBehavior> {
+    Arc::new(TypedBehavior(Pluck))
 }

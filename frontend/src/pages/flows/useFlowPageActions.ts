@@ -180,7 +180,7 @@ export function useFlowPageActions({
       if (!agent || edgeIds.length === 0) return;
       try {
         await Promise.all(edgeIds.map((id) => agent.links.remove(id)));
-        await queryClient.invalidateQueries({ queryKey: ["links"] });
+        // GraphStore handles cache removal via the SSE link_removed event.
         setSelectedEdges([]);
         setErrorMessage(null);
       } catch (error) {

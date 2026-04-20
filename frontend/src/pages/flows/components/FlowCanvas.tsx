@@ -104,18 +104,17 @@ function FlowCanvasInner({
       }));
     });
   }, [nodes]);
-  useEffect(() => setCanvasEdges(edges), [edges]);
-
-  const selectedEdgesSet = useMemo(() => new Set(selectedEdgeIds), [selectedEdgeIds]);
-
-  const visualEdges = useMemo<Edge[]>(
-    () =>
-      canvasEdges.map((edge) => ({
-        ...edge,
-        selected: selectedEdgesSet.has(edge.id),
-      })),
-    [canvasEdges, selectedEdgesSet],
-  );
+  // Sync server edges while preserving local selection state (same pattern
+  // as nodes preserving local drag-position above).
+  useEffect(() => {
+    setCanvasEdges((current) => {
+      const localById = new Map(current.map((e) => [e.id, e]));
+      return edges.map((e) => ({
+        ...e,
+        selected: localById.get(e.id)?.selected ?? false,
+      }));
+    });
+  }, [edges]);
 
   const nodeTypes = useMemo(() => ({ flowNode: FlowNodeCard }), []);
 
@@ -156,7 +155,7 @@ function FlowCanvasInner({
     <div className="h-full w-full bg-[radial-gradient(circle_at_top,#eff6ff,transparent_55%)]">
       <ReactFlow
         nodes={canvasNodes}
-        edges={visualEdges}
+        edges={canvasEdges}
         nodeTypes={nodeTypes}
         fitView
         minZoom={0.25}
@@ -242,11 +241,12 @@ function FlowCanvasInner({
   );
 }
 
-// Layout constants for handle positioning
-const CARD_PADDING_TOP = 12; // pt-3
-const HEADER_HEIGHT = 52;    // title line + kind line + gaps
-const SLOT_ROW_H = 22;       // height per slot row
-const SLOTS_PADDING_TOP = 6; // gap before slot rows
+// Layout constants for handle positioning.
+// HEADER_HEIGHT measures card-top → bottom of the header (incl. pt-3 and pb-1),
+// so the handles start exactly at the slot-block's top border.
+const HEADER_HEIGHT = 52;
+const SLOT_ROW_H = 22;
+const SLOTS_PADDING_TOP = 6;
 
 const FlowNodeCard = memo(function FlowNodeCard({
   data,
@@ -262,7 +262,7 @@ const FlowNodeCard = memo(function FlowNodeCard({
   );
 
   const slotRows = Math.max(inputs.length, outputs.length);
-  const slotsBlockTop = CARD_PADDING_TOP + HEADER_HEIGHT + SLOTS_PADDING_TOP;
+  const slotsBlockTop = HEADER_HEIGHT + SLOTS_PADDING_TOP;
 
   return (
     <div

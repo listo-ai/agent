@@ -1,29 +1,22 @@
 import { Outlet } from "react-router-dom";
-import { Topbar } from "./Topbar";
-import { Sidebar } from "./Sidebar";
-import { useUiStore } from "@/store/ui";
-import { cn } from "@/lib/utils";
+import { SiteHeader } from "./SiteHeader";
+import { AppSidebar } from "./Sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui";
 
-// Shell — outermost layout frame.
-// Topbar spans full width; below it: sidebar (left) + main workbench area.
+// Shell — outermost layout frame using shadcn sidebar-16 pattern.
+// SidebarProvider owns collapse state (persisted in cookie).
 
 export function Shell() {
-  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
-
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <Topbar />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <main
-          className={cn(
-            "flex-1 overflow-auto transition-all duration-200",
-            sidebarCollapsed ? "ml-0" : "",
-          )}
-        >
+    <SidebarProvider className="h-full min-h-0">
+      <AppSidebar />
+      <SidebarInset>
+        <SiteHeader />
+        <div className="flex min-h-0 flex-1 flex-col">
           <Outlet />
-        </main>
-      </div>
-    </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
+
