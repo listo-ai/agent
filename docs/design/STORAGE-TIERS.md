@@ -193,6 +193,30 @@ Plan for migrations, don't design against them.
 - Let plugins hand-write SQL. The `DocumentStore` trait is the only plugin-facing persistence surface; tier-1 access flows through the graph SDK.
 - Make tier 3 queryable over RSQL. That line exists on purpose. If tier 3 grows a query surface, it stops being tier 3.
 
+## Operational details
+
+Three things that would otherwise rot as "open questions." Locked down so the doc is actionable.
+
+### TTL sweep
+
+`sweep_expired` runs on a background task in [`apps/agent`](../../crates/apps/agent/), independent of historizer flush. Default tick **every 5 minutes**, role-agnostic. Single-writer — only the agent process sweeps; blocks never call it. Deletes rows where `ttl_ms IS NOT NULL AND ttl_ms < now`. Emits a metric per namespace (`documents.swept{ns}`) for observability; no events fire (this is service scratch, not user data).
+
+### Per-tenant scoping
+
+Multi-tenant deployments enforce tenancy at the trait boundary, same pattern as RSQL's `enforced_from = "auth.tenant_id"` in [QUERY-LANG.md:73](QUERY-LANG.md#L73). The raw `namespace` column always carries a `<tenant_id>/` prefix; the `DocumentStore` a caller receives has already been scoped, so they write `ai.provider_cache` and the impl stores `t_abc123/ai.provider_cache`. Standalone / edge-single-tenant deployments use a fixed `_/` prefix — same code path, no special case. Cross-tenant reads are structurally impossible through the trait.
+
+### Block quota observability
+
+Per-block usage is exposed as slots on the block's existing `sys.agent.block` node (see [BLOCKS.md § Block state IS a graph node](BLOCKS.md#block-state-is-a-graph-node)). New status slots:
+
+| Slot | Kind | Meaning |
+|---|---|---|
+| `storage_rows_used` | Number | Current row count in `block.runtime.<id>` |
+| `storage_bytes_used` | Number | Sum of `length(body)` |
+| `storage_quota_exceeded` | Bool | Latched on last write rejection; cleared when usage drops below cap |
+
+Subscribe via the same `graph.<tenant>.agent.blocks.<id>.slot.*.changed` subject pattern Studio already uses — no new transport surface. The slot updates come from the `DocumentStore` impl on each `put`, batched to avoid hot-loop writes.
+
 ## One-line summary
 
 **Three storage tiers — graph nodes for user-facing things, typed tables for append-only / high-volume domain data, a single document store for service scratch — with one crate owning each bounded context, one query grammar per tier, and explicit promotion paths when you pick wrong.**

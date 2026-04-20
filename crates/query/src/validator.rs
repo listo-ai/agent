@@ -23,14 +23,7 @@ pub fn validate(schema: &QuerySchema, req: QueryRequest) -> Result<ValidatedQuer
                 op: filter.op,
             });
         }
-        if matches!(filter.op, crate::Operator::Prefix | crate::Operator::In)
-            && spec.ty != FieldType::Text
-        {
-            return Err(QueryError::OperatorTypeMismatch {
-                field: filter.field.clone(),
-                op: filter.op,
-            });
-        }
+        check_op_type_compat(filter, spec.ty)?;
     }
 
     for sort_field in &sort {
@@ -58,6 +51,29 @@ pub fn validate(schema: &QuerySchema, req: QueryRequest) -> Result<ValidatedQuer
         page,
         size,
     })
+}
+
+fn check_op_type_compat(
+    filter: &FilterExpr,
+    ty: FieldType,
+) -> Result<(), QueryError> {
+    use crate::Operator::*;
+    let ok = match (filter.op, ty) {
+        // Text: scalar operators + Prefix + In
+        (Eq | Ne | Prefix | In, FieldType::Text) => true,
+        // TextArr: membership and existence operators
+        (Contains | In | Exists, FieldType::TextArr) => true,
+        // Enum: equality and membership
+        (Eq | Ne | In, FieldType::Enum) => true,
+        _ => false,
+    };
+    if !ok {
+        return Err(QueryError::OperatorTypeMismatch {
+            field: filter.field.clone(),
+            op: filter.op,
+        });
+    }
+    Ok(())
 }
 
 /// Parse a raw filter/sort/page/size without schema field validation.

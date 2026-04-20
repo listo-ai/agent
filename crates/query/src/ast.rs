@@ -17,6 +17,10 @@ pub enum Operator {
     Prefix,
     /// Comma-separated membership test: `field=in=a,b,c`.
     In,
+    /// Array-contains test: `field=contains=value`.
+    Contains,
+    /// Existence test: `field=exists=true|false`.
+    Exists,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

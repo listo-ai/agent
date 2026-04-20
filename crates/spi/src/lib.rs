@@ -24,6 +24,7 @@ mod ids;
 pub mod log;
 mod manifest;
 mod msg;
+pub mod presentation;
 mod slot_schema;
 pub mod subject;
 

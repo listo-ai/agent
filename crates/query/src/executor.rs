@@ -73,21 +73,33 @@ struct Row<T> {
 }
 
 fn matches_filter(json: &Value, filter: &FilterExpr) -> bool {
-    let Some(actual) = field_value(json, &filter.field) else {
-        return false;
-    };
     match filter.op {
-        Operator::Eq => scalar_text(actual) == Some(filter.value.as_str()),
-        Operator::Ne => scalar_text(actual).is_some_and(|value| value != filter.value),
-        Operator::Prefix => {
-            scalar_text(actual).is_some_and(|value| value.starts_with(&filter.value))
+        Operator::Exists => {
+            let present = field_value(json, &filter.field).is_some();
+            // value is "true" or "false"
+            let want = filter.value != "false";
+            present == want
         }
-        Operator::In => {
-            let needle = scalar_text(actual);
-            filter
-                .value
-                .split(',')
-                .any(|candidate| needle == Some(candidate.trim()))
+        _ => {
+            let Some(actual) = field_value(json, &filter.field) else {
+                return false;
+            };
+            match filter.op {
+                Operator::Eq => scalar_text(actual) == Some(filter.value.as_str()),
+                Operator::Ne => scalar_text(actual).is_some_and(|v| v != filter.value),
+                Operator::Prefix => {
+                    scalar_text(actual).is_some_and(|v| v.starts_with(&filter.value))
+                }
+                Operator::In => {
+                    let needle = scalar_text(actual);
+                    filter
+                        .value
+                        .split(',')
+                        .any(|c| needle == Some(c.trim()))
+                }
+                Operator::Contains => array_contains(actual, &filter.value),
+                Operator::Exists => unreachable!(),
+            }
         }
     }
 }
@@ -133,6 +145,12 @@ fn scalar_text(value: &Value) -> Option<&str> {
         Value::Bool(false) => Some("false"),
         _ => None,
     })
+}
+
+/// Returns true if `arr` is a JSON array that contains `needle` as a string element.
+fn array_contains(arr: &Value, needle: &str) -> bool {
+    arr.as_array()
+        .is_some_and(|items| items.iter().any(|v| v.as_str() == Some(needle)))
 }
 
 #[cfg(test)]

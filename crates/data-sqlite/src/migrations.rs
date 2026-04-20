@@ -188,6 +188,25 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (user_id, org_id)
     );
     "#,
+    // v6 — TAGS Stage 2: tags JSON columns + presentation_status on nodes.
+    // Implements docs/sessions/TAGS-PRESENTATION-QUERY.md.
+    //
+    // Design notes:
+    //   • `tags_labels_json` / `tags_kv_json` shadow the `config.tags` slot
+    //     for index-backed queries; they are written by the slot-write path
+    //     whenever the slot id is `config.tags`.
+    //   • `presentation_status` is written only on status *transitions* by
+    //     the engine (debounced per the runtime contract); NULL means `None`.
+    //   • Both columns are nullable — existing rows with no tags are treated
+    //     as `{ labels: [], kv: {} }` by the query translator.
+    r#"
+    ALTER TABLE nodes ADD COLUMN tags_labels_json TEXT;
+    ALTER TABLE nodes ADD COLUMN tags_kv_json     TEXT;
+    ALTER TABLE nodes ADD COLUMN presentation_status TEXT;
+
+    CREATE INDEX idx_nodes_pres_status ON nodes(presentation_status)
+        WHERE presentation_status IS NOT NULL;
+    "#,
 ];
 
 pub fn apply(conn: &Connection) -> Result<(), SqliteError> {

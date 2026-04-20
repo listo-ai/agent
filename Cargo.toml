@@ -18,6 +18,8 @@ members = [
     "crates/domain-flows",
     "crates/domain-devices",
     "crates/domain-blocks",
+    "crates/domain-tags",
+    "crates/domain-presentation",
     "crates/domain-fleet",
     "crates/domain-history",
     "crates/dashboard-nodes",
@@ -68,6 +70,8 @@ domain-logic = { path = "crates/domain-logic" }
 domain-flows = { path = "crates/domain-flows" }
 domain-devices = { path = "crates/domain-devices" }
 domain-blocks = { path = "crates/domain-blocks" }
+domain-tags = { path = "crates/domain-tags" }
+domain-presentation = { path = "crates/domain-presentation" }
 domain-fleet = { path = "crates/domain-fleet" }
 domain-history = { path = "crates/domain-history" }
 dashboard-nodes = { path = "crates/dashboard-nodes" }

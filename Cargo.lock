@@ -1326,6 +1326,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-presentation"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "spi",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "domain-tags"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
