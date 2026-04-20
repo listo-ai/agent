@@ -37,13 +37,13 @@ transport-cli = { workspace = true }
 domain-compute = { workspace = true }
 domain-logic = { workspace = true }
 domain-history = { workspace = true }
-domain-extensions = { workspace = true }
+domain-blocks = { workspace = true }
 domain-fleet = { workspace = true }
 dashboard-nodes = { workspace = true }
 dashboard-runtime = { workspace = true }
 dashboard-transport = { workspace = true }
-extensions-sdk = { workspace = true }
-extensions-host = { workspace = true }
+blocks-sdk = { workspace = true }
+blocks-host = { workspace = true }
 axum = { workspace = true }
 
 [features]

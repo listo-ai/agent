@@ -17,7 +17,7 @@ members = [
     "crates/domain-logic",
     "crates/domain-flows",
     "crates/domain-devices",
-    "crates/domain-extensions",
+    "crates/domain-blocks",
     "crates/domain-fleet",
     "crates/domain-history",
     "crates/dashboard-nodes",
@@ -32,9 +32,9 @@ members = [
     "crates/transport-mcp",
     "crates/graph",
     "crates/engine",
-    "crates/extensions-sdk",
-    "crates/extensions-sdk-macros",
-    "crates/extensions-host",
+    "crates/blocks-sdk",
+    "crates/blocks-sdk-macros",
+    "crates/blocks-host",
     "crates/apps/agent",
     "clients/rs",
 ]
@@ -65,7 +65,7 @@ domain-compute = { path = "crates/domain-compute" }
 domain-logic = { path = "crates/domain-logic" }
 domain-flows = { path = "crates/domain-flows" }
 domain-devices = { path = "crates/domain-devices" }
-domain-extensions = { path = "crates/domain-extensions" }
+domain-blocks = { path = "crates/domain-blocks" }
 domain-fleet = { path = "crates/domain-fleet" }
 domain-history = { path = "crates/domain-history" }
 dashboard-nodes = { path = "crates/dashboard-nodes" }
@@ -80,9 +80,9 @@ transport-cli = { path = "crates/transport-cli" }
 transport-mcp = { path = "crates/transport-mcp" }
 graph = { path = "crates/graph" }
 engine = { path = "crates/engine" }
-extensions-sdk = { path = "crates/extensions-sdk" }
-extensions-sdk-macros = { path = "crates/extensions-sdk-macros" }
-extensions-host = { path = "crates/extensions-host" }
+blocks-sdk = { path = "crates/blocks-sdk" }
+blocks-sdk-macros = { path = "crates/blocks-sdk-macros" }
+blocks-host = { path = "crates/blocks-host" }
 agent-client = { path = "clients/rs" }
 
 # Third-party.

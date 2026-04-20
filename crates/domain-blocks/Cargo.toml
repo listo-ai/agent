@@ -1,5 +1,5 @@
 [package]
-name = "domain-extensions"
+name = "domain-blocks"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,4 +12,4 @@ workspace = true
 [dependencies]
 spi = { workspace = true }
 graph = { workspace = true }
-extensions-sdk = { workspace = true }
+blocks-sdk = { workspace = true }

@@ -405,3 +405,114 @@ Pages created by the builder and pages hand-authored by the CLI are indistinguis
 - **Stage 5 plugin-view editing is deferred indefinitely.** Left in the doc as a placeholder.
 
 Prove the idea first. Fix the two substrate gaps. Ship Stage 1 for the power user. Let Stage 0.3 decide whether Stage 2 happens. The rest falls out.
+
+---
+
+## Implementation status (snapshot: 2026-04-20)
+
+Work since this doc was written. Numbers refer to commit subjects; look them up in `git log` for the full diff.
+
+### Shipped — substrate (backend)
+
+- **`GET /api/v1/ui/vocabulary`** — returns `{ir_version, schema}` where schema is `schemars::schema_for!(ui_ir::Component)`. Full five-touchpoint: [crates/dashboard-transport/src/vocabulary.rs](../../crates/dashboard-transport/src/vocabulary.rs), `clients/rs` `UiVocabulary` DTO + `client.ui().vocabulary()`, `agent ui vocabulary` CLI, `CommandMeta`, TS client `vocabulary()`, fixture + `fixture_gate::ui_vocabulary_ok`.
+- **`expected_generation` OCC on slot writes** — `POST /api/v1/slots` accepts optional `expected_generation`; mismatch returns 409 with `{code: "generation_mismatch", current_generation}`. `clients/rs` ships `ClientError::GenerationMismatch` + `Slots::write_with_generation`; TS client ships `GenerationMismatchError` + `writeSlot({..., expectedGeneration})`. `GraphStore::write_slot_expected` enforces the check inside the write lock so the guarantee is atomic. Fixture: `slots_write_generation_mismatch`.
+- **`/ui/resolve --dry-run` binding validation** — walks the layout, parses every `{{...}}` with `dashboard_runtime::Binding::parse`, evaluates against `EvalContext`, collects failures as `ResolveIssue` entries. Also flags `$page.*` keys not declared in the page's `page_state_schema.properties`. Shared tree-walking helper at [crates/dashboard-transport/src/binding_walk.rs](../../crates/dashboard-transport/src/binding_walk.rs) (reused by `render.rs`'s `scan_bindings`). Fixture: `ui_resolve_dry_run_binding_errors`.
+- **Inline `layout` override on `/ui/resolve`** — when the request body carries `layout: <candidate>`, the resolver validates/renders that instead of the node's persisted slot. Honoured on both `dry_run` and live paths. Lets the builder preview an unsaved buffer with the real server-derived subscription plan.
+- **Query parser strips matching surrounding quotes** — `kind=="ui.page"` now matches the stored value `ui.page`. Was a real user-blocking bug; `id==<uuid>` and every quoted-value filter path were silently returning zero rows. [crates/query/src/parser.rs](../../crates/query/src/parser.rs) `strip_matching_quotes`.
+
+### Shipped — frontend (page builder)
+
+- Feature dir: [frontend/src/features/page-builder/](../../frontend/src/features/page-builder/).
+  - `model/` — pure TS. `types.ts` (`DraftPage`, `ValidationIssue`), `validate-layout.ts` (JSON parse + shape checks, line:col pinning).
+  - `store/` — zustand. `builder-store.ts` holds draft, issues, `saveState`, `conflict`.
+  - `persistence/` — side effects. `use-validator.ts` (local + server dry-run; layout override passed through), `use-autosave.ts` (debounced `writeSlot` with OCC; maps `GenerationMismatchError` into the store's `conflict` state).
+  - `preview/LivePreview.tsx` — posts the current editor buffer as the inline layout to `/ui/resolve`, renders the returned tree through the existing `SduiProvider`/`Renderer`, mounts `useSubscriptions` against the returned plan.
+  - `panels/` — `EditorPane.tsx` (Monaco JSON editor, markers driven by `store.issues`), `ValidationList.tsx`, `SaveStatus.tsx`, `ConflictBanner.tsx` (non-dismissable; reload + clipboard-copy).
+- Route `/pages/:id/edit` → `PageBuilderPage`.
+- `/dashboard` route and `DashboardPage` deleted — pages are `ui.page` nodes and the listing is at `/pages` via the renamed `PagesListPage`. Sidebar entry updated. The "Pages" list has a **New page** button that creates a `ui.page` at root, seeds a minimal layout via `writeSlot`, and navigates straight into the builder. Empty-state is a prominent CTA with explanatory copy.
+- Chart component now actually fetches data (it shipped with empty `series` previously and no fetch path). Client-side fetch for `source.{node_id, slot}`: splits node-id→path into its own long-staleTime query, probes telemetry + history in parallel on first fetch, pins to whichever store has rows, extracts `.payload` from flow-engine envelopes (`{_msgid, _ts, payload}`).
+- `useSubscriptions` patches caches in place on `slot_changed` events via `setQueriesData` instead of invalidating — tables merge the new slot value into the matching row, charts append `[ts, value]` to the series. Falls back to invalidation if the predicate matches no cached entry. **Patch path is believed incomplete — see Known issues §1.**
+
+### Not yet shipped — Stage 1 polish
+
+- **Vocabulary palette** (`panels/VocabularyPalette.tsx`). Driven by the already-shipped `/ui/vocabulary` endpoint. Empty today; `EditorPane` does not wire a JSON Schema reference into Monaco, so autocomplete is JSON syntax only, not semantic IR awareness.
+- **YAML mode toggle.** Scope says it parses to the same model and saves as JSON.
+- **Page-state editor** (`panels/PageStateEditor.tsx`). Would edit the page's `page_state_schema` slot inline.
+- **ESLint `no-restricted-imports` layer rule.** The layer split is currently enforced by convention, not by lint.
+- **Headless `vitest` suites for `model/` and `store/`.** Neither layer has tests yet; the `validate-layout.ts` line/col logic especially deserves coverage.
+
+### Not yet shipped — Stage 2/3/4/5
+
+All deferred as originally specified. Stage 0.3 existence gate has not been run; Stage 2 remains probationary.
+
+---
+
+## Known issues
+
+Open issue tracker. Each entry: **ID**, **symptom**, **what's been tried**, **where to look next**.
+
+### #1 — Live cell updates not visually propagating after SSE patch (OPEN, user-blocking)
+
+**Symptom.** A `ui.page` with a subscribed table (`{type: "table", source: {query: "path==/flow-1/heartbeat", subscribe: true}, columns: [{field: "slots.count.payload"}]}`) mounts fine and the initial row shows the current payload. Heartbeat continues ticking and SSE delivers `slot_changed` events — but the cell value does not visibly update. Same story for the chart: initial render has points, but new points don't appear.
+
+**What's been tried.**
+1. First cut invalidated `["sdui-table", widget]` / `["sdui-chart", widget]` on every event. User confirmed this worked — but per-tick network traffic was 3 requests (table refetch + chart telemetry + chart history; chart also did a node-id lookup each tick, so technically 4 calls for a 1-table-1-chart page).
+2. Cached node-id→path lookup (long `staleTime`). Pinned the chart to whichever store had rows after the first probe. Dropped to 2 requests per tick.
+3. Switched from invalidate to `setQueriesData` with a custom `predicate` function so events mutate cache in place. **User reported widgets stopped updating.**
+4. Replaced the custom predicate with TanStack Query v5's native `{queryKey: ["sdui-table", widget]}` prefix filter, and added a fallback: if no query matches the patch, invalidate the prefix so something refreshes. **Still not updating visibly per user.**
+
+Current code: [frontend/src/sdui/useSubscriptions.ts](../../frontend/src/sdui/useSubscriptions.ts).
+
+**Debugging hypotheses for the next session.**
+
+- **Hypothesis A — the predicate truly isn't matching.** Either the queryKey prefix comparison treats array elements non-structurally, or the TableComp's actual queryKey shape doesn't start with `["sdui-table", <widget_id>]`. Verify by console-logging `q.queryClient.getQueryCache().getAll().map(q => q.queryKey)` immediately inside the subscriber and confirming the live widget's cached key. `TableComp`'s key is `["sdui-table", node.id, node.source.query, page, pageSize]` ([TableComp.tsx:39](../../frontend/src/sdui/components/TableComp.tsx)). If `node.id` differs from `widget_id` in the plan, the predicate silently misses.
+- **Hypothesis B — the updater returns a new object reference but React Query treats it as unchanged for notification purposes.** Check with a log: `console.log("table patch applied", touched)` from inside the updater. If `touched` is `true` and no observer fires, the issue is in how `setQueriesData` propagates; try `invalidateQueries` as a forced re-observation after the update.
+- **Hypothesis C — the builder's preview re-resolves on every keystroke (queryKey includes `debouncedText`), so the `useSubscriptions` instance is tearing down and rebuilding its SSE reader too fast to keep up with the tick rate.** Verify by opening the builder, pausing all editor keystrokes, and watching the Network tab: if patches start landing only after a pause, this is it. Fix: factor the subscription setup out of the resolve query lifecycle, or feed the subscription plan through a stable ref so the SSE reader doesn't thrash.
+- **Hypothesis D — `setQueriesData` on a component whose owning query is stale returns the old data to renders.** Under v5, a stale query that is still referenced by an observer should still notify; but if the builder keeps the query alive only transiently (see C), the patch may not reach an observer that matters. Test by mounting the same page at `/ui/:id` (production render, stable subscriptions) and watching the same events — if it ticks there, the bug is builder-shell-specific.
+- **Hypothesis E — `TableComp` reads `row.slots[col.field]` through a dotted-path walker that does **not** re-evaluate after a shallow slots-map swap.** Check [TableComp.tsx:23 `getPath`](../../frontend/src/sdui/components/TableComp.tsx). Our patch returns `{...row, slots: {...row.slots, [slot]: value}}` — a new slots reference — but if React memoizes the cell body by row identity alone, the cell won't re-render. Quick fix: bust per-row memo by always returning `{...row}` when patched.
+
+**Recommended first debug step for next session.** Start a dev build, open the browser devtools, and add three `console.debug` lines:
+
+```ts
+// useSubscriptions.ts, inside the for-await loop:
+console.debug("[sdui] event", event.slot, event.id, "widget:", widget);
+// inside applyToTables, after the map:
+console.debug("[sdui] table patch touched=", touched, "rowId=", event.id);
+// inside applyToCharts, after the if-not-empty:
+console.debug("[sdui] chart patch applied", head?.label, v);
+```
+
+The shape of the output tells you which hypothesis is live. Report back and we can fix it in one more PR.
+
+### #2 — `id==<uuid>` filter relied on a quote-strip fix; verify dependent paths
+
+The query parser fix (`strip_matching_quotes`) unblocked both the Pages list and the builder's draft loader. Several other places filter by uuid: chart's path lookup at [Chart.tsx useChartFetch](../../frontend/src/sdui/components/Chart.tsx). None should regress, but when the next session adds new `filter=id==...` callers the pattern to use is unquoted (`` `id==${uuid}` ``) — the quote is optional but the parser now tolerates both.
+
+### #3 — Chart data still costs one round-trip on first render
+
+Even with the patch path working, the *first* render of a chart queries history/telemetry to seed the series. The doc-comment on [Chart.tsx](../../frontend/src/sdui/components/Chart.tsx) says "the server fills `series`" — that was aspirational; no server-side population exists. Cleanest long-term fix: populate `series` in `resolve.rs` for every authored `chart` component whose `source.{node_id, slot}` resolves, by reading history/telemetry in the resolver and emitting the points in the render tree. Once done, the chart becomes a pure renderer, `sdui-chart` query disappears, and SSE patches are the only update path.
+
+### #4 — Pre-existing workspace test failures (not from this session)
+
+`cargo test --workspace` is currently red on two fronts, confirmed pre-existing before this session by a `git stash` round-trip:
+
+- `crates/graph/tests/seed_snapshot.rs::math_add_manifest_is_pinned` — pinned manifest is missing `last_a/last_b/last_sum` status slots that the actual manifest now emits. Fix: regenerate the pinned snapshot.
+- `crates/observability/tests/no_println.rs::library_code_does_not_use_println_or_eprintln` — four existing offenders (`transport-cli/src/commands/capabilities.rs:16`, `transport-cli/src/commands/ui.rs:206` / `:320`, `transport-cli/src/output.rs:188`) have their `NO_PRINTLN_LINT:allow` marker on the line *after* the `eprintln!(` call, but the lint requires same-line. Fix: move the marker onto the call line.
+
+Neither blocks Stage 1.
+
+### #5 — Frontend `tsc --noEmit` has one pre-existing error
+
+`rsbuild.config.ts:57` — "An object literal cannot have multiple properties with the same name." Unrelated to the builder; flagged here so the next session doesn't blame the wrong change.
+
+---
+
+## Handoff notes for the next session
+
+- **Top priority:** resolve issue #1. The drop to 2 calls/tick is correct; the value-doesn't-update problem is the only blocker for declaring Stage 1's live-preview bet proven. Work through the hypotheses in order (A → E).
+- **After #1:** decide whether to ship the server-side chart population (#3) now or defer. If deferring, add a comment on `Chart.tsx` to that effect so the stale "server fills series" docstring stops misleading readers.
+- **Do not start Stage 2 work.** The Stage 0.3 existence gate has not been run. Stage 2's five seed templates may or may not ship based on that gate.
+- **Do not add new endpoints without the five-touchpoint rule.** [NEW-API.md](../design/NEW-API.md) still applies. The `layout` override on `/ui/resolve` was added as a param on an existing endpoint; that's fine. A *new* endpoint would need Rust handler + Rust client + CLI + CommandMeta + TS client + fixtures.
+- **Dev server recipe.** Agent on port 8081: `./target/debug/agent run --http 127.0.0.1:8081 --db /tmp/agent.db`. Frontend against that agent: `PUBLIC_AGENT_URL=http://localhost:8081 pnpm --filter @sys/studio dev`. To build the TS client after any `clients/ts/src/` change: `pnpm --filter @sys/agent-client build` (frontend imports from `dist/`, not `src/`).
+- **Fixture gate.** Every new endpoint or altered error contract gets a fixture under `clients/contracts/fixtures/cli-output/` and a test in `crates/transport-cli/tests/fixture_gate.rs`. Do not skip this; it is the only guard against silent contract drift across the CLI and the TS client.
+

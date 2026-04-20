@@ -27,8 +27,8 @@ domain-logic = { workspace = true }
 dashboard-nodes = { workspace = true }
 dashboard-runtime = { workspace = true }
 dashboard-transport = { workspace = true }
-extensions-sdk = { workspace = true }
-extensions-host = { workspace = true }
+blocks-sdk = { workspace = true }
+blocks-host = { workspace = true }
 spi = { workspace = true }
 axum = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

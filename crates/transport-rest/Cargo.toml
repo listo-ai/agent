@@ -16,8 +16,8 @@ async-trait = { workspace = true }
 query = { workspace = true }
 graph = { workspace = true }
 engine = { workspace = true }
-extensions-sdk = { workspace = true }
-extensions-host = { workspace = true }
+blocks-sdk = { workspace = true }
+blocks-host = { workspace = true }
 domain-flows = { workspace = true }
 data-entities = { workspace = true }
 data-repos = { workspace = true }

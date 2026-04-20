@@ -1,5 +1,5 @@
 [package]
-name = "extensions-sdk"
+name = "blocks-sdk"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -29,7 +29,7 @@ process = ["dep:transport-grpc", "dep:tokio", "dep:tonic", "dep:async-trait", "d
 
 [dependencies]
 spi = { workspace = true }
-extensions-sdk-macros = { workspace = true }
+blocks-sdk-macros = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
