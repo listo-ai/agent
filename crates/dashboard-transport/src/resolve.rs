@@ -124,9 +124,13 @@ pub async fn handler(
     // uses this on every keystroke so its preview + subscription plan
     // reflect the in-flight buffer instead of the last-saved tree.
     let persisted = page.slots.get("layout").cloned().filter(|v| !v.is_null());
-    let layout = req.layout.clone().or(persisted).ok_or_else(|| {
+    let mut layout = req.layout.clone().or(persisted).ok_or_else(|| {
         TransportError::MalformedPage(page.id, "page has no `layout` slot".into())
     })?;
+    // Inject synthetic ids for chart/table/sparkline/timeline that
+    // omitted them, so the subscription plan and the rendered tree
+    // both carry the same key for the client to patch against.
+    crate::render::assign_synthetic_ids(&mut layout);
 
     if req.dry_run {
         if let Err(e) = serde_json::from_value::<ComponentTree>(layout.clone()) {

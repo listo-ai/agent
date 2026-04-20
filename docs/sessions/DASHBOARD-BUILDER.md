@@ -451,7 +451,17 @@ All deferred as originally specified. Stage 0.3 existence gate has not been run;
 
 Open issue tracker. Each entry: **ID**, **symptom**, **what's been tried**, **where to look next**.
 
-### #1 — Live cell updates not visually propagating after SSE patch (OPEN, user-blocking)
+### #1 — Live cell updates not visually propagating after SSE patch (PARTIALLY FIXED — verify)
+
+**Update 2026-04-20:** found a likely root cause that none of the original A–E hypotheses cover. `Chart.id` and `Table.id` are `Option<String>` in [crates/ui-ir/src/component.rs:128,166](../../crates/ui-ir/src/component.rs#L128). The plan emitters in [crates/dashboard-transport/src/render.rs](../../crates/dashboard-transport/src/render.rs) bail when `id` is empty (`unwrap_or("") + !id.is_empty()` guard), so any layout authored without explicit ids on subscribed widgets produced **zero** subscription plan entries — the SSE handler at `useSubscriptions.ts:64` would silently `continue` on every event because `subjectToWidget.get(subject)` returned `undefined`. The original debug recipe logged from inside the patch functions, so a missing plan looked identical to "events aren't firing."
+
+**Fix landed.** New `assign_synthetic_ids` pass on the resolve handler walks the layout JSON and injects deterministic ids (`auto:chart:0`, `auto:table:0`, …) on chart/table/sparkline/timeline that omitted `id`. Same pass runs for the `/ui/render` `ui.page` fast-path. Both the rendered tree the client receives and the subscription plan now carry the same id, so the patch path's `setQueriesData({queryKey: ["sdui-table", widget]})` actually matches. Tests in `render.rs::synthetic_id_tests`.
+
+**Diagnostic also added.** `useSubscriptions.ts` now logs subscription mounts and per-event match/miss when `localStorage.sdui_debug === "1"`. Set that and reload to see exactly which subjects the plan covers and whether incoming events match.
+
+**Verification step for next session.** Reload the heartbeat page, set `localStorage.setItem("sdui_debug", "1")`, watch the devtools console: every tick should log `[sdui] event matched node.<uuid>.slot.count → auto:chart:0` (or whatever id the author set). If matched events still don't visually update, the remaining hypotheses below are still in play (B/D for the chart's path-query race, E for table cell memoisation).
+
+
 
 **Symptom.** A `ui.page` with a subscribed table (`{type: "table", source: {query: "path==/flow-1/heartbeat", subscribe: true}, columns: [{field: "slots.count.payload"}]}`) mounts fine and the initial row shows the current payload. Heartbeat continues ticking and SSE delivers `slot_changed` events — but the cell value does not visibly update. Same story for the chart: initial render has points, but new points don't appear.
 
@@ -509,6 +519,10 @@ Neither blocks Stage 1.
 
 ## Handoff notes for the next session
 
+- **Read these first** — they were updated alongside this session's substrate work and are now internally consistent:
+  - [`docs/design/DASHBOARD.md`](../design/DASHBOARD.md) — framework-level backend spec. Now lists the vocabulary endpoint, the `layout` override on resolve, the OCC param on slot writes, and the expanded dry-run error set.
+  - [`docs/testing/CLI-DASHBOARD.md`](../testing/CLI-DASHBOARD.md) — authoring recipes via the CLI. Covers the four Studio routes (including `/pages/:id/edit`), the envelope caveat (`{_msgid,_ts,payload}`), `--expected-generation`, and the new dry-run binding errors in the failure table.
+  - [`docs/design/SDUI.md`](../design/SDUI.md) — IR vocabulary and binding grammar. Unchanged this session but load-bearing for interpreting dry-run errors.
 - **Top priority:** resolve issue #1. The drop to 2 calls/tick is correct; the value-doesn't-update problem is the only blocker for declaring Stage 1's live-preview bet proven. Work through the hypotheses in order (A → E).
 - **After #1:** decide whether to ship the server-side chart population (#3) now or defer. If deferring, add a comment on `Chart.tsx` to that effect so the stale "server fills series" docstring stops misleading readers.
 - **Do not start Stage 2 work.** The Stage 0.3 existence gate has not been run. Stage 2's five seed templates may or may not ship based on that gate.

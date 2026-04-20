@@ -1,6 +1,7 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useState, useCallback } from "react";
+import { Check, Copy } from "lucide-react";
 import type { Kind, NodeSnapshot, Slot } from "@sys/agent-client";
-import { cn } from "@/lib/utils";
+import { cn, compactUuid } from "@/lib/utils";
 import { useNodeSettings, NodeSettingsForm } from "@/lib/node-settings";
 import { mergedSlots } from "../flow-model";
 
@@ -61,6 +62,7 @@ export function FlowPropertyPanel({
           <span className="rounded-full bg-secondary px-2 py-0.5">{node.kind}</span>
           <span className="rounded-full bg-secondary px-2 py-0.5">{node.lifecycle}</span>
         </div>
+        <CopyId id={node.id} />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto px-5 py-4">
@@ -172,3 +174,30 @@ function SlotValue({ value }: { value: unknown }) {
 
 // keep ReactNode import live (used implicitly by JSX)
 type _Unused = ReactNode;
+
+// ─── Copyable compact UUID ───────────────────────────────────────────────────
+
+function CopyId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(compactUuid(id)).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [id]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Copy node ID (no dashes)"
+      className="mt-2 flex w-full items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      <span className="min-w-0 flex-1 truncate">{compactUuid(id)}</span>
+      {copied
+        ? <Check size={11} className="shrink-0 text-green-500" />
+        : <Copy size={11} className="shrink-0 opacity-50" />}
+    </button>
+  );
+}

@@ -9,6 +9,13 @@ pub struct FlowId(pub Uuid);
 #[serde(transparent)]
 pub struct DeviceId(pub Uuid);
 
+impl DeviceId {
+    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
+    pub fn to_hex(&self) -> String {
+        self.0.simple().to_string()
+    }
+}
+
 /// Identity of a node (graph node, not just a flow node).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -17,6 +24,11 @@ pub struct NodeId(pub Uuid);
 impl NodeId {
     pub fn new_random() -> Self {
         Self(Uuid::new_v4())
+    }
+
+    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
+    pub fn to_hex(&self) -> String {
+        self.0.simple().to_string()
     }
 }
 
@@ -42,6 +54,11 @@ impl RevisionId {
     pub fn new_random() -> Self {
         Self(Uuid::new_v4())
     }
+
+    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
+    pub fn to_hex(&self) -> String {
+        self.0.simple().to_string()
+    }
 }
 
 impl std::fmt::Display for RevisionId {
@@ -60,6 +77,11 @@ impl std::str::FromStr for RevisionId {
 impl FlowId {
     pub fn new_random() -> Self {
         Self(Uuid::new_v4())
+    }
+
+    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
+    pub fn to_hex(&self) -> String {
+        self.0.simple().to_string()
     }
 }
 

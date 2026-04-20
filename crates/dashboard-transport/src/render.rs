@@ -111,10 +111,11 @@ pub async fn handler(
 }
 
 fn render_layout_slot(
-    layout: JsonValue,
+    mut layout: JsonValue,
     target: &dashboard_runtime::NodeSnapshot,
     reader: &(dyn NodeReader + Send + Sync),
 ) -> Result<Json<ResolveResponse>, TransportError> {
+    assign_synthetic_ids(&mut layout);
     let render: ComponentTree = serde_json::from_value(layout.clone()).map_err(|e| {
         TransportError::MalformedPage(
             target.id,
@@ -246,6 +247,83 @@ pub(crate) fn derive_subscriptions_for_layout(
     reader: &(dyn NodeReader + Send + Sync),
 ) -> Vec<SubscriptionPlan> {
     derive_subscriptions(layout, None, reader)
+}
+
+/// Walk the layout tree and inject deterministic ids on `chart`,
+/// `table`, `sparkline`, and `timeline` components missing one. The
+/// IR makes `id` optional on these variants, but every subscription
+/// plan needs an id to key the client's per-widget patch path. Without
+/// this pass an authored layout that omits `id` silently produces no
+/// subscription plan and the widget never live-updates.
+///
+/// IDs are assigned by depth-first encounter order, separately per
+/// component type: `auto:chart:0`, `auto:table:0`, etc. Stable as long
+/// as the tree shape doesn't change, which is sufficient — both the
+/// derived plan and the rendered tree are regenerated together on
+/// every resolve, so the client sees matching ids in both.
+pub(crate) fn assign_synthetic_ids(layout: &mut JsonValue) {
+    let mut counters = SyntheticIdCounters::default();
+    assign_ids_walk(layout, &mut counters);
+}
+
+#[derive(Default)]
+struct SyntheticIdCounters {
+    chart: usize,
+    table: usize,
+    sparkline: usize,
+    timeline: usize,
+}
+
+fn assign_ids_walk(v: &mut JsonValue, counters: &mut SyntheticIdCounters) {
+    match v {
+        JsonValue::Array(a) => {
+            for item in a.iter_mut() {
+                assign_ids_walk(item, counters);
+            }
+        }
+        JsonValue::Object(m) => {
+            let kind = m.get("type").and_then(|v| v.as_str()).map(str::to_owned);
+            let needs_id = m
+                .get("id")
+                .map(|v| v.as_str().map(str::is_empty).unwrap_or(true))
+                .unwrap_or(true);
+            if needs_id {
+                if let Some(prefix_and_n) = match kind.as_deref() {
+                    Some("chart") => {
+                        let n = counters.chart;
+                        counters.chart += 1;
+                        Some(("chart", n))
+                    }
+                    Some("table") => {
+                        let n = counters.table;
+                        counters.table += 1;
+                        Some(("table", n))
+                    }
+                    Some("sparkline") => {
+                        let n = counters.sparkline;
+                        counters.sparkline += 1;
+                        Some(("sparkline", n))
+                    }
+                    Some("timeline") => {
+                        let n = counters.timeline;
+                        counters.timeline += 1;
+                        Some(("timeline", n))
+                    }
+                    _ => None,
+                } {
+                    let (prefix, n) = prefix_and_n;
+                    m.insert(
+                        "id".to_string(),
+                        JsonValue::String(format!("auto:{prefix}:{n}")),
+                    );
+                }
+            }
+            for val in m.values_mut() {
+                assign_ids_walk(val, counters);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn derive_subscriptions(
@@ -446,3 +524,62 @@ struct TableRow {
 // import as unused in minimal builds.
 #[allow(dead_code)]
 fn _type_anchor(_r: Arc<KindRegistry>) {}
+
+#[cfg(test)]
+mod synthetic_id_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn assigns_ids_to_chart_and_table_when_missing() {
+        let mut layout = json!({
+            "root": {
+                "type": "page",
+                "id": "p",
+                "children": [
+                    {
+                        "type": "chart",
+                        "source": {"node_id": "n1", "slot": "value"}
+                    },
+                    {
+                        "type": "table",
+                        "source": {"query": "kind==\"x\"", "subscribe": true},
+                        "columns": []
+                    }
+                ]
+            }
+        });
+        assign_synthetic_ids(&mut layout);
+        let kids = &layout["root"]["children"];
+        assert_eq!(kids[0]["id"], "auto:chart:0");
+        assert_eq!(kids[1]["id"], "auto:table:0");
+    }
+
+    #[test]
+    fn preserves_authored_ids() {
+        let mut layout = json!({
+            "type": "chart",
+            "id": "my-chart",
+            "source": {"node_id": "n", "slot": "v"}
+        });
+        assign_synthetic_ids(&mut layout);
+        assert_eq!(layout["id"], "my-chart");
+    }
+
+    #[test]
+    fn synthetic_id_drives_chart_plan() {
+        let mut layout = json!({
+            "type": "chart",
+            "source": {"node_id": "11111111-1111-1111-1111-111111111111", "slot": "value"}
+        });
+        assign_synthetic_ids(&mut layout);
+        let mut plans = Vec::new();
+        collect_chart_plans(&layout, &mut plans);
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].widget_id, "auto:chart:0");
+        assert_eq!(
+            plans[0].subjects,
+            vec!["node.11111111-1111-1111-1111-111111111111.slot.value"]
+        );
+    }
+}

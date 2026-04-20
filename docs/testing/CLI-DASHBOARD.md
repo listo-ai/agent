@@ -14,14 +14,16 @@ See also:
 
 A dashboard is a `ui.page` graph node whose `layout` slot holds a typed `ComponentTree` (JSON). The renderer reads that tree and projects it to React. Every interactive node (button, form, row-click) routes back through `POST /api/v1/ui/action`. No client knows what a BACnet device or a heartbeat is — the IR is domain-neutral.
 
-Two routes matter in Studio:
+Four routes matter in Studio:
 
 | Route | CLI behind it | Use when |
 |---|---|---|
+| `/pages` | `GET /api/v1/nodes?filter=kind==ui.page` | Browsing every `ui.page` node; "New page" button creates one at root + seeds a layout + jumps to the builder |
+| `/pages/<id>/edit` | `POST /api/v1/ui/resolve` with inline `layout` override + `POST /api/v1/slots` with `expected_generation` | Authoring a `ui.page` interactively — Monaco JSON editor, live preview, OCC-guarded autosave, non-dismissable conflict banner. See [sessions/DASHBOARD-BUILDER.md](../sessions/DASHBOARD-BUILDER.md). |
 | `/ui/<page-id>` | `POST /api/v1/ui/resolve` → reads the page's `layout` slot | Rendering an authored page you control end-to-end |
 | `/render/<node-id>` | `GET /api/v1/ui/render?target=<id>` → looks up the target's `KindManifest.views`, substitutes `$target` bindings | Rendering "the default view for this node's kind" without authoring a page per instance |
 
-Both return the same response shape: `{ render, subscriptions, meta }`. The renderer doesn't care which endpoint produced the tree.
+All four backend endpoints return the same `{ render, subscriptions, meta }` shape. The renderer doesn't care which endpoint produced the tree. The builder at `/pages/<id>/edit` is a parallel affordance to the CLI — both write the same `ui.page.layout` slot.
 
 LLM heuristic: if the user wants *one specific dashboard* → author a `ui.page`. If the user wants *every instance of kind X to have a page* → ship a `views:` entry on the kind manifest (block-authored, not CLI) and use `/render/<id>` to hit any instance.
 
@@ -82,13 +84,18 @@ agent slots write /dashboards/heartbeat-monitor layout '{
 Key points an LLM should remember:
 
 - Every component gets a **stable `id`**. Subscription plans key off these ids; two components with the same id break live-update routing.
-- `source.subscribe: true` on a `table` is what turns on live rows — the backend derives `node.<id>.slot.<name>` subjects for every node the query matches, and the React hook invalidates the table's cache on each matching event.
+- `source.subscribe: true` on a `table` is what turns on live rows — the backend derives `node.<id>.slot.<name>` subjects for every node the query matches, and the React hook patches the table's cached row in place on each matching event (no refetch per tick).
 - `source.query` is RSQL (same grammar as `agent nodes list --filter`). Test queries with `agent ui table --query '…'` first.
 - `columns[].field` is a dot-path into the row JSON (`path`, `kind`, `slots.<name>`, `parent_id`).
+- **Flow-engine envelope caveat.** Slots fed by a flow (`msg in`/`msg out`) are stored as `{_msgid, _ts, payload: <real value>}` objects, not raw scalars. A `field: "slots.count"` cell will render `[object Object]`. Drill into `slots.count.payload` instead, or bind to a status-kind slot that the behaviour already flattens (e.g. heartbeat ships `current_count` as a bare number alongside `count` as the envelope).
 
 ### Step 3 — verify before opening Studio
 
-Dry-run: parse-only, no render. Use this to catch malformed component trees before the user sees a 422:
+Dry-run validates both **shape** and **bindings**. Three failure modes it catches:
+
+1. Malformed component tree (unknown `type`, missing required fields, wrong enum values).
+2. Unresolved bindings — `{{$target.not_a_slot}}`, `{{$stack.unknown}}`, ref-walks through missing nodes.
+3. `$page.*` reads whose key is not declared in the page's `page_state_schema.properties` slot (only when the page has a non-null schema).
 
 ```bash
 agent ui resolve --page <page-id> --dry-run -o json
@@ -97,7 +104,11 @@ agent ui resolve --page <page-id> --dry-run -o json
 If `{"errors": []}` it's good. Otherwise you get a list of `{location, message}` with the exact failure:
 
 ```json
-{ "errors": [ { "location": "page/<id>/layout", "message": "layout is not a valid ComponentTree: unknown variant `heading2`, expected one of ..." } ] }
+{ "errors": [
+  { "location": "page/<id>/layout", "message": "layout is not a valid ComponentTree: unknown variant `heading2`, expected one of ..." },
+  { "location": "root.children[2].label", "message": "binding must start with `$stack`, `$self`, `$user`, or `$page` — got `$target`" },
+  { "location": "root.children[3].content", "message": "unresolved $page.missing — not declared in page_state_schema.properties" }
+] }
 ```
 
 Full resolve (returns the tree + subscription plan):
@@ -190,11 +201,14 @@ If a target is a `ui.page`, `/render/<id>` falls through to the page's `layout` 
 | Intent | Command |
 |---|---|
 | Tweak the layout | `agent slots write /dashboards/foo layout '<new JSON>'` |
+| Tweak with OCC guard (recommended when the Studio builder is also open) | `agent slots write /dashboards/foo layout '<new JSON>' --expected-generation <N>` — 409 + `generation_mismatch` if someone else wrote first |
 | Fix one component | read `layout`, patch in JSON, rewrite the whole slot — no RFC-6902 patches in Phase 1 |
 | Delete the page | `agent nodes delete /dashboards/foo` |
 | Invalidate a client's cache | every write auto-emits `slot_changed` — clients pick it up over SSE |
 
 There is no migration / version concern: rewriting the `layout` slot replaces the tree atomically. The next `/ui/resolve` call returns the new tree.
+
+If the Studio builder has the same page open at `/pages/<id>/edit`, an unguarded CLI write will still succeed — but the next keystroke in the builder will trip its conflict banner (non-dismissable, reload-or-export). Using `--expected-generation` from the CLI is the symmetrical guard: the CLI refuses to clobber a concurrent builder save.
 
 ---
 
@@ -242,9 +256,13 @@ Every error follows [CLI.md § 1](../design/CLI.md#1-deterministic-json-output-c
 |---|---|---|
 | `422 unprocessable_entity` + `layout is not a valid ComponentTree` | Unknown component `type`, missing required field | Check against `agent ui vocabulary -o json` |
 | `422` + `page has no 'layout' slot` | You called `/ui/resolve` on a page that was never written to | `agent slots write …/layout '{...}'` |
+| `dry-run errors` with `location: root.<path>` + binding message | Unresolved `$stack`/`$self`/`$user`/`$page` binding or unknown source | Check the binding grammar in SDUI.md § "Bindings"; `$target.*` only works on `/ui/render`, never on `/ui/resolve` |
+| `dry-run errors` with `unresolved $page.<field>` | Page has a non-null `page_state_schema` and the binding references an undeclared key | Add the key to the schema's `properties`, or remove the binding |
 | `404 not_found` (`/render`) | Target node doesn't exist, OR its kind has no `views` declared | `agent nodes get <path>` to confirm; `agent kinds list` to confirm views |
+| `409 generation_mismatch` (`slots write --expected-generation`) | Someone else wrote to the slot between your read and write | Re-read the node (`agent nodes get <path> -o json`), rebase your edits on the new generation, retry |
 | `413 payload_too_large` | Tree exceeded a DoS limit (see SDUI.md § "Size & DoS limits") | Split into sub-pages or reduce row counts |
 | `subscriptions: []` when you expected updates | Table has `subscribe: false`, or the query matched zero nodes | Flip `subscribe: true`; test the query independently |
+| Row cell shows `[object Object]` | Slot is a flow-engine envelope `{_msgid, _ts, payload}` | Use `slots.<name>.payload` in `columns[].field`, or bind a flattened status-kind slot the behaviour publishes alongside |
 
 ---
 

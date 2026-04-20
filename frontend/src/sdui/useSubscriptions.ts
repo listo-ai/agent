@@ -48,9 +48,29 @@ export function useSubscriptions(
     const plans = subscriptions ?? [];
     if (plans.length === 0) return;
 
-    const subjectToWidget = new Map<string, string>();
+    // One subject can fan out to multiple widgets — e.g. a chart and
+    // a table both watching the same node's slot. Earlier this was a
+    // `Map<string, string>` and `Map.set` silently overwrote, so only
+    // the last-enumerated plan's widget got patched.
+    const subjectToWidgets = new Map<string, string[]>();
     for (const p of plans) {
-      for (const s of p.subjects) subjectToWidget.set(s, p.widget_id);
+      for (const s of p.subjects) {
+        const existing = subjectToWidgets.get(s);
+        if (existing) {
+          if (!existing.includes(p.widget_id)) existing.push(p.widget_id);
+        } else {
+          subjectToWidgets.set(s, [p.widget_id]);
+        }
+      }
+    }
+    const debug =
+      typeof window !== "undefined" &&
+      window.localStorage?.getItem("sdui_debug") === "1";
+    if (debug) {
+      console.debug("[sdui] subscriptions mounted", {
+        plans,
+        subjects: [...subjectToWidgets.entries()],
+      });
     }
 
     let cancelled = false;
@@ -62,26 +82,32 @@ export function useSubscriptions(
         if (cancelled) break;
         if (event.event !== "slot_changed") continue;
         const subject = `node.${event.id}.slot.${event.slot}`;
-        const widget = subjectToWidget.get(subject);
-        if (!widget) continue;
-
-        if (UUID_RE.test(widget)) {
-          // Tree-binding plan — `{{$target.<slot>}}` was substituted at
-          // resolve time, so the tree itself must re-resolve.
-          qc.invalidateQueries({ queryKey });
+        const widgets = subjectToWidgets.get(subject);
+        if (!widgets || widgets.length === 0) {
+          if (debug) console.debug("[sdui] event ignored (no plan)", subject);
           continue;
         }
+        if (debug) console.debug("[sdui] event matched", subject, "→", widgets);
 
-        // Component-scoped plans: try to patch the cache in place.
-        // If no matching cached query was found (e.g. widget not
-        // mounted yet, or a future component type we don't patch
-        // yet), fall back to invalidating the prefix so the
-        // component refetches on its own schedule.
-        const patched =
-          applyToTables(qc, widget, event) || applyToCharts(qc, widget, event);
-        if (!patched) {
-          qc.invalidateQueries({ queryKey: ["sdui-table", widget] });
-          qc.invalidateQueries({ queryKey: ["sdui-chart", widget] });
+        for (const widget of widgets) {
+          if (UUID_RE.test(widget)) {
+            // Tree-binding plan — `{{$target.<slot>}}` was substituted at
+            // resolve time, so the tree itself must re-resolve.
+            qc.invalidateQueries({ queryKey });
+            continue;
+          }
+
+          // Component-scoped plans: try to patch the cache in place.
+          // If no matching cached query was found (e.g. widget not
+          // mounted yet, or a future component type we don't patch
+          // yet), fall back to invalidating the prefix so the
+          // component refetches on its own schedule.
+          const patched =
+            applyToTables(qc, widget, event) || applyToCharts(qc, widget, event);
+          if (!patched) {
+            qc.invalidateQueries({ queryKey: ["sdui-table", widget] });
+            qc.invalidateQueries({ queryKey: ["sdui-chart", widget] });
+          }
         }
       }
     })();

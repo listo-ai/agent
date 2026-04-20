@@ -22,7 +22,7 @@ import type {
  * List and detail share `LoadedPluginSummary` on the Rust side so
  * there's no separate `PluginDetail` type here either.
  */
-export interface PluginsApi {
+export interface BlocksApi {
   list(): Promise<PluginSummary[]>;
   get(id: string): Promise<PluginSummary>;
   enable(id: string): Promise<void>;
@@ -35,7 +35,7 @@ export interface PluginsApi {
   runtimeAll(): Promise<PluginRuntimeEntry[]>;
 }
 
-export function createPluginsApi(http: RequestTransport, apiVersion: number): PluginsApi {
+export function createBlocksApi(http: RequestTransport, apiVersion: number): BlocksApi {
   const base = `/api/v${apiVersion}`;
 
   return {

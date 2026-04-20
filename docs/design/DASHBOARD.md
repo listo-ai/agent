@@ -6,6 +6,13 @@ A framework-level backend for user-authored dashboards. Domain-agnostic: ships z
 
 M1–M5 are shipped and tested. The resolver, context stack, binding engine, cache-key, ACL redaction, widget-type registry, audit events, and subscription-plan emission are live across three crates (`dashboard-nodes`, `dashboard-runtime`, `dashboard-transport`) and mirrored in the Rust client, CLI, and TS client per [NEW-API.md](NEW-API.md). See the [Milestones](#milestones) table for per-milestone status.
 
+Pre-Stage-1 substrate additions (2026-04 session, tracked in [sessions/DASHBOARD-BUILDER.md](../sessions/DASHBOARD-BUILDER.md)):
+
+- `GET /api/v1/ui/vocabulary` — emits the `ui_ir::Component` JSON Schema for Monaco / LLM / palette consumption.
+- `POST /api/v1/slots` accepts optional `expected_generation`; mismatch returns **409** with `{code: "generation_mismatch", current_generation}`. Guard is enforced inside the graph store's write lock.
+- `/ui/resolve --dry-run` now resolves bindings through `dashboard_runtime::Binding::parse` + `evaluate`, collects failures as `ResolveIssue` entries, and also flags `$page.*` keys not declared in the page's `page_state_schema.properties`.
+- `POST /ui/resolve` accepts optional `layout` override; when present it is resolved in place of the node's persisted `layout` slot. Honoured on both `dry_run` (for the builder's editor-buffer validation) and live resolve (for the builder's preview, which needs the subscription plan derived from the unsaved buffer).
+
 ## Goal
 
 Let users compose navigable, reusable, context-driven dashboards out of nodes — authored by AI, by drag/drop, or by hand — with zero per-dashboard backend code.
@@ -151,7 +158,9 @@ Templates evolve. Pages must not silently break.
 7. **ACL redaction** — per-widget forbidden placeholders with audit events.
 8. **Transport** — REST endpoints (gRPC deferred; the Rust/TS clients + CLI all speak REST):
    - `GET /api/v1/ui/nav?root=<id>` → nav tree slice rooted at the given `ui.nav` id
-   - `POST /api/v1/ui/resolve` — body `{ page_ref, stack, page_state, dry_run?, auth_subject?, user_claims? }`. With `dry_run: true`, the same endpoint performs validation only and returns structured errors (unbound holes, unknown widget types, missing frames) without producing a render tree. Single endpoint, no drift.
+   - `POST /api/v1/ui/resolve` — body `{ page_ref, stack, page_state, dry_run?, auth_subject?, user_claims?, layout? }`. With `dry_run: true`, the same endpoint performs validation only and returns structured errors (unbound holes, unknown widget types, missing frames, **unresolved bindings**, undeclared `$page.*` keys) without producing a render tree. Optional `layout` overrides the node's persisted `layout` slot for that call — used by the builder to resolve an unsaved editor buffer. Single endpoint, no drift.
+   - `GET /api/v1/ui/vocabulary` — returns `{ir_version, schema}` where `schema` is the `ui_ir::Component` JSON Schema; consumed by Monaco's semantic validator and the builder's vocabulary palette.
+   - `POST /api/v1/slots` supports optional `expected_generation` for OCC-guarded writes (builder's non-dismissable conflict banner trips off the 409).
    - Standard node CRUD (already generic) handles authoring.
    - Paths are versioned under `/api/v1/` per [VERSIONING.md](VERSIONING.md); bumping requires a 12-month deprecation window.
 9. **Subscription plan emission** — mechanical derivation from bindings; ACL-filtered.
@@ -221,7 +230,7 @@ No `dashboard-data` crate — persistence goes through the existing node reposit
 | M6 | ⏳ pending | Template version-diff migration protocol end-to-end (auto-upgrade path + breaking signal). |
 | M7 | ⏳ pending | Subtree import/export; full acceptance suite green; latency budget measured and recorded. |
 
-Client-parity per [NEW-API.md](NEW-API.md) is complete for every shipped endpoint: Rust client (`agent-client::ui`), CLI (`agent ui nav`, `agent ui resolve`), TS client (`AgentClient.ui`), CLI `CommandMeta` for `--help-json` / `agent schema`, and pinned fixtures under `clients/contracts/fixtures/cli-output/ui-nav/` + `ui-resolve/`.
+Client-parity per [NEW-API.md](NEW-API.md) is complete for every shipped endpoint: Rust client (`agent-client::ui`, `agent-client::slots`), CLI (`agent ui nav`, `agent ui resolve`, `agent ui render`, `agent ui action`, `agent ui table`, `agent ui vocabulary`, `agent slots write [--expected-generation N]`), TS client (`AgentClient.ui`, `AgentClient.slots` with `GenerationMismatchError`), CLI `CommandMeta` for `--help-json` / `agent schema`, and pinned fixtures under `clients/contracts/fixtures/cli-output/`: `ui-nav/`, `ui-resolve/` (including `dry-run-binding-errors.json`), `ui-render/`, `ui-action/`, `ui-table/`, `ui-vocabulary/`, `slots-write/` (including `generation-mismatch.json`).
 
 ## One-line summary
 
