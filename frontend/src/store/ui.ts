@@ -5,7 +5,7 @@ import { persist } from "zustand/middleware";
 // Kept separate from domain stores so layout decisions don't cross into flow state.
 
 type Theme = "light" | "dark" | "system";
-type SidebarSection = "flows" | "dashboard" | "extensions" | "settings";
+type SidebarSection = "flows" | "dashboard" | "blocks" | "settings";
 
 interface UiState {
   sidebarCollapsed: boolean;

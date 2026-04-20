@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use extensions_sdk::{NodeError, TimerHandle, TimerScheduler};
+use blocks_sdk::{NodeError, TimerHandle, TimerScheduler};
 use spi::NodeId;
 use tokio::sync::mpsc;
 use tokio::task::AbortHandle;

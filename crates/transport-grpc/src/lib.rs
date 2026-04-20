@@ -4,10 +4,10 @@
 //! server for the `us.spi.extension.v1.Extension` service.
 //!
 //! Consumers:
-//! - `extensions-host` (supervisor) uses [`ExtensionClient`] to talk to
-//!   a spawned plugin over a Unix-domain socket.
-//! - `extensions-sdk` (with `process` feature) uses [`ExtensionServer`]
-//!   so plugin authors never hand-write the service.
+//! - `blocks-host` (supervisor) uses [`ExtensionClient`] to talk to
+//!   a spawned block over a Unix-domain socket.
+//! - `blocks-sdk` (with `process` feature) uses [`ExtensionServer`]
+//!   so block authors never hand-write the service.
 //!
 //! This crate is intentionally a thin re-export of the generated code
 //! plus a `pub use` of `tonic` so callers don't need a direct dep.

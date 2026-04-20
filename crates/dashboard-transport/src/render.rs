@@ -1,7 +1,7 @@
 //! `GET /api/v1/ui/render?target=<id>[&view=<id>]` — render a node
 //! using its kind's default SDUI view. See SDUI.md § S5.
 //!
-//! Zero authored pages required for the 90% case: a plugin author
+//! Zero authored pages required for the 90% case: a block author
 //! declares `views: [{ id, title, template, priority }]` on their
 //! `KindManifest`; this endpoint picks the highest-priority view (or
 //! the one named by `view=`), substitutes `{{$target.*}}` bindings in

@@ -28,7 +28,7 @@ use agent_client::{AgentClient, AgentClientOptions, NodeListParams};
 use data_sqlite::SqliteFlowRevisionRepo;
 use domain_flows::FlowService;
 use engine::Engine;
-use extensions_host::PluginRegistry;
+use blocks_host::BlockRegistry;
 use graph::{seed, GraphStore, KindRegistry};
 use serde_json::Value;
 use spi::KindId;
@@ -64,7 +64,7 @@ async fn start_with_flows() -> (SocketAddr, tokio::task::JoinHandle<()>) {
         engine.behaviors().clone(),
         bcast,
         ring,
-        PluginRegistry::new(),
+        BlockRegistry::new(),
     )
     .with_flow_service(flow_svc);
 
@@ -107,14 +107,14 @@ where
     engine
         .behaviors()
         .register(
-            <domain_compute::Count as extensions_sdk::NodeKind>::kind_id(),
+            <domain_compute::Count as blocks_sdk::NodeKind>::kind_id(),
             domain_compute::behavior(),
         )
         .unwrap();
     engine
         .behaviors()
         .register(
-            <domain_logic::Trigger as extensions_sdk::NodeKind>::kind_id(),
+            <domain_logic::Trigger as blocks_sdk::NodeKind>::kind_id(),
             domain_logic::behavior(),
         )
         .unwrap();
@@ -125,7 +125,7 @@ where
         engine.behaviors().clone(),
         bcast,
         ring,
-        PluginRegistry::new(),
+        BlockRegistry::new(),
     );
     let dashboard_kinds = Arc::new(graph.kinds().clone());
     let dashboard_reader: Arc<dyn dashboard_runtime::NodeReader + Send + Sync> =
@@ -265,7 +265,7 @@ async fn nodes_list_empty() {
         engine2.behaviors().clone(),
         bcast2,
         ring2,
-        PluginRegistry::new(),
+        BlockRegistry::new(),
     );
     let router2 = transport_rest::router(state2);
     let listener2 = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -686,7 +686,7 @@ async fn server_with_heartbeat_kind() -> (SocketAddr, tokio::task::JoinHandle<()
     let (addr, handle) = start_with_graph(move |g| {
         // register heartbeat kind
         g.kinds()
-            .register(<domain_logic::Heartbeat as extensions_sdk::NodeKind>::manifest());
+            .register(<domain_logic::Heartbeat as blocks_sdk::NodeKind>::manifest());
         let root = spi::NodePath::root();
         let hb = g
             .create_child(&root, KindId::new("sys.logic.heartbeat"), "hb1")
@@ -763,14 +763,14 @@ async fn server_with_action_handler() -> (SocketAddr, tokio::task::JoinHandle<()
     engine
         .behaviors()
         .register(
-            <domain_compute::Count as extensions_sdk::NodeKind>::kind_id(),
+            <domain_compute::Count as blocks_sdk::NodeKind>::kind_id(),
             domain_compute::behavior(),
         )
         .unwrap();
     engine
         .behaviors()
         .register(
-            <domain_logic::Trigger as extensions_sdk::NodeKind>::kind_id(),
+            <domain_logic::Trigger as blocks_sdk::NodeKind>::kind_id(),
             domain_logic::behavior(),
         )
         .unwrap();
@@ -781,7 +781,7 @@ async fn server_with_action_handler() -> (SocketAddr, tokio::task::JoinHandle<()
         engine.behaviors().clone(),
         bcast,
         ring,
-        PluginRegistry::new(),
+        BlockRegistry::new(),
     );
     let dashboard_reader: Arc<dyn dashboard_runtime::NodeReader + Send + Sync> =
         Arc::new(dashboard_transport::GraphReader::new(graph));
@@ -997,31 +997,31 @@ async fn nodes_delete_not_found() {
     assert_eq!(cli_err.code, "not_found");
 }
 
-// ---- plugins runtime ------------------------------------------------------
+// ---- blocks runtime ------------------------------------------------------
 
 #[tokio::test]
 async fn plugins_runtime_all_empty() {
-    // Test server is built without a PluginHost, so runtime_all() → [].
+    // Test server is built without a BlockHost, so runtime_all() → [].
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    let entries = c.plugins().runtime_all().await.unwrap();
+    let entries = c.blocks().runtime_all().await.unwrap();
     assert!(entries.is_empty());
     let actual = parse_json_output(&serde_json::to_string_pretty(&entries).unwrap());
-    let fixture = load_fixture("plugins-runtime-all/empty.json");
+    let fixture = load_fixture("blocks-runtime-all/empty.json");
     assert_shape_match(&actual, &fixture, "$");
 }
 
 #[tokio::test]
 async fn plugins_runtime_not_found_without_host() {
-    // No PluginHost attached → runtime(:id) returns 404.
+    // No BlockHost attached → runtime(:id) returns 404.
     let (addr, _srv) = start_test_server().await;
     let c = client(addr);
 
-    let err = c.plugins().runtime("com.acme.hello").await.unwrap_err();
+    let err = c.blocks().runtime("com.acme.hello").await.unwrap_err();
     let cli_err = transport_cli::CliError::from_client(&err);
     let actual = parse_json_output(&serde_json::to_string_pretty(&cli_err).unwrap());
-    let fixture = load_fixture("plugins-runtime/not-found.json");
+    let fixture = load_fixture("blocks-runtime/not-found.json");
     assert_shape_match(&actual, &fixture, "$");
     assert_eq!(cli_err.code, "not_found");
 }

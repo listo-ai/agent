@@ -8,7 +8,7 @@
 //!
 //! Stage 3a-bonus: this list is hand-maintained here. Stage 0 of
 //! VERSIONING explicitly defers host-side registration to
-//! `extensions-host::capability_registry`; once that lands, this
+//! `blocks-host::capability_registry`; once that lands, this
 //! function delegates to it instead of holding the list itself. Until
 //! then, **adding a new capability requires editing this file** —
 //! that's the forcing function so new contracts get a version
@@ -60,7 +60,7 @@ pub fn host_capabilities() -> CapabilityManifest {
             Capability::new(platform::spi_msg(), Version::new(1, 0, 0)),
             Capability::new(platform::spi_node_schema(), Version::new(1, 0, 0)),
             Capability::new(platform::spi_flow_schema(), Version::new(1, 0, 0)),
-            // Runtime features. Wasm + process plugin land in 3b/3c —
+            // Runtime features. Wasm + process block land in 3b/3c —
             // intentionally absent so an extension that requires them
             // refuses to install today instead of failing at runtime.
             Capability::new(platform::data_sqlite(), Version::new(3, 45, 0)),

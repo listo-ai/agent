@@ -1,12 +1,12 @@
 import type {
-  ExtensionManifest,
+  BlockManifest,
   ExtensionNodeContribution,
   ExtensionViewContribution,
   ExtensionWidgetContribution,
 } from "./types";
 
-// In-memory registry of all loaded extension contributions.
-// Populated by the loader after each extension is successfully loaded.
+// In-memory registry of all loaded block contributions.
+// Populated by the loader after each block is successfully loaded.
 
 interface ExtensionRegistry {
   nodes:   Map<string, ExtensionNodeContribution & { extensionId: string }>;
@@ -20,7 +20,7 @@ export const extensionRegistry: ExtensionRegistry = {
   widgets: new Map(),
 };
 
-export function registerExtensionContributions(manifest: ExtensionManifest): void {
+export function registerExtensionContributions(manifest: BlockManifest): void {
   for (const node of manifest.contributions.nodes ?? []) {
     extensionRegistry.nodes.set(node.id, { ...node, extensionId: manifest.id });
   }

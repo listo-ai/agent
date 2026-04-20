@@ -33,19 +33,19 @@ pub fn default_db_path(role: Role) -> Option<PathBuf> {
     }
 }
 
-/// Role-aware default plugins dir. See `docs/design/PLUGINS.md`
-/// § "Where plugins live".
+/// Role-aware default blocks dir. See `docs/design/PLUGINS.md`
+/// § "Where blocks live".
 ///
 /// `standalone` points at a config-dir-relative path rather than `./`
 /// so launching the agent from a different shell doesn't silently
-/// change what loads. Pass `--plugins-dir .` for in-tree dev.
-pub fn default_plugins_dir(role: Role) -> PathBuf {
+/// change what loads. Pass `--blocks-dir .` for in-tree dev.
+pub fn default_blocks_dir(role: Role) -> PathBuf {
     match role {
         Role::Standalone => dirs_config_home()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("plugins"),
-        Role::Edge => PathBuf::from("/var/lib/agent/plugins"),
-        Role::Cloud => PathBuf::from("/opt/agent/plugins"),
+            .join("blocks"),
+        Role::Edge => PathBuf::from("/var/lib/agent/blocks"),
+        Role::Cloud => PathBuf::from("/opt/agent/blocks"),
     }
 }
 

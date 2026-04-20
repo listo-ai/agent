@@ -13,7 +13,7 @@
 //! against the cancel-vs-fire race when the user edits settings while a
 //! timer is pending.
 
-use extensions_sdk::prelude::*;
+use blocks_sdk::prelude::*;
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 

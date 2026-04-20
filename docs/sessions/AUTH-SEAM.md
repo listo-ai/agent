@@ -1,6 +1,6 @@
 # Auth Seam — Implementation Scope
 
-Scope for the first landing of the auth system: **the shape, not the IdP**. Ship the plumbing — `AuthContext` threaded through every handler, audit events carrying `actor` + `tenant`, subject namespaces parameterised by tenant — before fleet transport lands, so neither fleet nor plugin-contributed handlers have to retrofit auth cross-cuttingly later.
+Scope for the first landing of the auth system: **the shape, not the IdP**. Ship the plumbing — `AuthContext` threaded through every handler, audit events carrying `actor` + `tenant`, subject namespaces parameterised by tenant — before fleet transport lands, so neither fleet nor block-contributed handlers have to retrofit auth cross-cuttingly later.
 
 Authoritative references: [AUTH.md](../design/AUTH.md) for the long-term Zitadel-based identity model, [FLEET-TRANSPORT.md](../design/FLEET-TRANSPORT.md) § "Auth" for why the seam has to exist first, [VERSIONING.md](../design/VERSIONING.md) for capability gating.
 
@@ -20,7 +20,7 @@ Authoritative references: [AUTH.md](../design/AUTH.md) for the long-term Zitadel
 | Axum extractor `FromRequestParts for AuthContext` — every handler that mutates data must declare it as an extractor arg |
 | Every existing `POST`/`PATCH`/`DELETE` route in `transport-rest` takes the extractor and threads `AuthContext` into the store call |
 | Audit events (`graph_events` table today, audit stream later) grow `actor: NodeId` + `tenant: String` columns; migrations included |
-| `sys.auth.user` + `sys.auth.tenant` node kinds registered in `domain-extensions` (or a new `domain-auth` crate) — mirrors Zitadel entities as graph nodes per [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md) |
+| `sys.auth.user` + `sys.auth.tenant` node kinds registered in `domain-blocks` (or a new `domain-auth` crate) — mirrors Zitadel entities as graph nodes per [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md) |
 | Scope enum: `ReadNodes`, `WriteNodes`, `WriteSlots`, `WriteConfig`, `ManagePlugins`, `ManageFleet`, `Admin` — minimal, expandable |
 | Scope check helper: `ctx.require(Scope::WriteSlots)?` returning a structured `AuthError` that serialises to 403 |
 | `AuthContext` flows into `GraphStore` mutations — `create_child_as(ctx, ...)`, `write_slot_as(ctx, ...)`, etc. — not a global |
@@ -70,7 +70,7 @@ pub struct AuthContext {
 pub enum Actor {
     /// A human user backed by an identity-provider session.
     User   { id: NodeId, display_name: String },
-    /// A machine identity — service account, extension publisher, edge agent.
+    /// A machine identity — service account, block publisher, edge agent.
     Machine { id: NodeId, label: String },
     /// Dev-null default. NEVER present in production — startup refuses
     /// to boot with a `DevNullProvider` when the deployment role is
@@ -234,7 +234,7 @@ When Zitadel lands, a sync task mirrors Zitadel users/orgs into these kinds; not
 | **1b — Wire into REST** | Axum extractor, every mutating route declares `ctx: AuthContext`, `GraphStore::*_as` variants added, old sigs kept for seeds / tests. `AppState` grows `auth_provider: Arc<dyn AuthProvider>`. | `rjsf` property-panel form submit breaks because headers strip in dev → fix extraction to tolerate missing scheme prefix. |
 | **1c — Audit fields** | Migration `002_audit_actor_tenant.sql`; `GraphEvent` struct gains `actor`, `tenant`, `scope_used`; every `_as` writes them; existing event log backfilled with sentinels; SSE stream serialises them. | Migration fails on a production-ish SQLite with existing data → drop-and-recreate is acceptable pre-v1; post-v1 this is a hard stop. |
 | **1d — Auth-as-nodes + seed** | `domain-auth` crate with `sys.auth.tenant` + `sys.auth.user` kinds. Seed `/auth/default` + `/auth/default/local-dev` on first boot. DevNullProvider's `Actor::Local` resolves its `NodeId` from the seeded user. | Containment rules clash with existing `/agent/` subtree → move auth subtree to `/auth/` (decided up-front; included here as reminder). |
-| **1e — Capability manifest** | `host_capabilities()` adds `auth.dev_null.v1` (or whichever provider is active). Plugins that `require: auth.zitadel.v1` refuse to load on a dev-null build. | No issue foreseen — same mechanism as existing capabilities. |
+| **1e — Capability manifest** | `host_capabilities()` adds `auth.dev_null.v1` (or whichever provider is active). Blocks that `require: auth.zitadel.v1` refuse to load on a dev-null build. | No issue foreseen — same mechanism as existing capabilities. |
 
 1a–1e target one shipping increment; 1b + 1c are the most invasive (every mutation handler touched).
 

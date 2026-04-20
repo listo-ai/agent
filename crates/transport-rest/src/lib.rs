@@ -45,7 +45,7 @@ pub mod fleet;
 pub mod flows;
 pub mod history;
 pub mod kinds;
-pub mod plugins;
+pub mod blocks;
 pub mod preferences;
 pub mod ring;
 pub mod routes;

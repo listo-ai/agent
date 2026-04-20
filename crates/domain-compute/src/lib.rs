@@ -21,7 +21,7 @@
 
 use std::sync::Arc;
 
-use extensions_sdk::prelude::*;
+use blocks_sdk::prelude::*;
 
 pub mod count;
 pub mod math_add;
@@ -29,7 +29,7 @@ pub mod math_add;
 pub use count::{Count, CountConfig};
 pub use math_add::{Add, AddConfig};
 
-extensions_sdk::requires! {
+blocks_sdk::requires! {
     "spi.msg" => "1",
 }
 

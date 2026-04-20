@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use engine::{queue, Engine};
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 use graph::{GraphStore, KindRegistry};
 use serde_json::{json, Value as JsonValue};
 use spi::{Msg, NodePath};

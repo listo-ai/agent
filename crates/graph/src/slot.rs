@@ -1,7 +1,7 @@
 //! Live slot state owned by the graph store.
 //!
 //! The *declarative* slot schema (name, role, JSON schema) lives in
-//! [`spi::SlotSchema`] — it's what plugin authors declare on a kind.
+//! [`spi::SlotSchema`] — it's what block authors declare on a kind.
 //! This module owns the runtime half: the monotonically-generationed
 //! [`SlotValue`] and the per-node [`SlotMap`] that backs the store.
 

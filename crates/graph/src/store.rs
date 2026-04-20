@@ -60,7 +60,7 @@ impl GraphStore {
     /// Kinds must already be registered: the restore phase rejects
     /// nodes whose `kind_id` isn't present in the registry, so a DB
     /// with extension-contributed nodes is only safely restored after
-    /// every extension has registered its kinds.
+    /// every block has registered its kinds.
     pub fn with_repo(
         kinds: KindRegistry,
         sink: Arc<dyn EventSink>,

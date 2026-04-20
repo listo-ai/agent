@@ -23,7 +23,7 @@ component libraries long-term.
 │  (useFlowsList, useAgent, usePlugins, …)        │     Returns plain data + callbacks
 ├─────────────────────────────────────────────────┤
 │  store/           — Global state (Zustand)      │  ← Domain state
-│  (graph-store, ui, auth, flow, extensions)      │
+│  (graph-store, ui, auth, flow, blocks)      │
 ├─────────────────────────────────────────────────┤
 │  lib/             — Utilities & API clients     │  ← Zero React
 │  (agent, utils, node-settings)                  │

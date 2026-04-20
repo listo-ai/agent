@@ -12,7 +12,7 @@
 //!    middleware gap (see `docs/sessions/AUTH-SEAM.md` § "What NOT to
 //!    do in this landing").
 //! 3. `IntoResponse for AuthError` — structured 401 / 403 mapping so
-//!    the CLI, Studio, and plugins all see the same shape.
+//!    the CLI, Studio, and blocks all see the same shape.
 
 use async_trait::async_trait;
 use axum::extract::FromRequestParts;

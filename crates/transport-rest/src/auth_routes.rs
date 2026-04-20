@@ -91,7 +91,7 @@ mod tests {
     use std::sync::Arc;
 
     use engine::BehaviorRegistry;
-    use extensions_host::PluginRegistry;
+    use blocks_host::BlockRegistry;
     use graph::{seed as graph_seed, GraphStore, KindRegistry, NullSink};
     use spi::{KindId, NodePath};
     use tokio::sync::broadcast;
@@ -104,7 +104,7 @@ mod tests {
         let (events, _) = broadcast::channel(16);
         let (behaviors, _) = BehaviorRegistry::new(graph.clone());
         let _ = NodePath::root(); // keep import used
-        AppState::new(graph, behaviors, events, PluginRegistry::new())
+        AppState::new(graph, behaviors, events, BlockRegistry::new())
     }
 
     /// Dev-null-provider default state → actor kind "dev_null", all

@@ -198,9 +198,9 @@ mod tests {
         // Tenant names coming from config could legitimately contain dots;
         // they must be escaped so the namespace hierarchy stays intact.
         let s = Subject::for_agent(&TenantId::new("sys.prod"), "edge-42")
-            .kind("cmd.plugin.install")
+            .kind("cmd.block.install")
             .build();
-        assert_eq!(s.as_dotted(), "fleet.sys_prod.edge-42.cmd.plugin.install");
+        assert_eq!(s.as_dotted(), "fleet.sys_prod.edge-42.cmd.block.install");
     }
 
     #[test]

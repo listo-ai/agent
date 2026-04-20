@@ -1,7 +1,7 @@
 //! Canonical log-field name contract.
 //!
 //! Every structured log event in the platform — core agent, CLI, Wasm
-//! plugins, process plugins, Studio — uses the field names defined
+//! blocks, process blocks, Studio — uses the field names defined
 //! here. They are the contract surface referenced by
 //! `docs/design/LOGGING.md` § "Canonical field contract" and by
 //! `docs/design/VERSIONING.md` (capability `spi.log.schema`).
@@ -56,9 +56,9 @@ pub const REQUEST_ID: &str = "request_id";
 pub const SPAN_ID: &str = "span_id";
 /// OpenTelemetry trace id (active tracing span).
 pub const TRACE_ID: &str = "trace_id";
-/// Plugin id for events emitted from an extension.
-pub const PLUGIN_ID: &str = "plugin_id";
-/// Plugin version for events emitted from an extension.
+/// Block id for events emitted from an extension.
+pub const PLUGIN_ID: &str = "block_id";
+/// Block version for events emitted from an extension.
 pub const PLUGIN_VERSION: &str = "plugin_version";
 
 /// Every canonical field name in contract order. Useful for test

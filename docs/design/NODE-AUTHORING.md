@@ -8,13 +8,13 @@ For the platform-wide node model (containment, facets, cascading delete, the uni
 
 To stop this question from coming up again:
 
-| Role | File extension | Why |
+| Role | File block | Why |
 |---|---|---|
-| **Manifests you author** — kind manifests, extension manifests, flow documents written by hand, multi-variant settings | **YAML** (`manifest.yaml`, `count.yaml`, `flow.yaml`) | Humans read YAML better; comments allowed; no quote noise; IDE folds nicely |
+| **Manifests you author** — kind manifests, block manifests, flow documents written by hand, multi-variant settings | **YAML** (`manifest.yaml`, `count.yaml`, `flow.yaml`) | Humans read YAML better; comments allowed; no quote noise; IDE folds nicely |
 | **The JSON Schema meta-schemas that validate what you author** | **JSON** (`spi/schemas/node.schema.json`, `spi/schemas/flow.schema.json`) | JSON Schema is an external standard. Every validator in every language (`schemars`, `ajv`, `jsonschema`, etc.) expects these as JSON. Shipping as YAML would force every consumer to convert first. These files are part of the SPI contract — nobody edits them as part of day-to-day authoring. |
 | **Wire + storage** — `Msg` on a wire, DB payloads, NATS subject payloads, API request/response bodies | **JSON** | Node-RED compatibility for `Msg` ([EVERYTHING-AS-NODE.md § "Wires, ports, and messages"](EVERYTHING-AS-NODE.md)); SQL `JSONB` for storage. Machines talk JSON; authors never see this layer. |
 
-**The rule: if you're writing it, it's YAML.** The JSON files are either contract meta-schemas (one per surface) or wire formats (machine-to-machine). Kind manifests under `crates/*/manifests/` are always `.yaml`. Extension bundles ship `manifest.yaml`. Settings schemas embedded in manifests are expressed as YAML inline, not as separate JSON files.
+**The rule: if you're writing it, it's YAML.** The JSON files are either contract meta-schemas (one per surface) or wire formats (machine-to-machine). Kind manifests under `crates/*/manifests/` are always `.yaml`. Block bundles ship `manifest.yaml`. Settings schemas embedded in manifests are expressed as YAML inline, not as separate JSON files.
 
 When a YAML manifest is normalised into the system's internal store (the graph kind registry, the DB, the capability manifest on the wire), it's converted to JSON by the loader — one canonical form inside the system, authored form at the edges.
 
@@ -22,7 +22,7 @@ When a YAML manifest is normalised into the system's internal store (the graph k
 
 Before anything else: **a `NodeBehavior` impl holds no per-instance state.** If your kind tracks something mutable at runtime (a count, an armed flag, a pending-timer flag, the last-seen timestamp), that thing is a **status-role slot** on the node, not a field on your struct. Read it with `ctx.read_status(...)`; write it with `ctx.update_status(...)`. The trait takes `&self`, not `&mut self`, so the compiler enforces the rule.
 
-This is Rule A / Rule B ([NEW-SESSION.md](NEW-SESSION.md)) applied at per-instance granularity. Mirroring slot state on a struct field is the same parallel-state antipattern as a subsystem holding a private `Mutex<SomeState>`: anyone who writes the slot directly (REST API, a flow wire, the CLI, another plugin, a test) leaves the struct's copy stale, and debugging starts with "which version is correct?" The answer is always **the slot**. Make the slot the only answer.
+This is Rule A / Rule B ([NEW-SESSION.md](NEW-SESSION.md)) applied at per-instance granularity. Mirroring slot state on a struct field is the same parallel-state antipattern as a subsystem holding a private `Mutex<SomeState>`: anyone who writes the slot directly (REST API, a flow wire, the CLI, another block, a test) leaves the struct's copy stale, and debugging starts with "which version is correct?" The answer is always **the slot**. Make the slot the only answer.
 
 Legitimate kind-level resources (a shared HTTP client, a compiled regex, a connection pool) live as kind-level singletons — one per kind, shared across all instances. Per-instance resources are rare; justify them in code review or don't ship them.
 
@@ -39,7 +39,7 @@ A kind is declared by a manifest plus some code. The manifest carries the contra
 | **Settings schema** | JSON Schema for `config`-role slots; single or multi-variant | Manifest |
 | **Trigger policy** | `on_any`, `on_all`, `on_specific` | Manifest |
 | **Msg overrides** | Which `config` settings can be overridden by incoming msg fields, and which msg field maps to which setting | Manifest |
-| **Runtime behaviour** | What the node does when it fires | Code (Rust / Wasm / extension process / QuickJS) |
+| **Runtime behaviour** | What the node does when it fires | Code (Rust / Wasm / block process / QuickJS) |
 
 Everything except the code is data — declarative, serializable, introspectable. Studio reads the manifest to render the palette entry, the property panel, and the validation rules. OpenAPI reads it to describe the API. The engine reads it to enforce containment, trigger policy, and override resolution.
 

@@ -1,10 +1,10 @@
-//! Plugin registry — discovery, validation, lifecycle.
+//! Block registry — discovery, validation, lifecycle.
 //!
 //! `scan` is two-phase by design (PLUGINS.md § "Loader architecture"):
-//! Phase 1 parses + validates every plugin dir into an in-memory
+//! Phase 1 parses + validates every block dir into an in-memory
 //! staging set without touching shared state. Phase 2 registers
 //! contributions on the shared [`graph::KindRegistry`] in one pass.
-//! A bad plugin in Phase 1 never pollutes the kind registry.
+//! A bad block in Phase 1 never pollutes the kind registry.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -15,9 +15,9 @@ use serde::Serialize;
 use spi::capabilities::{match_requirements, Capability};
 use spi::KindManifest;
 
-use crate::manifest::{PluginId, PluginManifest};
+use crate::manifest::{BlockId, BlockManifest};
 
-/// Where a plugin sits in its lifecycle.
+/// Where a block sits in its lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginLifecycle {
@@ -35,8 +35,8 @@ pub enum PluginLifecycle {
 
 #[derive(Debug, Clone)]
 pub struct LoadedPlugin {
-    pub id: PluginId,
-    pub manifest: Option<PluginManifest>,
+    pub id: BlockId,
+    pub manifest: Option<BlockManifest>,
     pub root: PathBuf,
     pub lifecycle: PluginLifecycle,
     pub load_errors: Vec<String>,
@@ -74,10 +74,10 @@ impl LoadedPlugin {
     }
 }
 
-/// Read-model of a loaded plugin. Serialised on the REST surface.
+/// Read-model of a loaded block. Serialised on the REST surface.
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedPluginSummary {
-    pub id: PluginId,
+    pub id: BlockId,
     pub version: String,
     pub lifecycle: PluginLifecycle,
     pub display_name: Option<String>,
@@ -89,10 +89,10 @@ pub struct LoadedPluginSummary {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum PluginError {
-    #[error("plugins dir `{0}` is not readable: {1}")]
+pub enum BlockError {
+    #[error("blocks dir `{0}` is not readable: {1}")]
     DirRead(PathBuf, std::io::Error),
-    #[error("plugin `{id}` not found")]
+    #[error("block `{id}` not found")]
     NotFound { id: String },
 }
 
@@ -102,33 +102,33 @@ pub enum PluginError {
 /// The registry remembers its scan inputs (`dir`, `host_caps`,
 /// `kinds`) so `reload()` can re-run discovery without the caller
 /// having to plumb them all through again. This matches the REST
-/// handler at `POST /api/v1/plugins/reload`, which doesn't have (and
+/// handler at `POST /api/v1/blocks/reload`, which doesn't have (and
 /// shouldn't need) direct access to the host capability set.
 #[derive(Debug, Clone)]
-pub struct PluginRegistry {
-    inner: Arc<RwLock<HashMap<PluginId, LoadedPlugin>>>,
-    plugins_dir: Arc<RwLock<Option<PathBuf>>>,
+pub struct BlockRegistry {
+    inner: Arc<RwLock<HashMap<BlockId, LoadedPlugin>>>,
+    blocks_dir: Arc<RwLock<Option<PathBuf>>>,
     host_caps: Arc<Vec<Capability>>,
     kinds: KindRegistry,
 }
 
-impl Default for PluginRegistry {
+impl Default for BlockRegistry {
     fn default() -> Self {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
-            plugins_dir: Arc::new(RwLock::new(None)),
+            blocks_dir: Arc::new(RwLock::new(None)),
             host_caps: Arc::new(Vec::new()),
             kinds: KindRegistry::new(),
         }
     }
 }
 
-impl PluginRegistry {
+impl BlockRegistry {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Walk `dir`, validate every plugin against `host_caps`, register
+    /// Walk `dir`, validate every block against `host_caps`, register
     /// contributions on `kinds`. Returns the populated registry.
     ///
     /// A missing directory is **not** an error — it's the common case
@@ -137,10 +137,10 @@ impl PluginRegistry {
         dir: &Path,
         host_caps: &[Capability],
         kinds: &KindRegistry,
-    ) -> Result<Self, PluginError> {
+    ) -> Result<Self, BlockError> {
         let reg = Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
-            plugins_dir: Arc::new(RwLock::new(Some(dir.to_path_buf()))),
+            blocks_dir: Arc::new(RwLock::new(Some(dir.to_path_buf()))),
             host_caps: Arc::new(host_caps.to_vec()),
             kinds: kinds.clone(),
         };
@@ -150,33 +150,33 @@ impl PluginRegistry {
 
     /// Re-run the scan using the inputs captured at construction.
     /// Plugins that passed validation previously but have since been
-    /// removed on disk drop out; new plugins appear; error lists refresh.
+    /// removed on disk drop out; new blocks appear; error lists refresh.
     ///
     /// Kinds that were already registered on the shared [`KindRegistry`]
     /// remain — hot-unload is Stage 10 — so reload is purely additive
-    /// on the kind side. Plugin-node slots on the graph are owned by
+    /// on the kind side. Block-node slots on the graph are owned by
     /// the binary and refreshed separately (see `apps/agent` startup).
-    pub fn reload(&self) -> Result<(), PluginError> {
+    pub fn reload(&self) -> Result<(), BlockError> {
         self.rescan_into()
     }
 
-    fn rescan_into(&self) -> Result<(), PluginError> {
-        let Some(dir) = self.plugins_dir.read().expect("poisoned").clone() else {
+    fn rescan_into(&self) -> Result<(), BlockError> {
+        let Some(dir) = self.blocks_dir.read().expect("poisoned").clone() else {
             return Ok(());
         };
         if !dir.exists() {
-            tracing::info!(dir = %dir.display(), "plugins dir absent — no plugins loaded");
+            tracing::info!(dir = %dir.display(), "blocks dir absent — no blocks loaded");
             let mut map = self.inner.write().expect("poisoned");
             map.clear();
             return Ok(());
         }
 
         // ----- Phase 1: validate every dir into a staging set -----
-        let entries = std::fs::read_dir(&dir).map_err(|e| PluginError::DirRead(dir.clone(), e))?;
+        let entries = std::fs::read_dir(&dir).map_err(|e| BlockError::DirRead(dir.clone(), e))?;
 
         let mut staged: Vec<LoadedPlugin> = Vec::new();
-        let mut staged_kinds: Vec<(PluginId, Vec<KindManifest>)> = Vec::new();
-        let mut seen_ids: HashSet<PluginId> = HashSet::new();
+        let mut staged_kinds: Vec<(BlockId, Vec<KindManifest>)> = Vec::new();
+        let mut seen_ids: HashSet<BlockId> = HashSet::new();
 
         for entry in entries {
             let entry = match entry {
@@ -195,9 +195,9 @@ impl PluginRegistry {
                 None => continue,
             };
 
-            let (plugin, kinds_for) =
+            let (block, kinds_for) =
                 validate_one(&path, &dir_name, self.host_caps.as_ref(), &mut seen_ids);
-            staged.push(plugin);
+            staged.push(block);
             if let Some(k) = kinds_for {
                 let id = staged.last().expect("just pushed").id.clone();
                 staged_kinds.push((id, k));
@@ -205,20 +205,20 @@ impl PluginRegistry {
         }
 
         // ----- Phase 2: commit to shared state -----
-        for (plugin_id, kind_list) in staged_kinds {
+        for (block_id, kind_list) in staged_kinds {
             for k in kind_list {
                 if self.kinds.contains(&k.id) {
                     continue;
                 }
-                tracing::info!(plugin = %plugin_id, kind = %k.id, "registering plugin-contributed kind");
+                tracing::info!(block = %block_id, kind = %k.id, "registering block-contributed kind");
                 self.kinds.register(k);
             }
         }
 
         let mut map = self.inner.write().expect("poisoned");
         map.clear();
-        for plugin in staged {
-            map.insert(plugin.id.clone(), plugin);
+        for block in staged {
+            map.insert(block.id.clone(), block);
         }
         drop(map);
         Ok(())
@@ -231,40 +231,40 @@ impl PluginRegistry {
         out
     }
 
-    pub fn get(&self, id: &PluginId) -> Option<LoadedPluginSummary> {
+    pub fn get(&self, id: &BlockId) -> Option<LoadedPluginSummary> {
         let map = self.inner.read().expect("poisoned");
         map.get(id).map(LoadedPlugin::summary)
     }
 
-    pub fn plugins_dir(&self) -> Option<PathBuf> {
-        self.plugins_dir.read().expect("poisoned").clone()
+    pub fn blocks_dir(&self) -> Option<PathBuf> {
+        self.blocks_dir.read().expect("poisoned").clone()
     }
 
-    /// The on-disk root for a loaded plugin (`<plugins_dir>/<id>`),
-    /// or `None` if the plugin isn't known.
-    pub fn plugin_root(&self, id: &PluginId) -> Option<PathBuf> {
+    /// The on-disk root for a loaded block (`<blocks_dir>/<id>`),
+    /// or `None` if the block isn't known.
+    pub fn plugin_root(&self, id: &BlockId) -> Option<PathBuf> {
         let map = self.inner.read().expect("poisoned");
         map.get(id).map(|p| p.root.clone())
     }
 
-    /// Process-bin contribution for a loaded plugin, or `None` if the
-    /// plugin isn't a process plugin / isn't known. Used by the
-    /// `PluginHost` to decide which plugins to supervise.
-    pub fn process_bin(&self, id: &PluginId) -> Option<crate::manifest::ProcessBinContribution> {
+    /// Process-bin contribution for a loaded block, or `None` if the
+    /// block isn't a process block / isn't known. Used by the
+    /// `BlockHost` to decide which blocks to supervise.
+    pub fn process_bin(&self, id: &BlockId) -> Option<crate::manifest::ProcessBinContribution> {
         let map = self.inner.read().expect("poisoned");
         map.get(id)
             .and_then(|p| p.manifest.as_ref())
             .and_then(|m| m.contributes.process_bin.clone())
     }
 
-    /// Flip a Validated/Enabled plugin to Disabled (or back). Does not
+    /// Flip a Validated/Enabled block to Disabled (or back). Does not
     /// unregister kinds — hot-unload is Stage 10.
-    pub fn set_enabled(&self, id: &PluginId, enabled: bool) -> Result<(), PluginError> {
+    pub fn set_enabled(&self, id: &BlockId, enabled: bool) -> Result<(), BlockError> {
         let mut map = self.inner.write().expect("poisoned");
-        let plugin = map.get_mut(id).ok_or_else(|| PluginError::NotFound {
+        let block = map.get_mut(id).ok_or_else(|| BlockError::NotFound {
             id: id.as_str().to_string(),
         })?;
-        plugin.lifecycle = match (plugin.lifecycle, enabled) {
+        block.lifecycle = match (block.lifecycle, enabled) {
             (PluginLifecycle::Failed, _) => PluginLifecycle::Failed,
             (_, true) => PluginLifecycle::Enabled,
             (_, false) => PluginLifecycle::Disabled,
@@ -277,17 +277,17 @@ fn validate_one(
     dir: &Path,
     dir_name: &str,
     host_caps: &[Capability],
-    seen: &mut HashSet<PluginId>,
+    seen: &mut HashSet<BlockId>,
 ) -> (LoadedPlugin, Option<Vec<KindManifest>>) {
     let mut errors: Vec<String> = Vec::new();
-    let manifest_path = dir.join("plugin.yaml");
+    let manifest_path = dir.join("block.yaml");
 
-    // 1. Parse plugin.yaml.
+    // 1. Parse block.yaml.
     let bytes = match std::fs::read(&manifest_path) {
         Ok(b) => b,
         Err(e) => {
             errors.push(format!("reading {}: {e}", manifest_path.display()));
-            let id = PluginId::parse(dir_name).unwrap_or_else(|_| fallback_id(dir_name));
+            let id = BlockId::parse(dir_name).unwrap_or_else(|_| fallback_id(dir_name));
             return (
                 LoadedPlugin {
                     id,
@@ -300,11 +300,11 @@ fn validate_one(
             );
         }
     };
-    let manifest: PluginManifest = match serde_yml::from_slice(&bytes) {
+    let manifest: BlockManifest = match serde_yml::from_slice(&bytes) {
         Ok(m) => m,
         Err(e) => {
-            errors.push(format!("parsing plugin.yaml: {e}"));
-            let id = PluginId::parse(dir_name).unwrap_or_else(|_| fallback_id(dir_name));
+            errors.push(format!("parsing block.yaml: {e}"));
+            let id = BlockId::parse(dir_name).unwrap_or_else(|_| fallback_id(dir_name));
             return (
                 LoadedPlugin {
                     id,
@@ -326,9 +326,9 @@ fn validate_one(
         ));
     }
 
-    // Validate plugin id shape (catches anything that bypassed the
+    // Validate block id shape (catches anything that bypassed the
     // constructor via raw deserialization — serde accepts any string).
-    let plugin_id = match PluginId::parse(manifest.id.as_str()) {
+    let block_id = match BlockId::parse(manifest.id.as_str()) {
         Ok(pid) => pid,
         Err(e) => {
             errors.push(e.to_string());
@@ -344,8 +344,8 @@ fn validate_one(
             );
         }
     };
-    if !seen.insert(plugin_id.clone()) {
-        errors.push(format!("duplicate plugin id `{plugin_id}`"));
+    if !seen.insert(block_id.clone()) {
+        errors.push(format!("duplicate block id `{block_id}`"));
     }
 
     // 3. Capability match — hard fail on missing required.
@@ -362,10 +362,10 @@ fn validate_one(
         match std::fs::read(&kind_path) {
             Ok(b) => match serde_yml::from_slice::<KindManifest>(&b) {
                 Ok(km) => {
-                    if !plugin_id.owns_kind(km.id.as_str()) {
+                    if !block_id.owns_kind(km.id.as_str()) {
                         errors.push(format!(
-                            "kind `{}` in `{}` is outside plugin namespace `{}`",
-                            km.id, rel, plugin_id
+                            "kind `{}` in `{}` is outside block namespace `{}`",
+                            km.id, rel, block_id
                         ));
                     } else {
                         parsed_kinds.push(km);
@@ -380,25 +380,25 @@ fn validate_one(
     // 5. Deferred-seam warnings for Stage 3b/3c features.
     if manifest.contributes.process_bin.is_some() {
         tracing::warn!(
-            plugin = %plugin_id,
-            "process_bin declared — process plugins need Stage 3c"
+            block = %block_id,
+            "process_bin declared — process blocks need Stage 3c"
         );
     }
     if !manifest.contributes.wasm_modules.is_empty() {
         tracing::warn!(
-            plugin = %plugin_id,
-            "wasm_modules declared — wasm plugins need Stage 3b"
+            block = %block_id,
+            "wasm_modules declared — wasm blocks need Stage 3b"
         );
     }
     if manifest.contributes.native_lib.is_some() {
         tracing::warn!(
-            plugin = %plugin_id,
-            "native_lib declared — native plugins need Stage 3c"
+            block = %block_id,
+            "native_lib declared — native blocks need Stage 3c"
         );
     }
     if dir.join("signature").exists() {
         tracing::warn!(
-            plugin = %plugin_id,
+            block = %block_id,
             "signature file present — verification lands Stage 10"
         );
     }
@@ -412,7 +412,7 @@ fn validate_one(
 
     (
         LoadedPlugin {
-            id: plugin_id,
+            id: block_id,
             manifest: Some(manifest),
             root: dir.to_path_buf(),
             lifecycle,
@@ -422,11 +422,11 @@ fn validate_one(
     )
 }
 
-/// Last-resort id when everything else has failed. The plugin will be
+/// Last-resort id when everything else has failed. The block will be
 /// `Failed` regardless; this just keeps the error list indexable.
-fn fallback_id(dir_name: &str) -> PluginId {
-    PluginId::parse(dir_name).unwrap_or_else(|_| {
-        PluginId::parse(format!("invalid.{}", sanitize(dir_name))).expect("sanitized id")
+fn fallback_id(dir_name: &str) -> BlockId {
+    BlockId::parse(dir_name).unwrap_or_else(|_| {
+        BlockId::parse(format!("invalid.{}", sanitize(dir_name))).expect("sanitized id")
     })
 }
 
@@ -456,21 +456,21 @@ mod tests {
     fn write_plugin(root: &Path, id: &str, yaml: &str) {
         let dir = root.join(id);
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("plugin.yaml"), yaml).unwrap();
+        fs::write(dir.join("block.yaml"), yaml).unwrap();
     }
 
     #[test]
     fn scan_empty_dir_is_ok() {
         let tmp = tempfile::tempdir().unwrap();
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
         assert!(reg.list().is_empty());
     }
 
     #[test]
     fn scan_missing_dir_returns_empty_registry() {
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(Path::new("/definitely/not/real"), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(Path::new("/definitely/not/real"), &host(), &kinds).unwrap();
         assert!(reg.list().is_empty());
     }
 
@@ -492,7 +492,7 @@ requires:
 "#,
         );
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
         let list = reg.list();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].lifecycle, PluginLifecycle::Enabled);
@@ -511,7 +511,7 @@ version: 0.1.0
 "#,
         );
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
         let list = reg.list();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].lifecycle, PluginLifecycle::Failed);
@@ -536,7 +536,7 @@ requires:
 "#,
         );
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
         let list = reg.list();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].lifecycle, PluginLifecycle::Failed);
@@ -559,7 +559,7 @@ not_a_real_field: true
 "#,
         );
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
         let list = reg.list();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].lifecycle, PluginLifecycle::Failed);
@@ -571,7 +571,7 @@ not_a_real_field: true
         let pdir = tmp.path().join("com.acme.hello");
         fs::create_dir_all(pdir.join("kinds")).unwrap();
         fs::write(
-            pdir.join("plugin.yaml"),
+            pdir.join("block.yaml"),
             r#"
 id: com.acme.hello
 version: 0.1.0
@@ -592,14 +592,14 @@ containment: {}
         .unwrap();
 
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
         let list = reg.list();
         assert_eq!(list[0].lifecycle, PluginLifecycle::Failed);
         assert!(list[0]
             .load_errors
             .iter()
-            .any(|e| e.contains("outside plugin namespace")));
-        // Phase 2 never ran for this plugin — shared registry untouched.
+            .any(|e| e.contains("outside block namespace")));
+        // Phase 2 never ran for this block — shared registry untouched.
         assert!(!kinds.contains(&spi::KindId::new("sys.core.folder")));
     }
 
@@ -609,7 +609,7 @@ containment: {}
         let pdir = tmp.path().join("com.acme.hello");
         fs::create_dir_all(pdir.join("kinds")).unwrap();
         fs::write(
-            pdir.join("plugin.yaml"),
+            pdir.join("block.yaml"),
             r#"
 id: com.acme.hello
 version: 0.1.0
@@ -629,7 +629,7 @@ containment: {}
         .unwrap();
 
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
         assert_eq!(reg.list()[0].lifecycle, PluginLifecycle::Enabled);
         assert!(kinds.contains(&spi::KindId::new("com.acme.hello.panel")));
     }
@@ -646,8 +646,8 @@ version: 0.1.0
 "#,
         );
         let kinds = KindRegistry::new();
-        let reg = PluginRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
-        let id = PluginId::parse("com.acme.hello").unwrap();
+        let reg = BlockRegistry::scan(tmp.path(), &host(), &kinds).unwrap();
+        let id = BlockId::parse("com.acme.hello").unwrap();
         reg.set_enabled(&id, false).unwrap();
         assert_eq!(reg.get(&id).unwrap().lifecycle, PluginLifecycle::Disabled);
         reg.set_enabled(&id, true).unwrap();

@@ -37,7 +37,7 @@ impl HandlerRegistry {
 
     /// Register a handler under `name`. If a handler with the same name
     /// already exists it is replaced (last-writer-wins, same as widget
-    /// registration in extensions-host).
+    /// registration in blocks-host).
     pub fn register(
         &self,
         name: impl Into<String>,

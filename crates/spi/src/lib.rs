@@ -10,7 +10,7 @@
 //! - [`Msg`] — Node-RED-compatible message envelope carried on wires
 //! - Identifier, facet, containment, slot-schema, and manifest types —
 //!   the author-facing names referenced through the SDK prelude. Kept
-//!   here (not in `graph`) so the SDK dep arrow is `extensions-sdk →
+//!   here (not in `graph`) so the SDK dep arrow is `blocks-sdk →
 //!   spi`, never into the runtime. See NODE-SCOPE rule #1.
 //!
 //! Rust-side re-exports of generated types land here in later stages.

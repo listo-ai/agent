@@ -3,7 +3,7 @@
 //! Every kind declares what may live under it and where it may itself
 //! live. The graph service enforces this on every mutation — one code
 //! path covering CRUD, move, and extension-driven sync. The types live
-//! here so extension authors can declare containment without pulling in
+//! here so block authors can declare containment without pulling in
 //! the graph runtime.
 
 use serde::de::Error as DeError;

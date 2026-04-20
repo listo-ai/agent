@@ -1,12 +1,12 @@
-//! Wasm-plugin supervisor (core-wasm ABI).
+//! Wasm-block supervisor (core-wasm ABI).
 //!
-//! One [`WasmSupervisor`] = one loaded `.wasm` module = one plugin.
+//! One [`WasmSupervisor`] = one loaded `.wasm` module = one block.
 //! Sandboxed under `wasmtime` with fuel + memory caps.
 //!
 //! # ABI
 //!
 //! We deliberately skip the Component Model for the first landing —
-//! it would force plugin authors through `wasm-tools component new`
+//! it would force block authors through `wasm-tools component new`
 //! / `cargo-component`, which breaks the edge-image build story.
 //! The boundary is three exports:
 //!
@@ -24,20 +24,20 @@
 //! Each call gets a **fresh store / fresh instance**, so memory
 //! resets and there's no need for a guest-side `free` — memory is
 //! dropped with the store. Fuel is metered per call so a runaway
-//! plugin can't monopolise the thread.
+//! block can't monopolise the thread.
 //!
 //! # Swapping this for Component Model later
 //!
 //! The `WasmSupervisor::load / describe / on_input` public API is
 //! the contract the engine consumes. When component-model tooling
-//! settles, the guts here flip without a `plugin.yaml` change.
+//! settles, the guts here flip without a `block.yaml` change.
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use wasmtime::{Config, Engine, Instance, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
 
-use crate::manifest::PluginId;
+use crate::manifest::BlockId;
 
 /// Defaults chosen to be safe in a shared agent process.
 #[derive(Debug, Clone)]
@@ -79,35 +79,35 @@ pub enum WasmError {
         source: anyhow::Error,
     },
     #[error(
-        "plugin `{plugin}` missing required export `{export}` — not a us-extension plugin?"
+        "block `{block}` missing required export `{export}` — not a us-extension block?"
     )]
-    MissingExport { plugin: String, export: &'static str },
-    #[error("describe() on plugin `{plugin}` trapped: {source}")]
+    MissingExport { block: String, export: &'static str },
+    #[error("describe() on block `{block}` trapped: {source}")]
     Describe {
-        plugin: String,
+        block: String,
         #[source]
         source: anyhow::Error,
     },
-    #[error("on_input() on plugin `{plugin}` trapped: {source}")]
+    #[error("on_input() on block `{block}` trapped: {source}")]
     OnInput {
-        plugin: String,
+        block: String,
         #[source]
         source: anyhow::Error,
     },
-    #[error("plugin `{plugin}` returned malformed JSON: {source}")]
+    #[error("block `{block}` returned malformed JSON: {source}")]
     BadJson {
-        plugin: String,
+        block: String,
         #[source]
         source: serde_json::Error,
     },
-    #[error("plugin `{expected}` identified itself as `{actual}`")]
+    #[error("block `{expected}` identified itself as `{actual}`")]
     IdentityMismatch { expected: String, actual: String },
     #[error(
-        "plugin `{plugin}` declared kind `{kind}` outside its namespace — refused"
+        "block `{block}` declared kind `{kind}` outside its namespace — refused"
     )]
-    NamespaceViolation { plugin: String, kind: String },
-    #[error("plugin `{plugin}` ran out of fuel (budget {budget})")]
-    OutOfFuel { plugin: String, budget: u64 },
+    NamespaceViolation { block: String, kind: String },
+    #[error("block `{block}` ran out of fuel (budget {budget})")]
+    OutOfFuel { block: String, budget: u64 },
 }
 
 /// Host state attached to every `Store`. Thin today; grows when we
@@ -127,7 +127,7 @@ impl HostState {
 // ---- wire types ------------------------------------------------------------
 //
 // JSON-on-the-wire. These mirror the `describe-response` record in
-// `crates/spi/wit/plugin.wit` (kept as design reference); the WIT
+// `crates/spi/wit/block.wit` (kept as design reference); the WIT
 // file is documentation until we swap this for Component Model.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,9 +168,9 @@ pub struct OutputMsg {
 
 // ---- supervisor ------------------------------------------------------------
 
-/// A loaded, identity-verified Wasm plugin.
+/// A loaded, identity-verified Wasm block.
 pub struct WasmSupervisor {
-    plugin_id: PluginId,
+    block_id: BlockId,
     wasm_path: PathBuf,
     engine: Engine,
     module: Module,
@@ -181,7 +181,7 @@ pub struct WasmSupervisor {
 impl std::fmt::Debug for WasmSupervisor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WasmSupervisor")
-            .field("plugin_id", &self.plugin_id)
+            .field("block_id", &self.block_id)
             .field("wasm_path", &self.wasm_path)
             .field("identity", &self.identity)
             .finish()
@@ -192,7 +192,7 @@ impl WasmSupervisor {
     /// Load a compiled `.wasm` module from disk and run `describe()`
     /// to capture identity + declared kinds.
     pub fn load(
-        plugin_id: &PluginId,
+        block_id: &BlockId,
         wasm_path: &Path,
         limits: WasmLimits,
     ) -> Result<Self, WasmError> {
@@ -213,7 +213,7 @@ impl WasmSupervisor {
         })?;
 
         let mut sup = Self {
-            plugin_id: plugin_id.clone(),
+            block_id: block_id.clone(),
             wasm_path: wasm_path.to_path_buf(),
             engine,
             module,
@@ -254,42 +254,42 @@ impl WasmSupervisor {
         let describe = instance
             .get_typed_func::<(), i64>(&mut store, "describe")
             .map_err(|_| WasmError::MissingExport {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 export: "describe",
             })?;
         let packed = describe
             .call(&mut store, ())
             .map_err(|e| WasmError::Describe {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 source: e,
             })?;
 
         let memory = instance.get_memory(&mut store, "memory").ok_or({
             WasmError::MissingExport {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 export: "memory",
             }
         })?;
         let bytes = read_packed(&store, &memory, packed).map_err(|e| WasmError::Describe {
-            plugin: self.plugin_id.as_str().to_string(),
+            block: self.block_id.as_str().to_string(),
             source: e,
         })?;
         let resp: DescribeResponse =
             serde_json::from_slice(&bytes).map_err(|e| WasmError::BadJson {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 source: e,
             })?;
 
-        if resp.extension_id != self.plugin_id.as_str() {
+        if resp.extension_id != self.block_id.as_str() {
             return Err(WasmError::IdentityMismatch {
-                expected: self.plugin_id.as_str().to_string(),
+                expected: self.block_id.as_str().to_string(),
                 actual: resp.extension_id,
             });
         }
         for k in &resp.kinds {
-            if !self.plugin_id.owns_kind(&k.kind_id) {
+            if !self.block_id.owns_kind(&k.kind_id) {
                 return Err(WasmError::NamespaceViolation {
-                    plugin: self.plugin_id.as_str().to_string(),
+                    block: self.block_id.as_str().to_string(),
                     kind: k.kind_id.clone(),
                 });
             }
@@ -298,8 +298,8 @@ impl WasmSupervisor {
         Ok(())
     }
 
-    pub fn plugin_id(&self) -> &PluginId {
-        &self.plugin_id
+    pub fn block_id(&self) -> &BlockId {
+        &self.block_id
     }
 
     pub fn identity(&self) -> &DescribeResponse {
@@ -323,7 +323,7 @@ impl WasmSupervisor {
             msg_json,
         })
         .map_err(|e| WasmError::BadJson {
-            plugin: self.plugin_id.as_str().to_string(),
+            block: self.block_id.as_str().to_string(),
             source: e,
         })?;
 
@@ -332,18 +332,18 @@ impl WasmSupervisor {
         let alloc = instance
             .get_typed_func::<i32, i32>(&mut store, "alloc")
             .map_err(|_| WasmError::MissingExport {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 export: "alloc",
             })?;
         let on_input = instance
             .get_typed_func::<(i32, i32), i64>(&mut store, "on_input")
             .map_err(|_| WasmError::MissingExport {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 export: "on_input",
             })?;
         let memory = instance.get_memory(&mut store, "memory").ok_or({
             WasmError::MissingExport {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 export: "memory",
             }
         })?;
@@ -356,7 +356,7 @@ impl WasmSupervisor {
         memory
             .write(&mut store, env_ptr as usize, &envelope_bytes)
             .map_err(|e| WasmError::OnInput {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 source: e.into(),
             })?;
 
@@ -365,16 +365,16 @@ impl WasmSupervisor {
             .map_err(|e| on_input_err(self, e))?;
 
         let out_bytes = read_packed(&store, &memory, packed).map_err(|e| WasmError::OnInput {
-            plugin: self.plugin_id.as_str().to_string(),
+            block: self.block_id.as_str().to_string(),
             source: e,
         })?;
         let result: Result<Vec<OutputMsg>, String> = serde_json::from_slice(&out_bytes)
             .map_err(|e| WasmError::BadJson {
-                plugin: self.plugin_id.as_str().to_string(),
+                block: self.block_id.as_str().to_string(),
                 source: e,
             })?;
         result.map_err(|msg| WasmError::OnInput {
-            plugin: self.plugin_id.as_str().to_string(),
+            block: self.block_id.as_str().to_string(),
             source: anyhow::anyhow!(msg),
         })
     }
@@ -387,12 +387,12 @@ fn on_input_err(sup: &WasmSupervisor, e: anyhow::Error) -> WasmError {
         .unwrap_or(false);
     if is_fuel {
         WasmError::OutOfFuel {
-            plugin: sup.plugin_id.as_str().to_string(),
+            block: sup.block_id.as_str().to_string(),
             budget: sup.limits.fuel_per_call,
         }
     } else {
         WasmError::OnInput {
-            plugin: sup.plugin_id.as_str().to_string(),
+            block: sup.block_id.as_str().to_string(),
             source: e,
         }
     }
@@ -427,6 +427,6 @@ mod tests {
 
     // Integration tests that actually load a `.wasm` fixture live in
     // `tests/wasm_fixture.rs` — they run only when the fixture is
-    // present on disk (built from `plugins/com.acme.wasm-demo`), so
+    // present on disk (built from `blocks/com.acme.wasm-demo`), so
     // the test suite doesn't require a wasm toolchain on CI.
 }

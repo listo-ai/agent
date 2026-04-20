@@ -1,6 +1,6 @@
 # Scope — Server-Driven UI (SDUI)
 
-A typed component IR emitted by the backend and rendered by a tiny React runtime. SDUI is the **default / easy path** for plugin screens: a plugin can ship zero client code and still get working CRUD, device pages, settings forms, discovery, alarms, scope boards, PR review cards. Plugins that need specialist UX keep shipping Module Federation bundles as they do today; SDUI trees can embed those components via `widget` / `custom` variants. The React app is a dumb projector for the long tail; MF is the escape hatch for everything bespoke.
+A typed component IR emitted by the backend and rendered by a tiny React runtime. SDUI is the **default / easy path** for block screens: a block can ship zero client code and still get working CRUD, device pages, settings forms, discovery, alarms, scope boards, PR review cards. Blocks that need specialist UX keep shipping Module Federation bundles as they do today; SDUI trees can embed those components via `widget` / `custom` variants. The React app is a dumb projector for the long tail; MF is the escape hatch for everything bespoke.
 
 ## Current status
 
@@ -52,7 +52,7 @@ agent ui resolve --page <id> -o json
 
 - Binding evaluation in `/ui/render` is a pragmatic walker (`crates/dashboard-transport/src/render.rs` — `substitute_bindings`) that handles `$target.id`, `$target.path`, `$target.name`, `$target.kind`, and `$target.<slot>` — enough for the POC spine. The full `/` child-traversal grammar from DASHBOARD.md still routes through the dashboard-runtime `Binding::parse`/`EvalContext` path; unifying the two is tractable work but not required for S5's acceptance (heartbeat view renders end-to-end without it). When we need `$target/outdoor-temp.value` we'll swap the walker for a recursive resolver over `EvalContext`.
 - Subscription plan on `/render` is coarse: every `{{$target.<slot>}}` reference in the template contributes one subject scoped to the target. The React renderer's `useSubscriptions` hook then invalidates on any matching `slot_changed` event. Fine-grained per-widget subscription plans (one plan per component id) are an S6 refinement.
-- "Persist graph to disk" from the milestones table is orthogonal to the render spine and remains open — authored pages + plugin views still vanish across server restart.
+- "Persist graph to disk" from the milestones table is orthogonal to the render spine and remains open — authored pages + block views still vanish across server restart.
 
 ### S6 summary
 
@@ -79,7 +79,7 @@ client invalidates only the affected widget — no broad sweeps.
 
 Two principles govern how SDUI is built and how it interacts with the code already shipped:
 
-1. **POC-first with the full core architecture, a minimal feature set.** S1 is not an MVP of one component — it is the complete architecture (IR crate + resolver + action dispatcher + React renderer + capability handshake) wired end-to-end with ~10 components. The bar is: "a plugin author can ship a working screen through the whole pipeline." Every remaining component is additive — the architecture is not incrementally grown, the vocabulary is. The long-term vision (~32 components, custom escape hatch, streaming, optimistic actions) drives the architecture decisions even in S1; missing components are added later, missing architecture is not.
+1. **POC-first with the full core architecture, a minimal feature set.** S1 is not an MVP of one component — it is the complete architecture (IR crate + resolver + action dispatcher + React renderer + capability handshake) wired end-to-end with ~10 components. The bar is: "a block author can ship a working screen through the whole pipeline." Every remaining component is additive — the architecture is not incrementally grown, the vocabulary is. The long-term vision (~32 components, custom escape hatch, streaming, optimistic actions) drives the architecture decisions even in S1; missing components are added later, missing architecture is not.
 
 2. **Hard-delete anything not needed. No back-compat during pre-production.** The platform has not shipped. Existing kinds, endpoints, crates, or client methods that don't fit SDUI's shape get deleted outright — not deprecated, not wrapped, not migrated through a shim. Specific candidates: any `ui.*` resolver output shape that narrows to ComponentTree gets its old shape removed in the same PR; unused widget-registry abstractions from M4 that don't map onto the IR `widget` variant get replaced, not extended. The only constraint is "`cargo test --workspace` and the TS tests stay green". Everything else is fair game to delete.
 
@@ -87,7 +87,7 @@ Both principles apply through S1–S7.
 
 ## Plain-English overview
 
-Before the formal scope below, a one-page version for plugin authors:
+Before the formal scope below, a one-page version for block authors:
 
 **The one sentence.** The server sends JSON describing the screen; the React app turns that JSON into pixels.
 
@@ -101,41 +101,41 @@ Before the formal scope below, a one-page version for plugin authors:
  └──────────┘   action (button click)    └──────────────┘
 ```
 
-**What the server sends.** A typed tree where every node is one of ~32 known component kinds (`row`, `col`, `table`, `form`, `button`, `diff`, `rich_text`, …) plus two escape hatches (`widget`, `custom`) that point at plugin-registered React components.
+**What the server sends.** A typed tree where every node is one of ~32 known component kinds (`row`, `col`, `table`, `form`, `button`, `diff`, `rich_text`, …) plus two escape hatches (`widget`, `custom`) that point at block-registered React components.
 
 **What the client does.** Switch on `node.type` and render the matching React component, recurse into children, wire actions back to `/api/v1/ui/action`. That's the whole client. ~800 lines.
 
-**What a plugin author ships** to get a working device page / settings form / discovery screen:
+**What a block author ships** to get a working device page / settings form / discovery screen:
 - A kind manifest (existing concept) + one `views: [{ template: ComponentTree }]` entry declaring what to render.
 - A handful of action handlers (`bacnet.scan`, `node.update_settings`) registered in the handler registry.
 - Zero frontend code. (They *may* ship MF bundles for specialist widgets; they don't *have to*.)
 
 **Where data comes from.** Three flavours — resolve-time bindings (baked in), live subscriptions (NATS streams patches), on-demand queries (`GET /ui/table?...`).
 
-**Why this works.** The long tail of plugin screens is CRUD-shaped. One renderer + one IR covers every driver, integration, and workflow kind. Specialist UX still uses Module Federation; SDUI is the easy path, not a wall.
+**Why this works.** The long tail of block screens is CRUD-shaped. One renderer + one IR covers every driver, integration, and workflow kind. Specialist UX still uses Module Federation; SDUI is the easy path, not a wall.
 
 ---
 
 ## Goal
 
-Let a plugin ship a kind and have every client screen for that kind appear simultaneously — with no per-client code, no per-screen templates on the client, and no framework lock-in. One install, one renderer, N plugin screens.
+Let a block ship a kind and have every client screen for that kind appear simultaneously — with no per-client code, no per-screen templates on the client, and no framework lock-in. One install, one renderer, N block screens.
 
-The rule: **the React app never knows what BACnet, a PR, or a scope is.** It knows `table`, `form`, `button`, `row`, `diff`. Plugins ship component trees + action handlers; the renderer fills in the rest.
+The rule: **the React app never knows what BACnet, a PR, or a scope is.** It knows `table`, `form`, `button`, `row`, `diff`. Blocks ship component trees + action handlers; the renderer fills in the rest.
 
 ### SDUI is the default path, not a mandate
 
-SDUI lets plugins ship **zero client code** and still get working screens — that's the point. It is **not** a restriction; plugins remain free to ship their own React via Module Federation (see [PLUGINS.md](PLUGINS.md)) whenever they need full control. Every plugin picks its own mix:
+SDUI lets blocks ship **zero client code** and still get working screens — that's the point. It is **not** a restriction; blocks remain free to ship their own React via Module Federation (see [BLOCKS.md](BLOCKS.md)) whenever they need full control. Every block picks its own mix:
 
-| Plugin strategy | When to use | Cost |
+| Block strategy | When to use | Cost |
 |---|---|---|
-| **SDUI only** (default) | CRUD, device pages, settings forms, alarm authoring, discovery — the long tail of plugin screens. | Zero FE code. Ship a backend handler + a component tree per kind view. |
-| **SDUI + a few custom renderers** | Plugin is 95% CRUD but needs one specialist widget (gauge, sparkline, floor-plan overlay). | Ship a small MF bundle that registers `renderer_id`s the `custom` variant references; the rest stays SDUI. |
-| **Full Module Federation bundle** | Plugin's UX is specialist (custom visualisations, heavy interactions, domain-specific authoring). UC1's `com.acmefac.ui.dashboard` goes here — gauges, trends, floor plans. | Ship React like any normal app. SDUI isn't involved. |
+| **SDUI only** (default) | CRUD, device pages, settings forms, alarm authoring, discovery — the long tail of block screens. | Zero FE code. Ship a backend handler + a component tree per kind view. |
+| **SDUI + a few custom renderers** | Block is 95% CRUD but needs one specialist widget (gauge, sparkline, floor-plan overlay). | Ship a small MF bundle that registers `renderer_id`s the `custom` variant references; the rest stays SDUI. |
+| **Full Module Federation bundle** | Block's UX is specialist (custom visualisations, heavy interactions, domain-specific authoring). UC1's `com.acmefac.ui.dashboard` goes here — gauges, trends, floor plans. | Ship React like any normal app. SDUI isn't involved. |
 
 **Two integration points connect the worlds:**
 
-1. The `custom` IR variant embeds a plugin-registered React component *inside* an SDUI tree. A page can be 90% SDUI with one floor-plan pane that's MF-provided.
-2. Any screen not described by an SDUI tree is just a regular MF route. The Studio shell doesn't care whether a plugin's screen is SDUI-rendered or MF-bundled.
+1. The `custom` IR variant embeds a block-registered React component *inside* an SDUI tree. A page can be 90% SDUI with one floor-plan pane that's MF-provided.
+2. Any screen not described by an SDUI tree is just a regular MF route. The Studio shell doesn't care whether a block's screen is SDUI-rendered or MF-bundled.
 
 ### The framework's own authoring tools
 
@@ -145,7 +145,7 @@ A small, enumerated set of *framework-provided* screens ship as bespoke React (n
 - **Flow canvas** — node-and-wire DAG editor for `sys.core.flow` documents (Studio only).
 - **Scope / form schema editor** — if ever built visually; likely text-based for v1.
 
-These are ~3 screens total. They ship once, with the framework, and stop expanding — unlike plugin screens, which grow with every extension installed.
+These are ~3 screens total. They ship once, with the framework, and stop expanding — unlike block screens, which grow with every block installed.
 
 ## Authoring modes
 
@@ -181,8 +181,8 @@ Sucrase / JSX-over-wire is also deferred — see "Deferred" below. The typed IR 
 - Client-side business logic. Zero. Every interaction round-trips. Optimistic-patch hints exist so the UX doesn't feel laggy — but the authoritative response is always the server's.
 - A full layout engine. IR components map 1:1 to existing React layout primitives (flex/grid). No bespoke layout algorithm.
 - A theme system. Theming rides on the React app's styling layer. IR carries semantic hints (`intent: "danger"`, `size: "lg"`) not CSS.
-- Forcing plugins to use SDUI. Plugins may ship full Module Federation bundles when they need full UX control (see "SDUI is the default path, not a mandate" above). SDUI covers the long tail of CRUD/viewing screens so plugin authors don't *have to* write React, not so they *can't*.
-- A pre-approved list of plugin React components the IR magically knows about. If a plugin wants a React component rendered inside an SDUI tree, it registers a `renderer_id` and uses the `custom` variant. If it wants entire pages outside SDUI, it ships a normal MF route.
+- Forcing blocks to use SDUI. Blocks may ship full Module Federation bundles when they need full UX control (see "SDUI is the default path, not a mandate" above). SDUI covers the long tail of CRUD/viewing screens so block authors don't *have to* write React, not so they *can't*.
+- A pre-approved list of block React components the IR magically knows about. If a block wants a React component rendered inside an SDUI tree, it registers a `renderer_id` and uses the `custom` variant. If it wants entire pages outside SDUI, it ships a normal MF route.
 - Authoring tools themselves. The dashboard builder, flow canvas, and any future visual IR editor ship as framework-provided bespoke React. SDUI is a rendering protocol, not a visual authoring protocol.
 - Flutter / Swift / other platforms. Deferred — the IR is language-agnostic by construction (JSON + JSON Schema) but only React is in v1 scope.
 
@@ -204,7 +204,7 @@ Six categories, ~32 components total, plus a `custom` escape hatch. Every compon
 | **Input** | `field` · `select` · `ref_picker` · `date` · `slider` · `toggle` · `search` · `rich_text` | Validated via JSON Schema. `ref_picker` queries the node graph. `rich_text` is a markdown-aware editor — required by UC3 scope authoring and anywhere a user writes long-form content. |
 | **Interactive** | `button` · `link` · `menu` · `dialog` · `drawer` · `toast` | Trigger actions. Actions are server round-trips. |
 | **Composite** | `form` · `card` · `header` · `kpi_grid` · `wizard` | Typed wrappers over the above so clients can optimise rendering (e.g. `form` owns validation UX). |
-| **Escape** | `custom` | `{ "type": "custom", "renderer_id": "acme.floorplan", "props": {...}, "subscribe": [...] }`. The React app looks up `renderer_id` in a local registry plugins populate. Ships in v1 (not deferred) — covers floor-plan overlays (UC1), schedule grids (UC1), state-machine diagrams (UC3), streaming AI output (UC2), and anywhere a domain needs specialist UX. |
+| **Escape** | `custom` | `{ "type": "custom", "renderer_id": "acme.floorplan", "props": {...}, "subscribe": [...] }`. The React app looks up `renderer_id` in a local registry blocks populate. Ships in v1 (not deferred) — covers floor-plan overlays (UC1), schedule grids (UC1), state-machine diagrams (UC3), streaming AI output (UC2), and anywhere a domain needs specialist UX. |
 
 Every component tree has a root of kind `page` (with `title`, `children`, optional `header`/`drawer`). Embedding at any depth is allowed.
 
@@ -212,20 +212,20 @@ Every component tree has a root of kind `page` (with `title`, `children`, option
 
 IR carries an `ir_version: u32` at the root. The client advertises the versions it supports in the capability handshake (`/api/v1/capabilities` already exists); the server clamps emission to the highest mutually-supported version. Adding a component variant is a minor bump; removing or re-shaping is a major bump with a 12-month deprecation window. Same discipline as REST API versioning.
 
-### Embedding plugin React inside an SDUI tree
+### Embedding block React inside an SDUI tree
 
-Plugins that ship Module Federation bundles can register their components so SDUI trees can embed them. Two leaf variants defer rendering to a plugin-provided React component:
+Blocks that ship Module Federation bundles can register their components so SDUI trees can embed them. Two leaf variants defer rendering to a block-provided React component:
 
-- **`widget`** — for small, slot-bound visualisations. Plugin registers a `widget_type` (e.g. `acme.gauge`) in the existing widget registry; the IR references it as `{ "type": "widget", "widget_type": "acme.gauge", "props": {...} }`.
-- **`custom`** — for full-screen specialist renderers (floor plans, node-graph diagrams, schedule grids). Plugin registers a `renderer_id` in a parallel registry; the IR references it as `{ "type": "custom", "renderer_id": "acme.floorplan", "props": {...} }`.
+- **`widget`** — for small, slot-bound visualisations. Block registers a `widget_type` (e.g. `acme.gauge`) in the existing widget registry; the IR references it as `{ "type": "widget", "widget_type": "acme.gauge", "props": {...} }`.
+- **`custom`** — for full-screen specialist renderers (floor plans, node-graph diagrams, schedule grids). Block registers a `renderer_id` in a parallel registry; the IR references it as `{ "type": "custom", "renderer_id": "acme.floorplan", "props": {...} }`.
 
 Both are looked up in the React app's client-side registry (populated at MF-bundle load time), and both degrade to a neutral stub when the id is unknown. The server filters them against the client's advertised capabilities before emission — an unfamiliar `widget_type` never makes it to the client.
 
-The distinction by intent: `widget` for composable pieces (drop it into a `grid`), `custom` for "hand me the whole pane". Nothing forces a plugin to use either — if a plugin owns a route entirely, it skips SDUI and ships a normal MF page.
+The distinction by intent: `widget` for composable pieces (drop it into a `grid`), `custom` for "hand me the whole pane". Nothing forces a block to use either — if a block owns a route entirely, it skips SDUI and ships a normal MF page.
 
 ## Data bindings
 
-Reuse the existing grammar from DASHBOARD.md — `$target.*`, `$stack.*`, `$self.*`, `$user.*`, `$page.*` — with one additive extension: the `/` child-by-name traversal. Every IR component's value slots accept either a literal or a binding expression wrapped in `{{ }}`. The resolver fills bindings server-side before emission; the client never sees expressions.
+Reuse the existing grammar from DASHBOARD.md — `$target.*`, `$stack.*`, `$self.*`, `$user.*`, `$page.*` — with one additive block: the `/` child-by-name traversal. Every IR component's value slots accept either a literal or a binding expression wrapped in `{{ }}`. The resolver fills bindings server-side before emission; the client never sees expressions.
 
 ### Binding grammar
 
@@ -346,9 +346,9 @@ Before going further, the distinction between "a node in the graph" and "a compo
 ```
 /                                      ← root station (sys.core.station, built-in)
 ├── buildings/                         sys.core.folder   (built-in)   container
-│   ├── building-1                     sys.site          (plugin)     DATA — the real building
-│   │   ├── outdoor-temp               sys.point         (plugin)     DATA — a sensor
-│   │   └── kwh                        sys.point         (plugin)     DATA — a meter
+│   ├── building-1                     sys.site          (block)     DATA — the real building
+│   │   ├── outdoor-temp               sys.point         (block)     DATA — a sensor
+│   │   └── kwh                        sys.point         (block)     DATA — a meter
 │   └── building-2 …
 │
 ├── templates/                         sys.core.folder   (built-in)
@@ -372,7 +372,7 @@ Before going further, the distinction between "a node in the graph" and "a compo
 |---|---|---|---|
 | `sys.core.station` | Built-in | Nothing special | One per graph; the `/` node |
 | `sys.core.folder` | Built-in | Children | Pure grouping |
-| `sys.site`, `sys.point` | **Plugin** (e.g. `com.acmefac.bms`) | Domain slots (`name`, `value`, `units`, …) | The real-world entities |
+| `sys.site`, `sys.point` | **Block** (e.g. `com.acmefac.bms`) | Domain slots (`name`, `value`, `units`, …) | The real-world entities |
 | `ui.page` | Built-in (SDUI) | Slot `layout: ComponentTree` (+ optional `template_ref`, `bound_args`) | An authored dashboard |
 | `ui.template` | Built-in (SDUI) | Slot `layout: ComponentTree` + `requires` (hole schema) | Reusable blueprint pages pin via `template_ref` |
 | `ui.nav` | Built-in (SDUI) | Slots: `title`, `path`, `frame_alias`, `frame_ref`, `order` | One row in the sidebar; pushes a frame onto the context stack when clicked |
@@ -386,7 +386,7 @@ The individual `kpi` / `table` / `row` / `button` / `form` / `diff` / `widget` e
 | Persistent identity | ✅ uuid + path | ❌ just a `type` tag + optional `id` string for targeting patches |
 | ACL, audit, versioning | ✅ inherited from the node model | ❌ inherits the page/template node's |
 | Live subscription subject | ✅ `node.<id>.slot.<name>` | ❌ — its data subscriptions come from its bindings, which resolve to node slots |
-| Examples | `ui.page`, `ui.nav`, `sys.point` | `kpi`, `table`, `button`, `widget` (reference to a plugin-registered React component) |
+| Examples | `ui.page`, `ui.nav`, `sys.point` | `kpi`, `table`, `button`, `widget` (reference to a block-registered React component) |
 
 **The `widget` variant is a reference, not a node.** When the IR carries `{ "type": "widget", "widget_type": "acme.gauge", "props": {...} }`, `acme.gauge` is an id looked up in the client's React-component registry (populated by MF bundles). The old M1–M5 `ui.widget` graph kind stays for backward shape but is rarely authored directly — the common case is inline IR `widget` variants inside a page's `layout`.
 
@@ -418,12 +418,12 @@ The resolver loads the template's layout, substitutes `bound_args`, then fills b
 
 | You want to… | Use… | Stored as |
 |---|---|---|
-| Represent a real building | `sys.site` node | Graph node (plugin kind) |
-| Represent a sensor reading | `sys.point` node | Graph node (plugin kind) |
+| Represent a real building | `sys.site` node | Graph node (block kind) |
+| Represent a sensor reading | `sys.point` node | Graph node (block kind) |
 | Author a dashboard | `ui.page` node | Graph node; its `layout` slot holds a `ComponentTree` |
 | Share layout across dashboards | `ui.template` node + `template_ref` on pages | Graph nodes |
 | Put a KPI tile / table / button on a dashboard | IR component | JSON inside the page's `ComponentTree` |
-| Embed a plugin-provided React gauge on a dashboard | IR `widget` variant | JSON inside the ComponentTree; `widget_type` looks up the React component in the client's MF-registry |
+| Embed a block-provided React gauge on a dashboard | IR `widget` variant | JSON inside the ComponentTree; `widget_type` looks up the React component in the client's MF-registry |
 | Build the left sidebar | Tree of `ui.nav` nodes | Graph nodes; `frame_ref` slot points at what becomes `$target` on click |
 
 ## Actions — the interaction protocol
@@ -449,7 +449,7 @@ Response is a discriminated union:
 {"type": "none"}
 ```
 
-Handlers are registered by name in a `HandlerRegistry` — same pattern as the widget registry. Plugins ship handlers; the framework validates and dispatches. Auth context flows in; RBAC enforced at the handler level via the existing `auth` crate.
+Handlers are registered by name in a `HandlerRegistry` — same pattern as the widget registry. Blocks ship handlers; the framework validates and dispatches. Auth context flows in; RBAC enforced at the handler level via the existing `auth` crate.
 
 **Optimistic hints**: a button may carry `optimistic: { patch: {...} }`. The client applies it immediately; the server response either confirms or replaces. This hides round-trip latency for the common "toggle a setting" case without client-side logic.
 
@@ -548,7 +548,7 @@ The full mapping lives in the React renderer and is estimated at ~150 lines incl
 SDUI **is** the render target the existing resolver emits. The four dashboard kinds (`ui.nav`, `ui.template`, `ui.page`, `ui.widget`) stay — they're *authorable* component trees, stored as graph state. What changes:
 
 - `ui.template.layout` and `ui.page.layout` were "opaque JSON"; they become typed ComponentTrees validated against the IR schema at save time.
-- `ui.widget` stays as the extension-provided custom-component primitive. In IR terms it's one variant among ~30.
+- `ui.widget` stays as the block-provided custom-component primitive. In IR terms it's one variant among ~30.
 - `/api/v1/ui/resolve` keeps its contract but its `render` field narrows to a ComponentTree shape.
 - Kinds can declare default views (proposed in the earlier brainstorm) — those views are IR trees stored on the `KindManifest` instead of as separate `ui.page` nodes.
 
@@ -559,7 +559,7 @@ In short: SDUI is the runtime representation; DASHBOARD kinds are the authoring/
 - `POST /api/v1/ui/resolve` — existing; returns `render: ComponentTree` instead of `widgets: []`. Response otherwise unchanged (subscriptions, meta, dry_run).
 - `POST /api/v1/ui/action` — new; action dispatcher.
 - `GET /api/v1/ui/table?source_id=<id>&page=&size=&sort=&filter=` — new; table pagination.
-- `GET /api/v1/ui/render?target=<node-id>[&view=<view-id>]` — new; convenience wrapper for "render this node using its default view" (requires the `KindManifest.views` extension).
+- `GET /api/v1/ui/render?target=<node-id>[&view=<view-id>]` — new; convenience wrapper for "render this node using its default view" (requires the `KindManifest.views` block).
 - All endpoints versioned under `/api/v1/`. Capability handshake advertises `ir_version`.
 
 Client parity per [NEW-API.md](NEW-API.md) applies: Rust client + CLI + TS client ship in the same PR as each endpoint. The existing CLI `agent ui` surface gains `resolve` output pretty-printing for the IR and an `agent ui action <handler> --args <json>` invoker for scripting.
@@ -578,7 +578,7 @@ Internals:
 2. A switch on `tree.type` dispatches to the registered component; children recurse.
 3. An `ActionClient` handle issues `POST /api/v1/ui/action` and applies response-union variants to local state (patch, navigate, toast).
 4. A `SubscriptionClient` wires to the existing SSE/NATS event stream and applies slot-change events to tables/charts/text nodes that bound to them.
-5. Zero business logic. Components are pure mappings from IR to React. Extensions register custom renderers via `registerComponent("acme.gauge", GaugeComponent)` — exactly parallel to how backend plugins register widget types.
+5. Zero business logic. Components are pure mappings from IR to React. Blocks register custom renderers via `registerComponent("acme.gauge", GaugeComponent)` — exactly parallel to how backend blocks register widget types.
 
 Size targets (excluding tests):
 
@@ -606,7 +606,7 @@ If the built-in total exceeds the red line with third-party libs already delegat
 - **IR → RFW translator** (Flutter). Out of scope. The IR is designed to be portable, but v1 ships only React.
 - **Visual IR authoring** (drag-drop tree editor). The dashboard builder and flow canvas ship as framework-provided bespoke React (see the "zero client code" carve-out); a fully visual IR editor for arbitrary trees is Studio Stage 4+ work.
 - **Server-side A/B tests, feature flags, analytics hooks** on IR emission. Tractable later; not v1.
-- **First-class `schedule_grid`, `floorplan`, `node_graph` components.** v1 serves these via the `custom` escape hatch. Promotion to first-class is a later call if the same domain-specific renderer shows up in enough extensions to justify framework ownership.
+- **First-class `schedule_grid`, `floorplan`, `node_graph` components.** v1 serves these via the `custom` escape hatch. Promotion to first-class is a later call if the same domain-specific renderer shows up in enough blocks to justify framework ownership.
 
 ## Crate layout
 
@@ -640,15 +640,15 @@ Grounded in the three use cases in [USE-CASES.md](../usecase/USE-CASES.md):
 
 - **S1 AI-authoring test:** a locally-running AI CLI session (Claude Code or similar), given only the output of `agent --help-json` + `agent ui vocabulary -o json`, produces a working `ui.page` node by shelling out to `agent nodes create` + `agent slots write`, with the resulting page passing `agent ui resolve --dry-run` on first or second attempt. No MCP, no special endpoints, no custom AI plumbing.
 - **UC1 falsification test:** a React app with zero BACnet-specific code renders a working BACnet discovery page — list devices, click scan, add a discovered device to the graph, see it live-update — driven entirely by IR the backend emits.
-- **UC2 falsification test:** the same bundle, zero GitHub-specific code, renders a per-user PR review card for UC2's nightly flow — with a `diff` component showing the PR changes, inline `button`s for approve / request-changes / reject, and the action round-trips to the GitHub extension's handlers.
+- **UC2 falsification test:** the same bundle, zero GitHub-specific code, renders a per-user PR review card for UC2's nightly flow — with a `diff` component showing the PR changes, inline `button`s for approve / request-changes / reject, and the action round-trips to the GitHub block's handlers.
 - **UC3 falsification test:** the same bundle, zero scope-specific code, renders UC3's scope-plan daily board — rows of scopes with state badges, per-row approve/reject buttons, live updates as the flow advances stages via subscriptions.
-- A plugin author ships a new kind with `views: [{template: ComponentTree, title: "Overview"}]` in their manifest; clicking an instance in Studio shows the view. Zero framework code changes.
+- A block author ships a new kind with `views: [{template: ComponentTree, title: "Overview"}]` in their manifest; clicking an instance in Studio shows the view. Zero framework code changes.
 - `POST /api/v1/ui/action` with an unregistered handler returns 404 and the correct CLI exit code.
 - Table component renders 10k-row result with server-side paging, sort, and filter — each interaction is one HTTP round-trip; client virtualises row rendering internally; no full re-renders.
 - Form component derives every field type from a JSON Schema via the mapping table above, including `oneOf` (variant picker) and array-of-objects (repeatable sub-form). Multi-variant settings (UC1 Modbus RTU-vs-TCP, UC2 AI-runner picker) render without custom code.
 - `rich_text` input round-trips markdown through a scope's `description` slot; server persists verbatim; re-render produces identical content.
 - `diff` component renders a unified diff from a handler response; inline-comment actions round-trip to the handler.
-- `custom` escape hatch: a plugin registering `renderer_id: "acme.floorplan"` gets its component rendered; unknown `renderer_id` degrades to a neutral stub without crashing the tree.
+- `custom` escape hatch: a block registering `renderer_id: "acme.floorplan"` gets its component rendered; unknown `renderer_id` degrades to a neutral stub without crashing the tree.
 - IR version handshake refuses to render a v2 tree against a v1 client and surfaces a clean capability-mismatch error.
 - Optimistic action hints produce a visible UI patch under ~16 ms of the button click; the authoritative response confirms or overrides within the round-trip.
 - Streaming: a handler returning `{type: "stream", channel}` + subsequent NATS patches renders incremental content on a `text` or `markdown` component without the server re-emitting the full tree.
@@ -663,10 +663,10 @@ Grounded in the three use cases in [USE-CASES.md](../usecase/USE-CASES.md):
 | ~~S2~~ ✅ | `/api/v1/ui/action` + handler registry + `auth`-gated dispatch. `toast` / `navigate` / `full_render` / `form_errors` / `download` / `stream` / `none` response variants. |
 | ~~S3~~ ✅ | `/api/v1/ui/table` paginated endpoint backed by the query engine. **`custom` escape hatch ships here** — client-side renderer registry + the `{type:"custom"}` IR variant + fallback stub. TypeScript + Rust client parity. |
 | ~~S4~~ ✅ | `frontend/src/sdui/` — `SduiProvider`, `Renderer`, `useActionResponse`, 16 component implementations incl. `custom` registry. Dashboard page replaced with live `ui.page` browser. Route `/ui/:pageRef` renders any authored page. Resolver fast-path in `crates/dashboard-transport` so `layout`-slot trees bypass the M4 widget resolver. |
-| **S5** | `/api/v1/ui/render?target=<id>` + `KindManifest.views` extension; clicking any node in Studio shows its default view. Zero authored pages for the 90% case. Also: **persist graph to disk** so authored pages survive server restart (currently all nodes are in-memory only). |
+| **S5** | `/api/v1/ui/render?target=<id>` + `KindManifest.views` block; clicking any node in Studio shows its default view. Zero authored pages for the 90% case. Also: **persist graph to disk** so authored pages survive server restart (currently all nodes are in-memory only). |
 | S6 | Remaining components (chart, sparkline, wizard, tree, timeline, drawer, ref_picker, rich-text editor via tiptap, markdown streaming). Streaming-subscription wiring on `text` / `markdown` / `code` / `timeline`. `$page`-state round-trip for chart zoom/range. |
 | S7 | Optimistic action hints end-to-end. Capability-handshake enforcement (`ir_version`). Size/DoS limits tested. Full acceptance suite green across all three use cases. |
 
 ## One-line summary
 
-**A versioned component IR emitted by the resolver and rendered by a 500-line React package; every screen in every client comes from the backend, every plugin ships UI with its data model, and the React app never learns what the domain is.**
+**A versioned component IR emitted by the resolver and rendered by a 500-line React package; every screen in every client comes from the backend, every block ships UI with its data model, and the React app never learns what the domain is.**

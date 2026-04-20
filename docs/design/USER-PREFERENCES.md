@@ -206,7 +206,7 @@ Rules:
 
 ### `UnitRegistry`
 
-Lives in `crates/spi/src/units.rs`. Static at build time, extended by the platform (not by extensions).
+Lives in `crates/spi/src/units.rs`. Static at build time, extended by the platform (not by blocks).
 
 ```rust
 use uom::si::f64 as si;
@@ -234,7 +234,7 @@ pub enum Quantity {
 }
 
 /// A concrete unit. Closed enum so the wire format is stable and
-/// the UI knows every label. Extensions cannot add variants.
+/// the UI knows every label. Blocks cannot add variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Unit {
@@ -302,15 +302,15 @@ The closed `Quantity`/`Unit` enums are part of the wire format and must be treat
 - **Changing a quantity's canonical unit** (e.g. deciding after the fact to store `Ratio` as 0–100 instead of 0–1) requires a migration plan: (a) bump the major platform version, (b) provide a one-off backfill script for existing telemetry rows, (c) update the registry and all ingest/read paths atomically. This is expected to be rare and high-cost — choose canonical units carefully up front.
 - `GET /v1/units` returns an `X-Platform-Version` header alongside the ETag so clients can detect a registry change on reconnect.
 
-### Extension-defined quantities
+### Block-defined quantities
 
-The closed enum is deliberate: the wire format must be stable and the UI needs to know every label. Extensions that need a quantity we don't ship cannot add an enum variant; they go through the platform PR process:
+The closed enum is deliberate: the wire format must be stable and the UI needs to know every label. Blocks that need a quantity we don't ship cannot add an enum variant; they go through the platform PR process:
 
-1. Extension author files an issue describing the quantity, canonical unit, allowed display units, and symbol.
+1. Block author files an issue describing the quantity, canonical unit, allowed display units, and symbol.
 2. Platform PR adds the variant, canonical mapping, and `uom` wiring. UI gets a new label bundle entry.
-3. Ships on the next platform release. Extension's manifest can then reference the new `quantity`.
+3. Ships on the next platform release. Block's manifest can then reference the new `quantity`.
 
-Friction is intentional. A quantity is part of the public data model; letting extensions invent new ones would fragment telemetry across tenants and break cross-extension dashboards. Extensions that can't wait can store the value as dimensionless (`quantity: None`) and do their own formatting — with the tradeoff that users can't set a unit preference for it.
+Friction is intentional. A quantity is part of the public data model; letting blocks invent new ones would fragment telemetry across tenants and break cross-block dashboards. Blocks that can't wait can store the value as dimensionless (`quantity: None`) and do their own formatting — with the tradeoff that users can't set a unit preference for it.
 
 ### How a read works end-to-end
 
@@ -377,8 +377,8 @@ Default is `units=preferred` (conversion applied). MCP clients and CLI scripts s
 This lands incrementally, not as a big-bang greenfield change.
 
 - **Phase 0** — land the conventions. Timestamps already UTC epoch-ms (verify and document). Document `Quantity`/`Unit` enums in `spi`. No behavioural change.
-- **Phase 1** — schema + API. Add `org_preferences` / `user_preferences` tables, `GET`/`PATCH` endpoints, JWT claim extension for `timezone`/`locale`/`language`. Clients that don't know about preferences keep working (server returns current US defaults, which is the status quo).
-- **Phase 2** — slot-level units. Add `quantity`/`unit` to `SlotSchema`. Existing slots default to `None` → no conversion, no behaviour change. Extension authors can start annotating.
+- **Phase 1** — schema + API. Add `org_preferences` / `user_preferences` tables, `GET`/`PATCH` endpoints, JWT claim block for `timezone`/`locale`/`language`. Clients that don't know about preferences keep working (server returns current US defaults, which is the status quo).
+- **Phase 2** — slot-level units. Add `quantity`/`unit` to `SlotSchema`. Existing slots default to `None` → no conversion, no behaviour change. Block authors can start annotating.
 - **Phase 3** — conversion middleware. REST serialisation applies unit prefs when both (a) the slot declares a quantity and (b) the caller's pref differs from canonical. Add `Accept: ...; units=canonical` support.
 - **Phase 4** — i18n. Wire Fluent into Studio; move backend error messages to message codes; add first non-English bundle on demand.
 
@@ -388,7 +388,7 @@ Each phase is independently deployable and reversible. No client is forced to up
 
 - **User-authored content translation** — translations sidecar table keyed by `(entity_id, lang)`, authored language as canonical. Surface a "translate this" affordance in Studio once multi-language customers exist.
 - **Per-org translation overrides** — customer wants "Site" instead of "Location" in their UI. Solvable via custom Fluent bundles loaded after the default, keyed on org.
-- **Extension-defined quantities** — documented path above (platform PR). If demand gets high, consider a versioned "quantity catalog" extension point, but not before we have concrete asks.
+- **Block-defined quantities** — documented path above (platform PR). If demand gets high, consider a versioned "quantity catalog" block point, but not before we have concrete asks.
 - **RTL layout and per-locale UI polish** — Studio team handoff once the i18n framework lands.
 - **Per-device timezone sync protocol** — currently client-local. If users report confusion about which TZ is active, add a session-scoped `X-User-Timezone` request header so the server can render server-side emails/exports in the same TZ Studio is displaying.
 - **Accessibility preferences** (reduced motion, high contrast, font scale) — extend `user_preferences` with the same inheritance model.

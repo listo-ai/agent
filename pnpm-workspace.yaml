@@ -1,4 +1,4 @@
 packages:
   - "clients/ts"
   - "frontend"
-  - "examples/plugin-hello"
+  - "examples/block-hello"

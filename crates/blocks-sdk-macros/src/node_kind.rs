@@ -35,17 +35,17 @@ pub(crate) fn expand(input: TokenStream) -> Result<TokenStream> {
     let kind_literal = attrs.kind;
 
     Ok(quote! {
-        impl ::extensions_sdk::NodeKind for #ty {
-            fn kind_id() -> ::extensions_sdk::__private::spi::KindId {
-                ::extensions_sdk::__private::spi::KindId::new(#kind_literal)
+        impl ::blocks_sdk::NodeKind for #ty {
+            fn kind_id() -> ::blocks_sdk::__private::spi::KindId {
+                ::blocks_sdk::__private::spi::KindId::new(#kind_literal)
             }
 
-            fn manifest() -> ::extensions_sdk::__private::spi::KindManifest {
+            fn manifest() -> ::blocks_sdk::__private::spi::KindManifest {
                 // Manifest YAML is the single source of truth. It was
                 // parsed + validated at compile time; a runtime failure
                 // here means the compiled-in bytes were tampered with.
                 const YAML: &str = include_str!(#absolute_path);
-                ::extensions_sdk::__private::serde_yml::from_str(YAML)
+                ::blocks_sdk::__private::serde_yml::from_str(YAML)
                     .expect("manifest YAML validated at compile time")
             }
         }

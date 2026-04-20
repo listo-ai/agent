@@ -1,46 +1,46 @@
 import { create } from "zustand";
-import type { ExtensionManifest } from "@/extensions/types";
+import type { BlockManifest } from "@/blocks/types";
 
-// Extension loading state — which extensions are installed, loading, or errored.
+// Block loading state — which blocks are installed, loading, or errored.
 
 type LoadStatus = "idle" | "loading" | "loaded" | "error";
 
-interface ExtensionEntry {
-  manifest: ExtensionManifest;
+interface BlockEntry {
+  manifest: BlockManifest;
   status: LoadStatus;
   error?: string;
 }
 
 interface ExtensionsState {
-  extensions: Map<string, ExtensionEntry>;
+  blocks: Map<string, BlockEntry>;
 
-  registerManifest: (manifest: ExtensionManifest) => void;
+  registerManifest: (manifest: BlockManifest) => void;
   setStatus: (id: string, status: LoadStatus, error?: string) => void;
-  getByStatus: (status: LoadStatus) => ExtensionEntry[];
+  getByStatus: (status: LoadStatus) => BlockEntry[];
 }
 
-export const useExtensionsStore = create<ExtensionsState>()((set, get) => ({
-  extensions: new Map(),
+export const useBlocksStore = create<ExtensionsState>()((set, get) => ({
+  blocks: new Map(),
 
   registerManifest: (manifest) =>
     set((s) => {
-      const next = new Map(s.extensions);
+      const next = new Map(s.blocks);
       next.set(manifest.id, { manifest, status: "idle" });
-      return { extensions: next };
+      return { blocks: next };
     }),
 
   setStatus: (id, status, error) =>
     set((s) => {
-      const entry = s.extensions.get(id);
+      const entry = s.blocks.get(id);
       if (!entry) return s;
-      const next = new Map(s.extensions);
-      const updated: ExtensionEntry = error === undefined
+      const next = new Map(s.blocks);
+      const updated: BlockEntry = error === undefined
         ? { manifest: entry.manifest, status }
         : { manifest: entry.manifest, status, error };
       next.set(id, updated);
-      return { extensions: next };
+      return { blocks: next };
     }),
 
   getByStatus: (status) =>
-    [...get().extensions.values()].filter((e) => e.status === status),
+    [...get().blocks.values()].filter((e) => e.status === status),
 }));

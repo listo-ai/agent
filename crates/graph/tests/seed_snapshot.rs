@@ -8,7 +8,7 @@
 //! surfaces as a diff against this file. Updating a manifest is a
 //! deliberate act — if you mean to change one, update both sides.
 
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 use graph::seed::{DriverDemo, DriverDemoDevice, DriverDemoPoint, Folder, MathAdd, Station};
 use serde_json::json;
 use spi::{

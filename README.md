@@ -2,7 +2,7 @@
 
 A generic, extensible, flow-based integration platform. Rust, one codebase,
 runs on 512 MB ARM edge gateways and in the cloud. Users author flows in the
-Studio; agents execute them against pluggable extensions.
+Studio; agents execute them against pluggable blocks.
 
 ---
 
@@ -18,7 +18,7 @@ Full cloud + edge topology (edge ↔ cloud communication):
 
 ```bash
 make dev            # cloud agent :8081, edge agent :8082, two Studios
-make dev-reset      # wipe dev/ databases and staged plugins
+make dev-reset      # wipe dev/ databases and staged blocks
 ```
 
 See [docs/testing/TESTING.md](docs/testing/TESTING.md) for the full local
@@ -48,7 +48,7 @@ make help
 | [docs/design/MCP.md](docs/design/MCP.md) | MCP server — tools, resources, prompts, auth, off-switch. |
 | [docs/design/TESTS.md](docs/design/TESTS.md) | Test categories, CI gates, what not to test. |
 | [docs/testing/TESTING.md](docs/testing/TESTING.md) | Local dev environment — how to build and start the stack. |
-| [dev/README.md](dev/README.md) | Two-agent dev topology — port map, configs, plugin staging. |
+| [dev/README.md](dev/README.md) | Two-agent dev topology — port map, configs, block staging. |
 
 ---
 
@@ -56,7 +56,7 @@ make help
 
 ```
 crates/         # Rust — Cargo workspace
-  spi/          # extension.proto, JSON schemas, trait signatures
+  spi/          # block.proto, JSON schemas, trait signatures
   data-*/       # data layer — SQLite / Postgres / TSDB
   domain-*/     # pure business logic
   transport-*/  # REST, gRPC, NATS, CLI, MCP
@@ -70,7 +70,7 @@ clients/
 frontend/       # Studio — Tauri + Rsbuild + React + Shadcn
 
 dev/            # local two-agent dev configs + databases
-plugins/        # first-party plugins (dev/testing)
+blocks/        # first-party blocks (dev/testing)
 docs/           # design docs and testing guides
 ```
 

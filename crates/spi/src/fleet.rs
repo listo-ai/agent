@@ -49,7 +49,7 @@ pub enum HealthStatus {
 }
 
 /// Structured transport failure. Serialisable so cross-process callers
-/// (plugins via IPC, Studio via API) see the same shape.
+/// (blocks via IPC, Studio via API) see the same shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum FleetError {

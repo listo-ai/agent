@@ -8,9 +8,9 @@ You are an AI coding assistant working on this repository. This doc is the entry
 
 ## What this project is
 
-A generic, extensible, flow-based integration platform. Rust, one codebase, runs on 512 MB ARM edge gateways and in the cloud. Users author flows in a desktop/browser Studio; the Control Plane ships flows to agents; agents execute them against pluggable extensions.
+A generic, extensible, flow-based integration platform. Rust, one codebase, runs on 512 MB ARM edge gateways and in the cloud. Users author flows in a desktop/browser Studio; the Control Plane ships flows to agents; agents execute them against pluggable blocks.
 
-The thesis is a **node/slot/flow** model plus a first-class **extension system**. Anything a flow can touch — a protocol driver, an API, a database, a user account, the agent's own health metrics — is a node in a unified graph. Nothing is special-cased.
+The thesis is a **node/slot/flow** model plus a first-class **block system**. Anything a flow can touch — a protocol driver, an API, a database, a user account, the agent's own health metrics — is a node in a unified graph. Nothing is special-cased.
 
 Common applications include BAS, industrial IoT, home automation, service orchestration, ETL, internal-tools glue. None of them is the reason the platform exists; the platform exists to be a good generic substrate for all of them.
 
@@ -24,9 +24,9 @@ These are not guidelines. They are the platform's spine. Get either one wrong an
 
 **No exceptions. No private entities. No parallel state.**
 
-Everything users touch: devices, points, users, roles, flows, alarms, schedules, dashboards, widgets, extensions, settings, history — **nodes**.
+Everything users touch: devices, points, users, roles, flows, alarms, schedules, dashboards, widgets, blocks, settings, history — **nodes**.
 
-Everything the platform itself runs on: the agent, the engine, health metrics, extension supervisor, safe-state policies, every long-running subsystem's state — **nodes**.
+Everything the platform itself runs on: the agent, the engine, health metrics, block supervisor, safe-state policies, every long-running subsystem's state — **nodes**.
 
 If you're about to write a subsystem that owns `Mutex<SomeState>` in a private struct nobody outside the subsystem can observe, **stop**. You are building a parallel system. Promote the state to a kind with status-role slots and make the subsystem an execution-only concern over graph state.
 
@@ -36,7 +36,7 @@ See [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md), especially § "The agent its
 
 The graph is the single source of truth for what exists in the system and what it's doing right now. **The engine does not hold a parallel model.** Flows do not hold a parallel model. The Studio does not hold a parallel model.
 
-Everything that wants to observe or act on any part of the system — engine, flows, Studio, MCP, CLI, audit, RBAC, dashboard widget, Slack notifier, scheduled backup, another plugin — reads and writes the graph through exactly one API: slot read, slot write, slot subscribe, lifecycle transition, link add/remove. **Same API for the engine as for a third-party flow.**
+Everything that wants to observe or act on any part of the system — engine, flows, Studio, MCP, CLI, audit, RBAC, dashboard widget, Slack notifier, scheduled backup, another block — reads and writes the graph through exactly one API: slot read, slot write, slot subscribe, lifecycle transition, link add/remove. **Same API for the engine as for a third-party flow.**
 
 Practical consequences:
 
@@ -58,26 +58,26 @@ These are enforced in review. A PR that violates them gets sent back. No excepti
 3. **Small files, small functions.** 400 lines per file max, 50 lines per function max, ~10 public items per module. If you're about to write a 1200-line "complete solution," stop and split it first.
 4. **Traits first, implementations second.** Write the interface before the impl. Domain depends on traits, not on concrete impls.
 5. **Node-RED-compatible `Msg` envelope** is the message shape on wires. Immutable on the wire; mutable at the QuickJS Function-node JS boundary. See [EVERYTHING-AS-NODE.md § "Wires, ports, and messages"](EVERYTHING-AS-NODE.md) and [NODE-AUTHORING.md](NODE-AUTHORING.md).
-6. **Every contract surface is versioned independently** via capability manifests — extensions declare required capabilities, host advertises provided ones, install is a set-match. See [VERSIONING.md](VERSIONING.md).
-7. **Logging goes through the shared primitive, never through `println!` / `eprintln!` / `console.log`.** One format, one field contract, one redactor, one outbox-backed ship path — across core, Wasm, and process plugins alike. See [LOGGING.md](LOGGING.md).
+6. **Every contract surface is versioned independently** via capability manifests — blocks declare required capabilities, host advertises provided ones, install is a set-match. See [VERSIONING.md](VERSIONING.md).
+7. **Logging goes through the shared primitive, never through `println!` / `eprintln!` / `console.log`.** One format, one field contract, one redactor, one outbox-backed ship path — across core, Wasm, and process blocks alike. See [LOGGING.md](LOGGING.md).
 
 ## Doc index
 
 | Doc | What it covers |
 |---|---|
-| [README.md](../../README.md) | Full stack overview — engine, extensions, DB, messaging, auth, Studio, CLI, MCP. Read for the big picture. |
+| [README.md](../../README.md) | Full stack overview — engine, blocks, DB, messaging, auth, Studio, CLI, MCP. Read for the big picture. |
 | [OVERVIEW.md](OVERVIEW.md) | Deployment profiles, build targets, capability matrix per deployment, memory budgets. |
 | [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) | **The core model.** Graph, nodes, slots, kinds, facets, containment, cascading delete, Msg envelope, slot API, settings schemas (single + multi-variant). |
 | [NODE-AUTHORING.md](NODE-AUTHORING.md) | How to write a node kind — manifest anatomy, settings vs msg overrides, worked HTTP-client example. |
 | [RUNTIME.md](RUNTIME.md) | Engine lifecycle, safe-state on shutdown, simulation vs commissioning modes, crossflow concepts, outbox backpressure. |
-| [UI.md](UI.md) | Studio architecture, Tauri + Rsbuild + Shadcn, Module Federation + iframe isolation for untrusted extensions, build targets. |
+| [UI.md](UI.md) | Studio architecture, Tauri + Rsbuild + Shadcn, Module Federation + iframe isolation for untrusted blocks, build targets. |
 | [AUTH.md](AUTH.md) | Zitadel integration, JWT verification, JWKS caching (24h ceiling), offline operation, revocation via NATS deny-list. |
 | [MCP.md](MCP.md) | MCP server — tools, resources, prompts, stdio auth, prompt-injection mitigations, three-layer off switch. |
 | [QUERY-LANG.md](QUERY-LANG.md) | Generic RSQL → AST → SeaQuery framework used by REST, CLI, SDKs, MCP, NATS filters. |
 | [DOCKER.md](DOCKER.md) | Multi-arch distroless images, docker-compose overlays per profile, edge vs cloud NATS topology, signing. |
 | [CODE-LAYOUT.md](CODE-LAYOUT.md) | Crate structure (`/crates/*`), naming rules, layer discipline, anti-patterns, AI-specific guidance. |
-| [VERSIONING.md](VERSIONING.md) | Per-surface semver rules, capability manifest, extension install-time match, kind migrations, deprecation windows. |
-| [LOGGING.md](LOGGING.md) | One log format everywhere. Canonical fields, levels, correlation ids, per-deployment sinks, plugin integration across all three flavors, redaction, outbox-backed shipping, log-vs-audit boundary. |
+| [VERSIONING.md](VERSIONING.md) | Per-surface semver rules, capability manifest, block install-time match, kind migrations, deprecation windows. |
+| [LOGGING.md](LOGGING.md) | One log format everywhere. Canonical fields, levels, correlation ids, per-deployment sinks, block integration across all three flavors, redaction, outbox-backed shipping, log-vs-audit boundary. |
 | [TESTS.md](TESTS.md) | Test-driven development here — test categories, trait-suite pattern, contract fixtures, multi-backend parity, property + snapshot tests, determinism rules, what NOT to test, CI gates. |
 | [../testing/TESTING.md](../testing/TESTING.md) | **Local dev environment for testing.** Canonical CLI commands to build and start the full cloud+edge stack or a solo edge agent. Read this before running any local integration test. FOR LOCAL TESTING ONLY. |
 | [../sessions/STEPS.md](../sessions/STEPS.md) | **Current coding stages** with `[DONE]` / `[DEFERRED]` markers. Temporary — will be removed when implementation catches up. Always check it to see what's already wired up before duplicating work. |
@@ -89,7 +89,7 @@ Find your task. Read the listed docs **in the order given** before touching code
 | Task | Read, in order |
 |---|---|
 | **Run local tests / start the dev environment** | NEW-SESSION (this doc) → [TESTING.md](../testing/TESTING.md) — contains the exact `make` commands; do not guess the startup sequence |
-| **Build a plugin / extension** (protocol driver, API integration, compute extension) | NEW-SESSION (this doc) → EVERYTHING-AS-NODE → NODE-AUTHORING → VERSIONING → UI (if it contributes UI) → CODE-LAYOUT (where extension crates live) → README (extension sections) |
+| **Build a block / block** (protocol driver, API integration, compute block) | NEW-SESSION (this doc) → EVERYTHING-AS-NODE → NODE-AUTHORING → VERSIONING → UI (if it contributes UI) → CODE-LAYOUT (where block crates live) → README (block sections) |
 | **Add a new built-in node kind** | NEW-SESSION → EVERYTHING-AS-NODE → NODE-AUTHORING → CODE-LAYOUT (`domain-*` crates) → STEPS (current stage) |
 | **Work on the frontend / Studio** | NEW-SESSION → UI → EVERYTHING-AS-NODE (data model the UI renders) → NODE-AUTHORING (property-panel schemas + multi-variant forms) |
 | **Work on the graph service (`/crates/graph`)** | NEW-SESSION → EVERYTHING-AS-NODE (entire doc — especially containment + cascading delete) → CODE-LAYOUT → RUNTIME (event model, subject taxonomy) → STEPS |
@@ -102,7 +102,7 @@ Find your task. Read the listed docs **in the order given** before touching code
 | **MCP server** | NEW-SESSION → MCP → AUTH → EVERYTHING-AS-NODE (slot API — MCP wraps it) |
 | **Docker / deployment / Helm** | NEW-SESSION → DOCKER → OVERVIEW → README (cloud vs edge topology) |
 | **CLI commands (`/crates/transport-cli`)** | NEW-SESSION → README (CLI section) → CODE-LAYOUT → QUERY-LANG (RSQL flags) |
-| **Versioning / capabilities / extension compat** | NEW-SESSION → VERSIONING → CODE-LAYOUT (`/crates/spi`) |
+| **Versioning / capabilities / block compat** | NEW-SESSION → VERSIONING → CODE-LAYOUT (`/crates/spi`) |
 | **Logging / tracing / observability** | NEW-SESSION → LOGGING → CODE-LAYOUT (`/crates/observability`) → VERSIONING (log schema is a contract surface) |
 | **Writing or reviewing tests** | NEW-SESSION → TESTS → CODE-LAYOUT (where tests live) — read TESTS before writing any test, especially trait-suite / contract / snapshot patterns |
 | **Cross-cutting refactor / unsure where to start** | NEW-SESSION → CODE-LAYOUT → EVERYTHING-AS-NODE → STEPS — then **ask the user a clarifying question** before touching code |

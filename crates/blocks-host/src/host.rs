@@ -1,15 +1,15 @@
-//! Process-plugin runtime manager.
+//! Process-block runtime manager.
 //!
 //! [`ProcessSupervisor`](crate::supervisor::ProcessSupervisor) is the
-//! per-plugin primitive. [`PluginHost`] is the fleet-level conductor:
-//! it iterates the [`PluginRegistry`], spawns a supervisor per plugin
-//! that declares a `process_bin`, runs a per-plugin tokio task that
+//! per-block primitive. [`BlockHost`] is the fleet-level conductor:
+//! it iterates the [`BlockRegistry`], spawns a supervisor per block
+//! that declares a `process_bin`, runs a per-block tokio task that
 //! watches both `Health` and child-exit, and restarts with
-//! exponential backoff. A crash-looping plugin is eventually marked
+//! exponential backoff. A crash-looping block is eventually marked
 //! `Failed` and left alone (circuit-breaker).
 //!
 //! Lives in the agent binary's lifetime — spawn once after
-//! [`PluginRegistry::scan`], `shutdown().await` on SIGTERM.
+//! [`BlockRegistry::scan`], `shutdown().await` on SIGTERM.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,20 +20,20 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::manifest::{PluginId, ProcessBinContribution};
-use crate::registry::{PluginLifecycle, PluginRegistry};
+use crate::manifest::{BlockId, ProcessBinContribution};
+use crate::registry::{PluginLifecycle, BlockRegistry};
 use crate::supervisor::{ProcessSupervisor, SupervisorError};
 
-/// Per-plugin runtime state. Updated by the supervisor task; read by
-/// REST / status handlers via [`PluginHost::state`].
+/// Per-block runtime state. Updated by the supervisor task; read by
+/// REST / status handlers via [`BlockHost::state`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case", tag = "status")]
 pub enum PluginRuntimeState {
-    /// Not running yet — task hasn't started or plugin is disabled.
+    /// Not running yet — task hasn't started or block is disabled.
     Idle,
     /// Spawning child / connecting gRPC / waiting for `Describe`.
     Starting,
-    /// `Describe` succeeded and the plugin most recently reported
+    /// `Describe` succeeded and the block most recently reported
     /// `READY` on `Health`.
     Ready,
     /// Last `Health` returned `DEGRADED` or a non-fatal error.
@@ -60,14 +60,14 @@ impl Default for PluginRuntimeState {
 /// Policy knobs. Sensible defaults; tune per deployment if needed.
 #[derive(Debug, Clone)]
 pub struct HostPolicy {
-    /// How often to poll `Health` on a running plugin.
+    /// How often to poll `Health` on a running block.
     pub health_interval: Duration,
     /// First restart delay.
     pub backoff_initial: Duration,
     /// Cap per-restart delay.
     pub backoff_max: Duration,
     /// Circuit-breaker: N fast failures within `failure_window`
-    /// promotes the plugin to `Failed` and stops the auto-restart loop.
+    /// promotes the block to `Failed` and stops the auto-restart loop.
     pub failure_threshold: u32,
     pub failure_window: Duration,
 }
@@ -87,37 +87,37 @@ impl Default for HostPolicy {
 struct Supervised {
     /// Current reported state. Cloneable out for REST.
     state: Arc<RwLock<PluginRuntimeState>>,
-    /// Cancel the per-plugin task (disable / shutdown).
+    /// Cancel the per-block task (disable / shutdown).
     cancel: CancellationToken,
     /// The driving task. `await` it on shutdown.
     handle: JoinHandle<()>,
 }
 
-/// Fleet-level conductor for process plugins.
+/// Fleet-level conductor for process blocks.
 ///
 /// Clone to share across axum handlers — internals are `Arc`-backed.
 #[derive(Clone)]
-pub struct PluginHost {
+pub struct BlockHost {
     inner: Arc<HostInner>,
 }
 
 struct HostInner {
-    registry: PluginRegistry,
+    registry: BlockRegistry,
     socket_dir: PathBuf,
     policy: HostPolicy,
-    supervised: Mutex<HashMap<PluginId, Supervised>>,
+    supervised: Mutex<HashMap<BlockId, Supervised>>,
 }
 
-impl PluginHost {
-    /// Build a host and spawn a supervisor task for every plugin in
+impl BlockHost {
+    /// Build a host and spawn a supervisor task for every block in
     /// the registry that declares a `process_bin` and is currently
     /// `Enabled`.
     ///
     /// `socket_dir` must be writable — supervisors drop their UDS
-    /// paths inside it. Callers typically pass `/run/<app>/plugins/`
-    /// or `<state-dir>/plugins/sockets/`.
+    /// paths inside it. Callers typically pass `/run/<app>/blocks/`
+    /// or `<state-dir>/blocks/sockets/`.
     pub async fn start(
-        registry: PluginRegistry,
+        registry: BlockRegistry,
         socket_dir: PathBuf,
         policy: HostPolicy,
     ) -> std::io::Result<Self> {
@@ -134,8 +134,8 @@ impl PluginHost {
         Ok(host)
     }
 
-    /// Read current runtime state for one plugin.
-    pub async fn state(&self, id: &PluginId) -> Option<PluginRuntimeState> {
+    /// Read current runtime state for one block.
+    pub async fn state(&self, id: &BlockId) -> Option<PluginRuntimeState> {
         let sup = self.inner.supervised.lock().await;
         match sup.get(id) {
             Some(s) => Some(s.state.read().await.clone()),
@@ -144,7 +144,7 @@ impl PluginHost {
     }
 
     /// Snapshot all runtime states.
-    pub async fn states(&self) -> Vec<(PluginId, PluginRuntimeState)> {
+    pub async fn states(&self) -> Vec<(BlockId, PluginRuntimeState)> {
         let sup = self.inner.supervised.lock().await;
         let mut out = Vec::with_capacity(sup.len());
         for (id, s) in sup.iter() {
@@ -154,9 +154,9 @@ impl PluginHost {
         out
     }
 
-    /// Enable a plugin: update the registry and, if it has a
+    /// Enable a block: update the registry and, if it has a
     /// `process_bin`, spawn its supervisor task.
-    pub async fn enable(&self, id: &PluginId) -> Result<(), HostError> {
+    pub async fn enable(&self, id: &BlockId) -> Result<(), HostError> {
         self.inner
             .registry
             .set_enabled(id, true)
@@ -165,9 +165,9 @@ impl PluginHost {
         Ok(())
     }
 
-    /// Disable a plugin: tear down its supervisor if running, then
+    /// Disable a block: tear down its supervisor if running, then
     /// mark it Disabled in the registry.
-    pub async fn disable(&self, id: &PluginId) -> Result<(), HostError> {
+    pub async fn disable(&self, id: &BlockId) -> Result<(), HostError> {
         self.stop_one(id).await;
         self.inner
             .registry
@@ -192,7 +192,7 @@ impl PluginHost {
     /// Enabled set. Called once at start and after any `enable`/
     /// `disable` that changes membership.
     async fn reconcile(&self) {
-        let want_running: Vec<(PluginId, ProcessBinContribution)> = self
+        let want_running: Vec<(BlockId, ProcessBinContribution)> = self
             .inner
             .registry
             .list()
@@ -213,7 +213,7 @@ impl PluginHost {
         }
     }
 
-    async fn ensure_running(&self, id: &PluginId) {
+    async fn ensure_running(&self, id: &BlockId) {
         let mut sup = self.inner.supervised.lock().await;
         if sup.contains_key(id) {
             return;
@@ -221,7 +221,7 @@ impl PluginHost {
         let Some(bin) = self.inner.registry.process_bin(id) else {
             return;
         };
-        // Resolve the binary path relative to the plugin root.
+        // Resolve the binary path relative to the block root.
         let Some(plugin_root) = self.inner.registry.plugin_root(id) else {
             return;
         };
@@ -256,7 +256,7 @@ impl PluginHost {
         );
     }
 
-    async fn stop_one(&self, id: &PluginId) {
+    async fn stop_one(&self, id: &BlockId) {
         let mut sup = self.inner.supervised.lock().await;
         let Some(s) = sup.remove(id) else {
             return;
@@ -273,7 +273,7 @@ pub enum HostError {
     Registry(String),
 }
 
-/// The per-plugin supervisor task. Runs until `cancel` fires.
+/// The per-block supervisor task. Runs until `cancel` fires.
 ///
 /// One iteration = one lifetime of the child process:
 ///   1. Spawn + Describe + publish Ready.
@@ -282,7 +282,7 @@ pub enum HostError {
 ///   3. Shutdown, consult circuit-breaker, publish Restarting or
 ///      Failed, sleep backoff, next iteration.
 async fn supervise_loop(
-    id: PluginId,
+    id: BlockId,
     bin_path: PathBuf,
     args: Vec<String>,
     socket_dir: PathBuf,
@@ -307,8 +307,8 @@ async fn supervise_loop(
                 record_failure(&mut failure_times, policy.failure_window);
                 if failure_times.len() as u32 >= policy.failure_threshold {
                     tracing::error!(
-                        plugin = %id, error = %e,
-                        "plugin failed to start {} times in window — circuit open",
+                        block = %id, error = %e,
+                        "block failed to start {} times in window — circuit open",
                         policy.failure_threshold
                     );
                     set_state(
@@ -323,8 +323,8 @@ async fn supervise_loop(
                 attempt += 1;
                 let backoff = backoff_for(attempt, &policy);
                 tracing::warn!(
-                    plugin = %id, attempt, backoff_ms = backoff.as_millis() as u64,
-                    error = %e, "plugin spawn failed; will retry"
+                    block = %id, attempt, backoff_ms = backoff.as_millis() as u64,
+                    error = %e, "block spawn failed; will retry"
                 );
                 set_state(
                     &state,
@@ -345,7 +345,7 @@ async fn supervise_loop(
         set_state(&state, PluginRuntimeState::Ready).await;
         attempt = 0; // successful start resets attempt counter
 
-        // Drive the plugin until it fails or we're cancelled.
+        // Drive the block until it fails or we're cancelled.
         let reason = run_until_failure(&mut sup, &policy, &state, &cancel).await;
         sup.shutdown().await;
 
@@ -358,8 +358,8 @@ async fn supervise_loop(
                 record_failure(&mut failure_times, policy.failure_window);
                 if failure_times.len() as u32 >= policy.failure_threshold {
                     tracing::error!(
-                        plugin = %id,
-                        "plugin crashed {} times in window — circuit open",
+                        block = %id,
+                        "block crashed {} times in window — circuit open",
                         policy.failure_threshold
                     );
                     set_state(&state, PluginRuntimeState::Failed { reason: msg }).await;
@@ -368,8 +368,8 @@ async fn supervise_loop(
                 attempt += 1;
                 let backoff = backoff_for(attempt, &policy);
                 tracing::warn!(
-                    plugin = %id, attempt, backoff_ms = backoff.as_millis() as u64, reason = %msg,
-                    "plugin down; restarting after backoff"
+                    block = %id, attempt, backoff_ms = backoff.as_millis() as u64, reason = %msg,
+                    "block down; restarting after backoff"
                 );
                 set_state(
                     &state,
@@ -395,7 +395,7 @@ enum SpawnOutcome {
 }
 
 async fn spawn_with_cancel(
-    id: &PluginId,
+    id: &BlockId,
     bin: &Path,
     args: &[String],
     socket_dir: &Path,
@@ -439,7 +439,7 @@ async fn run_until_failure(
                         if h.status == HS::Degraded as i32 {
                             set_state(state, PluginRuntimeState::Degraded { detail: h.detail }).await;
                         } else if h.status == HS::Stopping as i32 {
-                            return RunReason::Failure("plugin reported STOPPING".into());
+                            return RunReason::Failure("block reported STOPPING".into());
                         } else {
                             set_state(state, PluginRuntimeState::Ready).await;
                         }

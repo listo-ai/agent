@@ -10,7 +10,7 @@ This is a **selective port**, not a lift-and-shift. The Vite build is incompatib
 
 ## Goal #1 — Prove Module Federation actually works (everything else is secondary)
 
-The whole extension model in [UI.md](UI.md) is bet on **Rspack native Module Federation**: one host realm, third-party plugins loaded at runtime, **shared singletons for `react`, `react-dom`, and our service-registry context** so extensions don't ship duplicate React trees or lose Context across the boundary ([UI.md:182-186](UI.md#L182-L186)).
+The whole block model in [UI.md](UI.md) is bet on **Rspack native Module Federation**: one host realm, third-party blocks loaded at runtime, **shared singletons for `react`, `react-dom`, and our service-registry context** so blocks don't ship duplicate React trees or lose Context across the boundary ([UI.md:182-186](UI.md#L182-L186)).
 
 This is historically painful. Known failure modes we must reproduce and defeat before committing to the rest of the migration:
 
@@ -26,7 +26,7 @@ This is historically painful. Known failure modes we must reproduce and defeat b
 | Dev-mode HMR across MF | Works in prod, explodes in dev | Both `rsbuild dev` for host and remote, run concurrently, HMR proven |
 | React 19 + MF maturity | Rspack MF examples lag React 19; edge cases in `use`/actions | Pin versions; upstream issue links tracked in [tests](../../crates/engine/tests) note |
 
-**If Milestone 0 (below) fails, we stop the migration and rethink the plugin model.** No point porting design system work onto a foundation that doesn't hold.
+**If Milestone 0 (below) fails, we stop the migration and rethink the block model.** No point porting design system work onto a foundation that doesn't hold.
 
 ## Goal #2 — Harvest reusable UI from bizzy
 
@@ -56,7 +56,7 @@ Consume [`clients/ts`](../../clients/ts) for REST, add `@connectrpc/connect-web`
 Studio implications:
 
 1. Studio depends on `@sys/agent-client` as a workspace package; never re-implements REST calls inline.
-2. The client is **not** federated — it's a normal dep. Federation is only for **extensions**, not for internal packages.
+2. The client is **not** federated — it's a normal dep. Federation is only for **blocks**, not for internal packages.
 3. If we need Connect-RPC in addition to REST, add it alongside the TS client (new `/clients/ts-rpc` or a subpath export), not inside the Studio.
 4. Bizzy's `src/lib/api.ts` is not ported — `@sys/agent-client` replaces it.
 
@@ -67,7 +67,7 @@ Studio implications:
 | Concern | bizzy/frontend | Studio requirement | Action |
 |---|---|---|---|
 | Bundler | Vite 8 | **Rsbuild + Rspack** (MF native support) | **Replace** |
-| Plugin system | None | **Module Federation w/ singletons** | **Add — Goal #1** |
+| Block system | None | **Module Federation w/ singletons** | **Add — Goal #1** |
 | Desktop shell | None | **Tauri 2** | **Add** |
 | React | 19.2 | 19.x | Keep, pin as MF singleton |
 | Styling | Tailwind v4 | Tailwind v4 | Keep config, host-only build |
@@ -82,7 +82,7 @@ Studio implications:
 | Auth | Custom (`use-auth.tsx`) | `oidc-client-ts` + PKCE | **Replace** |
 | Canvas | None | **React Flow** | **Add (new work)** |
 | Layout | `allotment` | Not specified | Keep |
-| Theming | `use-theme.tsx` | Shadcn themes + extension themes | Keep + extend |
+| Theming | `use-theme.tsx` | Shadcn themes + block themes | Keep + extend |
 | TypeScript | `~6.0.2` (suspicious) | Current 5.x (matches `/clients/ts`) | **Verify & pin to 5.x** |
 | Lucide | `^1.8.0` (suspicious) | Current | **Verify & pin** |
 
@@ -106,14 +106,14 @@ Studio implications:
 
 | From bizzy | Why it can't be ported | Replacement |
 |---|---|---|
-| `vite.config.ts`, entry, HTML | Bundler change | New `rsbuild.config.ts` with `tauri` + `web` envs, MF plugin, shared singletons |
+| `vite.config.ts`, entry, HTML | Bundler change | New `rsbuild.config.ts` with `tauri` + `web` envs, MF block, shared singletons |
 | `lib/api.ts` | REST against Go backend | `@sys/agent-client` from `/clients/ts` |
 | `hooks/use-auth.tsx` | Bespoke | `oidc-client-ts` PKCE to Zitadel |
-| `pages/*` | Domain-specific (apps store, workshop, chat) | New Studio pages: Flows, Dashboards, Extensions, Settings |
+| `pages/*` | Domain-specific (apps store, workshop, chat) | New Studio pages: Flows, Dashboards, Blocks, Settings |
 | `components/app-builder/*`, `workshop/*`, `live-preview/*`, `chat/*`, `store/*` | App-domain UI | Not ported |
-| `hooks/use-my-apps.ts`, `use-plugins.ts`, `use-agent-chat.ts`, `use-revisions.ts`, `use-qa-wizard.ts`, `use-test-tool.ts` | Bound to old backend | Not ported |
+| `hooks/use-my-apps.ts`, `use-blocks.ts`, `use-agent-chat.ts`, `use-revisions.ts`, `use-qa-wizard.ts`, `use-test-tool.ts` | Bound to old backend | Not ported |
 | `lib/json-render-registry.ts`, `output-to-spec.ts`, `tool-naming.ts` | Tied to old app model | Not ported |
-| Local state store | No Zustand | New Zustand stores (`flow`, `selection`, `ui`, `extensions`, `auth`) |
+| Local state store | No Zustand | New Zustand stores (`flow`, `selection`, `ui`, `blocks`, `auth`) |
 
 ### Layer C — New build (no source to port)
 
@@ -122,7 +122,7 @@ Studio implications:
 - Tauri 2 shell: `src-tauri/` scaffold, IPC sidecar to local edge agent.
 - Platform capability module ([UI.md:42-52](UI.md#L42-L52)).
 - Service registry over React Context (~50 LOC), published as a shared MF package.
-- Extension loader: manifest fetch, signature verification hook, MF dynamic import, iframe sandbox path for untrusted.
+- Block loader: manifest fetch, signature verification hook, MF dynamic import, iframe sandbox path for untrusted.
 - React Flow canvas + node palette + property panel frame.
 - Connect clients generated from `/packages/spi/*.proto`.
 - `nats.ws` connection manager + subject-scoped subscribe hooks.
@@ -139,11 +139,11 @@ Studio implications:
 | **0** | **MF proof-of-concept** | In a **separate minimal repo or `/experiments/mf-poc/`**: (a) Rsbuild host + Rsbuild remote built as independent packages; (b) remote exposes one React component that uses React Context from host; (c) host's Zustand store is read and written by remote; (d) host's TanStack Query cache is shared — remote triggers a query, host re-renders; (e) only one React instance in the combined runtime (verified via `React.version` identity check); (f) strict `singleton` enforcement — build fails if remote bumps React; (g) HMR works in dev for both host and remote concurrently; (h) production build verified with `bundle-stats` showing no duplicate shared deps; (i) React 19 specifically (not 18). **If any of (a)–(i) fails, migration is blocked pending resolution.** |
 | 1 | New Studio app scaffold | `apps/studio/` builds with Rsbuild for `tauri` and `web` envs; empty shell renders; CI green; MF config copied from M0 POC |
 | 2 | Design system port | Shadcn primitives, Tailwind v4, theme toggle, layout shell (sidebar + topbar + allotment) working on new scaffold |
-| 3 | First real in-tree remote | A real Studio extension (e.g. a trivial "Hello Node" contribution) built as a separate MF remote in the monorepo; loaded by Studio at runtime; consumes host service registry, Zustand, Query; no singleton warnings |
+| 3 | First real in-tree remote | A real Studio block (e.g. a trivial "Hello Node" contribution) built as a separate MF remote in the monorepo; loaded by Studio at runtime; consumes host service registry, Zustand, Query; no singleton warnings |
 | 4 | Auth + transport | Zitadel OIDC login; `@sys/agent-client` calling real Control Plane with token; `nats.ws` subscription receiving a heartbeat |
 | 5 | Flow canvas skeleton | React Flow canvas, node palette from registry, property panel frame — no real nodes yet |
-| 6 | First extension end-to-end | One in-tree UI-only extension contributes a node type, property panel (`@rjsf/core` or chosen lib), renders in canvas |
-| 7 | Tauri shell wired | Desktop build launches, IPC to local edge agent, file dialog works, auto-update plugin configured |
+| 6 | First block end-to-end | One in-tree UI-only block contributes a node type, property panel (`@rjsf/core` or chosen lib), renders in canvas |
+| 7 | Tauri shell wired | Desktop build launches, IPC to local edge agent, file dialog works, auto-update block configured |
 | 8 | Cutover | Old bizzy frontend archived; Studio is the only UI in docs and CI |
 
 M0 → M1 → M3 are the risky path. M2, M4–M8 are mostly mechanical once the foundation holds.
@@ -152,11 +152,11 @@ M0 → M1 → M3 are the risky path. M2, M4–M8 are mostly mechanical once the 
 
 ## Risks & mitigations
 
-- **MF + React 19 + Rspack maturity.** M0 is specifically designed to smoke this out before any investment. If it fails, fallbacks in order of preference: (a) drop to React 18 for Studio; (b) move to Webpack 5 MF (config largely portable); (c) reconsider the plugin model — trusted in-tree only, untrusted via iframe exclusively.
-- **Singleton drift over time.** A future extension author bumps React and the host silently accepts a duplicate. **Mitigation:** CI check that fails on any MF shared-dep mismatch, plus an `extension lint` command that inspects remote `package.json` vs host-pinned versions.
+- **MF + React 19 + Rspack maturity.** M0 is specifically designed to smoke this out before any investment. If it fails, fallbacks in order of preference: (a) drop to React 18 for Studio; (b) move to Webpack 5 MF (config largely portable); (c) reconsider the block model — trusted in-tree only, untrusted via iframe exclusively.
+- **Singleton drift over time.** A future block author bumps React and the host silently accepts a duplicate. **Mitigation:** CI check that fails on any MF shared-dep mismatch, plus an `block lint` command that inspects remote `package.json` vs host-pinned versions.
 - **Context loss with React 19 concurrent features.** `use()` hook, actions, and transitions have surfaced MF edge cases upstream. Track and pin workarounds.
 - **Tailwind v4 + Rsbuild integration.** Verify in M0 — remote must render host-themed, not ship its own Tailwind runtime.
-- **`@json-render` vs `@rjsf/core` divergence.** Picking wrong costs a rewrite of every extension panel. Decide before M6.
+- **`@json-render` vs `@rjsf/core` divergence.** Picking wrong costs a rewrite of every block panel. Decide before M6.
 - **Suspicious bizzy pins** (`typescript ~6.0.2`, `lucide-react ^1.8.0`). Don't copy blindly; match `/clients/ts` TypeScript 5.x.
 - **Temptation to port `lib/api.ts`.** It's tied to the Go backend. Reject; use `@sys/agent-client`.
 
@@ -175,7 +175,7 @@ M0 → M1 → M3 are the risky path. M2, M4–M8 are mostly mechanical once the 
 
 ## Out of scope for this doc
 
-- Per-extension porting plans (none of bizzy's domain extensions apply).
+- Per-block porting plans (none of bizzy's domain blocks apply).
 - Backend / Control Plane work.
 - Installer, signing, notarization, auto-update infrastructure.
 - Other-language client packages (`/clients/rust|go|python` are future work per [clients/README.md](../../clients/README.md)).

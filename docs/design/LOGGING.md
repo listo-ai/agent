@@ -1,18 +1,18 @@
 # Logging Strategy
 
-How the platform logs. One format everywhere — core agent, extensions (native / Wasm / process), Studio client, CLI, MCP. Same field names, same levels, same redaction rules, same shipping path. Plugins get a logger through the SDK; they can't not be consistent.
+How the platform logs. One format everywhere — core agent, blocks (native / Wasm / process), Studio client, CLI, MCP. Same field names, same levels, same redaction rules, same shipping path. Blocks get a logger through the SDK; they can't not be consistent.
 
-Long-term maintainability depends on this being boring. If every extension invents its own format, cross-cutting debugging ("why did this flow fail on three sites at 02:14 UTC?") becomes archaeology.
+Long-term maintainability depends on this being boring. If every block invents its own format, cross-cutting debugging ("why did this flow fail on three sites at 02:14 UTC?") becomes archaeology.
 
 Authoritative references: [NODE-AUTHORING.md](NODE-AUTHORING.md), [CODE-LAYOUT.md](CODE-LAYOUT.md) (`crates/observability`), [VERSIONING.md](VERSIONING.md) (log schema is a versioned contract surface), [RUNTIME.md](RUNTIME.md) (outbox carries log forwarding with the same backpressure rules).
 
 ## The thesis
 
-**One log event format, one set of canonical fields, one transport shape — from edge extensions to cloud Control Plane to the browser Studio.**
+**One log event format, one set of canonical fields, one transport shape — from edge blocks to cloud Control Plane to the browser Studio.**
 
 - Structured JSON, one event per line. Human pretty-print only in `dev` mode; machine parsing is the default.
 - Canonical fields are declared in `spi`, used by `observability`, mirrored in `@sys/sdk-ts/log`. No hand-maintained parallels.
-- The shared primitive is the only primitive. Extensions that bypass it get rejected in review.
+- The shared primitive is the only primitive. Blocks that bypass it get rejected in review.
 - Log events and audit events are distinct streams, both structured, both governed by the same contract rules.
 
 ## Canonical field contract
@@ -41,7 +41,7 @@ Scope-dependent fields, added automatically by the logger when the context is pr
 | `flow_id` | Event inside a flow run | Filter to one flow's execution |
 | `request_id` | Event inside an HTTP/gRPC request | Correlate server + client |
 | `span_id`, `trace_id` | When a tracing span is active | OpenTelemetry propagation |
-| `plugin_id`, `plugin_version` | Any event emitted from a plugin | Isolate noisy or misbehaving extensions |
+| `plugin_id`, `plugin_version` | Any event emitted from a block | Isolate noisy or misbehaving blocks |
 
 Author-added ad-hoc fields are fine, scoped under a `ctx.<name>` prefix to avoid collisions with platform-reserved names:
 
@@ -49,19 +49,19 @@ Author-added ad-hoc fields are fine, scoped under a `ctx.<name>` prefix to avoid
 {"ts":"...","level":"info","msg":"retry queued","target":"...","ctx.retry_count":2,"ctx.reason":"5xx"}
 ```
 
-**Platform-reserved names**: all top-level keys listed above plus anything matching `_*` (reserved for platform extensions). Author fields live under `ctx.*`.
+**Platform-reserved names**: all top-level keys listed above plus anything matching `_*` (reserved for platform blocks). Author fields live under `ctx.*`.
 
 ## Levels — when to use what
 
 | Level | Semantics | Example |
 |---|---|---|
-| `error` | An operation failed and the caller needs to act. Human attention expected. | Extension failed to start; persistence write rejected |
+| `error` | An operation failed and the caller needs to act. Human attention expected. | Block failed to start; persistence write rejected |
 | `warn` | Something unexpected, but the system continued. Worth investigating in aggregate. | Config override fell back to default; slow query |
-| `info` | State transitions and "loud" lifecycle events. Limited rate. | Agent boot, flow started/stopped, extension installed |
+| `info` | State transitions and "loud" lifecycle events. Limited rate. | Agent boot, flow started/stopped, block installed |
 | `debug` | Diagnostic detail. Off in production by default. | Slot write with value; RPC request payload shape |
 | `trace` | Fine-grained tracing. Off unless actively debugging. | Every tick of an event loop, every packet received |
 
-Production defaults: `info` for platform crates, `warn` for noisy internals. Extensions inherit the agent's filter; they can log at any level but the configured filter drops anything below the threshold before it's serialised.
+Production defaults: `info` for platform crates, `warn` for noisy internals. Blocks inherit the agent's filter; they can log at any level but the configured filter drops anything below the threshold before it's serialised.
 
 ## Where logs go — per deployment
 
@@ -84,7 +84,7 @@ Edge agents optionally ship logs to the Control Plane. Same outbox pattern as cl
 
 - **Subjects** — `log.<tenant>.<agent_id>.<level>.<subsystem>`. Wildcards let consumers filter to a site, a level, a subsystem.
 - **Outbox-backed** — during a cloud outage, logs accumulate in the bounded disk outbox. Oldest-first drop policy for `trace`/`debug`, newest-first reject for `error` (we don't want to lose critical events). Health events published on NATS when the log outbox approaches caps.
-- **Sampling** at the edge for `trace`/`debug` — configurable ratio per subject prefix so a misbehaving noisy extension doesn't exhaust the outbox.
+- **Sampling** at the edge for `trace`/`debug` — configurable ratio per subject prefix so a misbehaving noisy block doesn't exhaust the outbox.
 - **Backpressure** — if the outbox is full and ship-rate is saturated, the logger falls back to file-only locally. The system never blocks on log delivery.
 
 ## The shared primitive — `crates/observability` + `@sys/sdk-ts/log`
@@ -105,7 +105,7 @@ Thin wrapper over `tracing` + `tracing-subscriber`. What the crate provides:
 | `observability::init(role, filter_env)` | One-call setup; agent boot calls this. Picks stdout/file/journald based on `role`, applies the env filter, installs the redactor. |
 | `observability::prelude::{trace, debug, info, warn, error}` | Macros that enforce the canonical-field contract. Unknown top-level keys fail to compile. |
 | `observability::fields` | Constants for every canonical field name — so typos become compile errors, not silent bugs. |
-| `observability::redact` | Automatic scrubbing + hooks for extension-declared secret fields. |
+| `observability::redact` | Automatic scrubbing + hooks for block-declared secret fields. |
 | `observability::span` | Span creation with mandatory `trace_id` / `span_id` fields, OpenTelemetry-compatible. |
 | `observability::shipper` | NATS forwarder, outbox-backed. Wired in only when the deployment's config enables it. |
 
@@ -114,7 +114,7 @@ Thin wrapper over `tracing` + `tracing-subscriber`. What the crate provides:
 Same surface, same field names, same levels:
 
 ```ts
-import { log } from '@sys/extensions-sdk-ts';
+import { log } from '@sys/blocks-sdk-ts';
 
 log.info({ node_path: path, msg_id: msg.id }, 'queued retry');
 log.warn({ 'ctx.retry_count': 3 }, 'backoff limit exceeded');
@@ -129,13 +129,13 @@ Built on `pino` under the hood with a custom formatter enforcing the field contr
 3. **The JSON output is stable.** Contract test in CI parses a fixture set and asserts field names, types, and required-field presence. Rust and TS both run the test.
 4. **Redactor runs before serialisation.** Secrets never hit the wire, even if a caller passes them in.
 
-## Plugin integration — three flavors, one stream
+## Block integration — three flavors, one stream
 
-Plugins use the same logger as core. Which SDK surface they see depends on flavor, but the wire output is identical.
+Blocks use the same logger as core. Which SDK surface they see depends on flavor, but the wire output is identical.
 
 ### Core native (in-process)
 
-Direct `use observability::prelude::*;` — same macros as core crates. `plugin_id` + `plugin_version` fields are injected automatically by the SDK when the log event originates inside a kind declared by an extension.
+Direct `use observability::prelude::*;` — same macros as core crates. `plugin_id` + `plugin_version` fields are injected automatically by the SDK when the log event originates inside a kind declared by an block.
 
 ### Wasm
 
@@ -147,15 +147,15 @@ fn host_log(level: u32, msg_ptr: *const u8, msg_len: u32, fields_ptr: *const u8,
 
 The author calls `log::info!(...)` inside their Wasm code; the SDK's Wasm adapter marshals the call across to the host, where it lands in the same `observability` stream with `plugin_id` + `plugin_version` set from the module's manifest.
 
-### Process plugin (gRPC)
+### Process block (gRPC)
 
-Plugin writes JSON log lines to `stderr`. The extension supervisor captures them, parses them as canonical events, and re-injects into the main stream with `plugin_id` + `plugin_version` + the child's PID. The plugin's SDK gives the author `info!/warn!/…` that produce the right stderr format automatically. Authors never see the marshalling.
+Block writes JSON log lines to `stderr`. The block supervisor captures them, parses them as canonical events, and re-injects into the main stream with `plugin_id` + `plugin_version` + the child's PID. The block's SDK gives the author `info!/warn!/…` that produce the right stderr format automatically. Authors never see the marshalling.
 
-A plugin that writes non-JSON to stderr logs a one-time warning and the line is wrapped as `{"level":"warn","msg":"<raw line>","target":"plugin.<id>.raw"}`. Graceful degradation.
+A block that writes non-JSON to stderr logs a one-time warning and the line is wrapped as `{"level":"warn","msg":"<raw line>","target":"block.<id>.raw"}`. Graceful degradation.
 
-### No separate log files per plugin
+### No separate log files per block
 
-The value of "one stream" dissolves if plugins write to their own files. All plugin events land in the agent's stream, keyed by `plugin_id` so filtering is easy. The only exception: if a plugin has a *truly* huge log volume (an ML inference plugin at debug level, for instance), the operator can enable a dedicated sink for that plugin via config — but it's opt-in and off by default.
+The value of "one stream" dissolves if blocks write to their own files. All block events land in the agent's stream, keyed by `plugin_id` so filtering is easy. The only exception: if a block has a *truly* huge log volume (an ML inference block at debug level, for instance), the operator can enable a dedicated sink for that block via config — but it's opt-in and off by default.
 
 ## Correlation — ids that travel with the event
 
@@ -185,7 +185,7 @@ The subscriber exports spans as OpenTelemetry Protocol (OTLP) when configured, s
 Two layers:
 
 1. **Automatic** — keys matching known patterns are redacted before serialisation. Defaults: `authorization`, `x-api-key`, `password`, `token`, `secret`, and any key suffixed `_secret` / `_token` / `_key`. Redacted means the value is replaced with `"<redacted>"`; the key stays so it's obvious from logs that a secret was involved.
-2. **Declarative** — extensions can declare secret field names in their manifest. The SDK merges those into the redactor. Example: the Postgres query extension declares `connection_password` as secret, so no log anywhere shows its value, even if a caller mistakenly passes it in a log field.
+2. **Declarative** — blocks can declare secret field names in their manifest. The SDK merges those into the redactor. Example: the Postgres query block declares `connection_password` as secret, so no log anywhere shows its value, even if a caller mistakenly passes it in a log field.
 
 Redaction runs at the logger boundary, not at the call site. You can't forget to redact.
 
@@ -195,10 +195,10 @@ Two distinct streams, both governed by this contract surface:
 
 | Stream | What it is | Examples | Retention |
 |---|---|---|---|
-| **Logs** (this doc) | Operational diagnostics. High volume. May be sampled. Retention measured in days. | "query took 12ms", "retry #3", "extension started", "flow run completed" | 7–30 days, then rotated |
-| **Audit** | Structured, immutable record of security/business-relevant actions. Low volume. Never sampled. Retention measured in years. | "user X granted role admin", "scope Y deleted", "flow Z deployed", "extension A installed" | 1–7 years, depending on compliance |
+| **Logs** (this doc) | Operational diagnostics. High volume. May be sampled. Retention measured in days. | "query took 12ms", "retry #3", "block started", "flow run completed" | 7–30 days, then rotated |
+| **Audit** | Structured, immutable record of security/business-relevant actions. Low volume. Never sampled. Retention measured in years. | "user X granted role admin", "scope Y deleted", "flow Z deployed", "block A installed" | 1–7 years, depending on compliance |
 
-Same field contract (so filtering works consistently), different sinks, different retention, different access control. The `audit` crate owns event types; `observability` owns transport. Events go to both streams when they're operationally interesting *and* audit-relevant (e.g. "extension installed" — the install trace goes to logs; the `extension.installed` fact goes to audit).
+Same field contract (so filtering works consistently), different sinks, different retention, different access control. The `audit` crate owns event types; `observability` owns transport. Events go to both streams when they're operationally interesting *and* audit-relevant (e.g. "block installed" — the install trace goes to logs; the `block.installed` fact goes to audit).
 
 **Rule of thumb**: could a compliance officer ask for this in three years? It's an audit event. Is it operational noise? It's a log event.
 
@@ -256,7 +256,7 @@ On 512 MB / 8 GB-storage edge devices:
 Per [VERSIONING.md](VERSIONING.md), the log schema is a versioned contract:
 
 - Capability id `spi.log.schema`, current version `1.0`.
-- Extensions that emit structured log fields beyond the defaults declare `requires: [spi.log.schema: "^1"]`.
+- Blocks that emit structured log fields beyond the defaults declare `requires: [spi.log.schema: "^1"]`.
 - Adding a canonical field is a minor bump; renaming or removing is a major bump with a deprecation window.
 - CI diffs the field list on every PR; removing a field without a deprecation flag fails the build.
 
@@ -270,9 +270,9 @@ This means log consumers (Grafana queries, alerting rules, customer dashboards) 
 | Redaction test | A log event containing each default-redacted key is serialised and asserted to contain `"<redacted>"` for those values. |
 | `println!`/`console.log` lint | CI grep fails if either appears in library code (test files and explicit TTY-interactive CLI branches allowed). |
 | Span-propagation test | A logged event inside a span asserts `trace_id` and `span_id` are present. |
-| Plugin-flavor test | Each plugin flavor (native / Wasm / process) emits an event that reaches the central stream with `plugin_id` correctly set. |
+| Block-flavor test | Each block flavor (native / Wasm / process) emits an event that reaches the central stream with `plugin_id` correctly set. |
 | Outbox-backpressure test | Fill the log outbox, assert oldest-first drop for low levels, newest-first reject for `error`, no blocking on the caller. |
 
 ## One-line summary
 
-**One log event format, one set of canonical fields, one shared primitive across Rust / TypeScript / Wasm / process plugins — structured JSON everywhere, automatic correlation via node-path / msg-id / flow-id / request-id, automatic redaction, configurable runtime filter without restart, outbox-backed shipping to the Control Plane with backpressure — so "why did this flow fail at 02:14 on site X" is a one-query answer, not an archaeology project.**
+**One log event format, one set of canonical fields, one shared primitive across Rust / TypeScript / Wasm / process blocks — structured JSON everywhere, automatic correlation via node-path / msg-id / flow-id / request-id, automatic redaction, configurable runtime filter without restart, outbox-backed shipping to the Control Plane with backpressure — so "why did this flow fail at 02:14 on site X" is a one-query answer, not an archaeology project.**

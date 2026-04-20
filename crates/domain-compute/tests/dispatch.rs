@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use engine::BehaviorRegistry;
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 use graph::{GraphEvent, GraphStore, KindRegistry, NullSink, VecSink};
 use serde_json::{json, Value as JsonValue};
 use spi::{KindId, Msg, NodePath};

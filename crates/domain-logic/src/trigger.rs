@@ -13,7 +13,7 @@
 //! the struct. The slot-source regression test in `tests/dispatch.rs`
 //! pins this rule for the `armed` slot.
 
-use extensions_sdk::prelude::*;
+use blocks_sdk::prelude::*;
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 

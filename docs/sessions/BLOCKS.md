@@ -2,41 +2,53 @@
 
 Replaces the term "plugin" (and the informal alias "extension") across all layers of the product.
 
+---
+
 ## The three Block types
 
 A **Block** is the installable unit — a directory, a manifest (`block.yaml`), the thing you ship, discover, and install. Every block has a type that describes what it gives the user.
 
-| Type | User value | Name |
-|---|---|---|
-| Frontend / UI | New screens, panels, dashboards | **View Block** |
-| Wasm | New logic, rules, processing | **Flow Block** |
-| Rust / native | New device, protocol, or API connections | **Connect Block** |
+| Type | Technical layer | User value | Name |
+|---|---|---|---|
+| Frontend / UI | React + Module Federation | New screens, dashboards, and widgets | **View Block** |
+| Wasm / Logic | `wasm32-wasip1` module | Custom rules and processing logic | **App Block** |
+| Rust / Native | Native `.so` or process binary | Device, protocol, and API connections | **Process Block** |
 
-A single block may contribute more than one type (e.g. a Modbus Connect Block that also ships a View Block for its configuration panel). The `block.yaml` manifest declares all contributions.
-
----
-
-## View Block
-
-Contributes UI to the Studio — sidebar panels, dashboard widgets, property panels, full-page views. Delivered as a Module Federation remote bundle (`ui/remoteEntry.js`). Runs entirely in the browser or Tauri shell; no agent-side code.
-
-**Examples:** a custom dashboard for a building floor plan, a camera feed panel, a chart widget for sensor history.
+A single block directory may contribute more than one type (e.g. a Modbus Process Block that also ships a View Block for its configuration panel). The `block.yaml` manifest declares all contributions.
 
 ---
 
-## Flow Block
+## View Block — The Surface
 
-Contributes processing logic to the engine — custom node kinds that run inside the flow graph. Packaged as `.wasm` modules compiled to `wasm32-wasip1`. Sandboxed, portable, runs on cloud, edge, and standalone.
+> New screens, dashboards, and widgets.
 
-**Examples:** a PID controller node, a custom alerting rule, an ML inference node, a unit-conversion utility.
+Contributes UI to the Studio — sidebar panels, dashboard widgets, property panels, full-page views. Delivered as a Module Federation remote bundle (`ui/remoteEntry.js`). Runs entirely in the browser or Tauri shell; zero agent-side code.
+
+MIT UI Software Architecture guidelines describe these as **visual containment trees** — composable UI subtrees that plug into the host shell's layout.
+
+**Examples:** a custom floor-plan dashboard, a live camera feed panel, a sensor history chart widget, a device configuration form.
 
 ---
 
-## Connect Block
+## App Block — The Brain
 
-Contributes connectivity — native Rust code that bridges external devices, protocols, or cloud APIs into the platform. Packaged as a native shared library (`.so` / `.dll` / `.dylib`) or a standalone process binary. Runs inside or alongside the agent.
+> Custom rules and processing logic.
 
-**Examples:** a BACnet/IP driver, a Modbus RTU driver, a Salesforce sync adapter, an MQTT bridge.
+Contributes processing logic to the engine — custom node kinds that run inside the flow graph. Packaged as `.wasm` modules compiled to `wasm32-wasip1`. Sandboxed, portable, runs on cloud, edge, and standalone without recompilation.
+
+This handles the **software behavior** that users can customize: what happens to data, how alerts fire, what transformations run.
+
+**Examples:** a PID controller node, a custom alerting rule, an ML inference node, a unit-conversion utility, a data normalizer.
+
+---
+
+## Process Block — The Engine
+
+> Native performance and connectivity.
+
+Contributes connectivity and heavy lifting — native Rust code that bridges external devices, protocols, or cloud APIs into the platform. Packaged as a native shared library (`.so` / `.dll` / `.dylib`) or a standalone process binary. Handles **high-speed data** and **physical device bridges**.
+
+**Examples:** a BACnet/IP driver, a Modbus RTU driver, a Salesforce sync adapter, an MQTT bridge, a serial-port reader.
 
 ---
 
@@ -48,21 +60,21 @@ Contributes connectivity — native Rust code that bridges external devices, pro
 | plugin.yaml | block.yaml |
 | plugins/ directory | blocks/ directory |
 | Plugin Manager (UI) | Block Manager |
-| frontend plugin | View Block |
-| Wasm plugin | Flow Block |
-| native / process plugin | Connect Block |
-| extension (informal) | block (preferred) / extension (internal code only) |
+| frontend plugin / UI extension | View Block |
+| Wasm plugin / Wasm extension | App Block |
+| native / process plugin | Process Block |
+| extension (informal) | block (user-facing) |
 
-The word **extension** is kept in internal code layer names (`extensions-host`, `extensions-sdk`, `domain-extensions`) because those crates predate this terminology and renaming them is a separate mechanical task. In all user-facing copy, docs, and API surface use **block**.
+The word **extension** is retained as internal Rust crate naming convention only. In all user-facing copy, docs, and API surface, use **block**.
 
 ---
 
 ## How to talk about blocks
 
-- "Install the Modbus **Connect Block**" — not "install the Modbus plugin"
-- "Build a **Flow Block** that runs a PID algorithm" — not "write a Wasm extension"
+- "Install the Modbus **Process Block**" — not "install the Modbus plugin"
+- "Build an **App Block** that runs a PID algorithm" — not "write a Wasm extension"
 - "The **View Block** adds a live floor-plan panel to your dashboard"
-- "This block contributes both a **Connect Block** and a **View Block**" — when a single package ships both
+- "This block contributes both a **Process Block** and a **View Block**" — when a single package ships both
 
 ---
 
@@ -71,9 +83,10 @@ The word **extension** is kept in internal code layer names (`extensions-host`, 
 | Concept | Internal crate / field |
 |---|---|
 | Block manifest | `block.yaml` → `BlockManifest` struct |
-| Block registry / scanner | `BlockRegistry` (was `PluginRegistry`) |
+| Block registry / scanner | `BlockRegistry` |
 | View Block contribution | `contributes.ui` in `block.yaml` |
-| Flow Block contribution | `contributes.wasm_modules` in `block.yaml` |
-| Connect Block contribution | `contributes.native_lib` / `contributes.process_bin` in `block.yaml` |
-| Host that loads all blocks | `crates/extensions-host` (name unchanged) |
-| SDK for block authors | `crates/extensions-sdk` (name unchanged) |
+| App Block contribution | `contributes.wasm_modules` in `block.yaml` |
+| Process Block contribution | `contributes.native_lib` / `contributes.process_bin` in `block.yaml` |
+| Host that loads all blocks | `crates/blocks-host` |
+| SDK for block authors | `crates/blocks-sdk` |
+| Domain model | `crates/domain-blocks` |

@@ -50,7 +50,7 @@ impl From<&str> for TenantId {
 pub enum Actor {
     /// Human user backed by an identity-provider session.
     User { id: NodeId, display_name: String },
-    /// Machine identity — service account, extension publisher, edge agent.
+    /// Machine identity — service account, block publisher, edge agent.
     Machine { id: NodeId, label: String },
     /// Dev-null default. NEVER valid in production — the agent refuses to
     /// boot with a dev-null provider when `role == cloud` and the build
@@ -212,7 +212,7 @@ pub trait AuthProvider: Send + Sync {
     async fn resolve(&self, headers: &dyn RequestHeaders) -> Result<AuthContext, AuthError>;
 
     /// Stable provider id — surfaced in `GET /api/v1/capabilities` as
-    /// `auth.<id>.v1` so plugins can require a given identity backend.
+    /// `auth.<id>.v1` so blocks can require a given identity backend.
     fn id(&self) -> &'static str;
 }
 

@@ -42,7 +42,7 @@ mod kinds;
 mod lifecycle;
 mod links;
 mod nodes;
-mod plugins;
+mod blocks;
 mod seed;
 mod slots;
 pub mod types;
@@ -134,8 +134,8 @@ impl AgentClient {
         kinds::Kinds::new(&self.http, API_VERSION)
     }
 
-    pub fn plugins(&self) -> plugins::Plugins<'_> {
-        plugins::Plugins::new(&self.http, API_VERSION)
+    pub fn blocks(&self) -> blocks::Plugins<'_> {
+        blocks::Plugins::new(&self.http, API_VERSION)
     }
 
     pub fn auth(&self) -> auth::Auth<'_> {

@@ -8,7 +8,7 @@
     "rest": "1"
   },
   "capabilities": [
-    { "id": "spi.extension.proto", "version": "1.0.0" },
+    { "id": "spi.block.proto", "version": "1.0.0" },
     { "id": "spi.msg",             "version": "1.0.0" },
     { "id": "spi.node.schema",     "version": "1.0.0" },
     { "id": "spi.flow.schema",     "version": "1.0.0" },

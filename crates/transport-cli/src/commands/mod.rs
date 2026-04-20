@@ -17,7 +17,7 @@ mod lifecycle;
 mod links;
 pub mod meta;
 mod nodes;
-mod plugins;
+mod blocks;
 mod schema;
 mod seed;
 mod slots;
@@ -88,9 +88,9 @@ pub enum CliCommand {
     #[command(subcommand)]
     Kinds(kinds::KindsCmd),
 
-    /// Plugin operations.
+    /// Block operations.
     #[command(subcommand)]
-    Plugins(plugins::PluginsCmd),
+    Plugins(blocks::PluginsCmd),
 
     /// Auth introspection.
     #[command(subcommand)]
@@ -152,7 +152,7 @@ pub async fn dispatch(client: &AgentClient, global: &GlobalOpts, cmd: &CliComman
         CliCommand::Config(sub) => config::run(client, fmt, sub).await,
         CliCommand::Links(sub) => links::run(client, fmt, sub).await,
         CliCommand::Kinds(sub) => kinds::run(client, fmt, sub).await,
-        CliCommand::Plugins(sub) => plugins::run(client, fmt, sub).await,
+        CliCommand::Plugins(sub) => blocks::run(client, fmt, sub).await,
         CliCommand::Auth(sub) => auth::run(client, fmt, sub).await,
         CliCommand::Ui(sub) => ui::run(client, fmt, sub).await,
         CliCommand::Flows(sub) => flows::run(client, fmt, sub).await,

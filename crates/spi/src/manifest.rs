@@ -1,9 +1,9 @@
 //! Kind manifest — declarative description of a node kind.
 //!
-//! `KindManifest` is the contract surface every extension author emits
-//! (via `#[derive(NodeKind)]` in `extensions-sdk`) and every runtime
+//! `KindManifest` is the contract surface every block author emits
+//! (via `#[derive(NodeKind)]` in `blocks-sdk`) and every runtime
 //! consumes (the graph registry, the placement validator, the Studio
-//! palette, the process-plugin gRPC describer). Keep it here so the SDK
+//! palette, the process-block gRPC describer). Keep it here so the SDK
 //! depends only on `spi`, never on `graph`.
 
 use std::collections::BTreeMap;

@@ -35,7 +35,7 @@ pub fn from_file(path: &Path) -> Result<AgentConfigOverlay, ConfigError> {
 /// | `AGENT_ROLE` | `role` |
 /// | `AGENT_DB` | `database.path` |
 /// | `AGENT_LOG` | `log.filter` |
-/// | `AGENT_PLUGINS_DIR` | `plugins.dir` |
+/// | `AGENT_BLOCKS_DIR` | `blocks.dir` |
 ///
 /// Empty strings are treated as unset. Parsing failures for typed
 /// fields (role) return an error rather than silently falling back.
@@ -49,12 +49,12 @@ pub fn from_env() -> Result<AgentConfigOverlay, ConfigError> {
     };
     let db_path = read_env("AGENT_DB")?.map(PathBuf::from);
     let log_filter = read_env("AGENT_LOG")?;
-    let plugins_dir = read_env("AGENT_PLUGINS_DIR")?.map(PathBuf::from);
+    let blocks_dir = read_env("AGENT_BLOCKS_DIR")?.map(PathBuf::from);
     Ok(AgentConfigOverlay {
         role,
         database: db_path.map(|p| DatabaseOverlay { path: Some(p) }),
         log: log_filter.map(|f| LogOverlay { filter: Some(f) }),
-        plugins: plugins_dir.map(|d| PluginsOverlay { dir: Some(d) }),
+        blocks: blocks_dir.map(|d| PluginsOverlay { dir: Some(d) }),
         fleet: None,
         auth: None,
     })

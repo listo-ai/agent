@@ -8,8 +8,8 @@ database:
   path: dev/edge.db
 log:
   filter: info,agent=debug,extensions_host=debug
-plugins:
-  dir: dev/edge-plugins
+blocks:
+  dir: dev/edge-blocks
 fleet:
   backend: zenoh
   listen: []

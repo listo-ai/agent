@@ -1,6 +1,6 @@
 # Reactive UI — Implementation
 
-Wire every Studio surface that reads the graph — the **flows sidebar**, the **flow canvas**, the **property panel** — to the same live cache so they stay 100% in sync across clients. Lazy-load on demand, CRUD from any surface (CLI, another Studio tab, a plugin, a fleet command, the engine itself) appears everywhere within one round-trip, and the local cache reconciles deterministically after network interruptions.
+Wire every Studio surface that reads the graph — the **flows sidebar**, the **flow canvas**, the **property panel** — to the same live cache so they stay 100% in sync across clients. Lazy-load on demand, CRUD from any surface (CLI, another Studio tab, a block, a fleet command, the engine itself) appears everywhere within one round-trip, and the local cache reconciles deterministically after network interruptions.
 
 > **Status: complete.** All six stages (1a–1f) are shipped. This doc reflects the as-built design.
 
@@ -232,7 +232,7 @@ Every mutation is idempotent: applying an event twice yields the same state as a
 
 ### Batching `NodeCreated` fetches
 
-A single bulk operation (engine seeds 30 nodes, plugin install creates a subtree, a `POST /seed`) fires 30 individual `NodeCreated` events, each of which — under the rule above — would trigger its own `GET /api/v1/node?path=<…>` fetch. That's a thundering herd against the same agent for data we already know we want.
+A single bulk operation (engine seeds 30 nodes, block install creates a subtree, a `POST /seed`) fires 30 individual `NodeCreated` events, each of which — under the rule above — would trigger its own `GET /api/v1/node?path=<…>` fetch. That's a thundering herd against the same agent for data we already know we want.
 
 **Rule:** the store coalesces pending NodeCreated fetches per event tick with a 25 ms debounce, then issues **one** `GET /api/v1/nodes?filter=id=in=<comma-separated ids>` request. Implementation:
 

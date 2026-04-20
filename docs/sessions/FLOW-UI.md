@@ -1,6 +1,6 @@
 # Flow UI — Implementation Scope
 
-Scope for the Studio flow editor — the canvas where users wire nodes, configure them, and watch messages travel. First-party, *not* a plugin (see [PLUGINS.md](../design/PLUGINS.md) rationale: the canvas is too central to hide behind a plugin contract). Plugins contribute **node kinds, property panels, and dashboard widgets** into the canvas the editor already hosts.
+Scope for the Studio flow editor — the canvas where users wire nodes, configure them, and watch messages travel. First-party, *not* a block (see [BLOCKS.md](../design/BLOCKS.md) rationale: the canvas is too central to hide behind a block contract). Blocks contribute **node kinds, property panels, and dashboard widgets** into the canvas the editor already hosts.
 
 Authoritative references: [UI.md](../design/UI.md), [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md), [NODE-AUTHORING.md](../design/NODE-AUTHORING.md), [RUNTIME.md](../design/RUNTIME.md). This doc is the concrete shipping plan.
 
@@ -30,7 +30,7 @@ Replace [FlowsPage.tsx](../../frontend/src/pages/flows/FlowsPage.tsx) (today's r
 | Undo/redo in-memory for the session (no server-side history this stage) |
 | Keyboard: delete, duplicate, multi-select with shift, zoom, pan, focus-node |
 | Auto-layout button (`dagre` or `elkjs`) for imported flows that arrive without positions |
-| Plugin-contributed custom node renderers via `contributes_to: node:<kind_id>` in `plugin.yaml` |
+| Block-contributed custom node renderers via `contributes_to: node:<kind_id>` in `block.yaml` |
 
 **Out (explicitly):**
 
@@ -42,7 +42,7 @@ Replace [FlowsPage.tsx](../../frontend/src/pages/flows/FlowsPage.tsx) (today's r
 | Server-side undo history | Out of scope; session-local history is enough for MVP |
 | Mobile / touch gestures | React Flow ships basic support; polish later |
 | Read-only "public share" mode | Deferred; needs permission model |
-| Function-node inline editor (QuickJS) | Plugin-delivered when we ship the QuickJS runtime |
+| Function-node inline editor (QuickJS) | Block-delivered when we ship the QuickJS runtime |
 | Safe-state policy editor | [RUNTIME.md § "Safe-state handling"](../design/RUNTIME.md) — a property-panel widget, not canvas work; schedule after MVP |
 | Flow-level validation (cycles, type-compat) beyond what the graph enforces on save | Server does the hard checks; canvas just surfaces errors |
 
@@ -71,7 +71,7 @@ Three components, clean seams:
 ```
 
 - **Canvas** owns React Flow. Every on-canvas node maps to exactly one graph node (child of the flow container). Every React Flow edge maps to one `Link`.
-- **Palette** lists every `KindManifest` the host has registered (first-party + plugin-contributed, no distinction in UI — we don't promote trust tiers in the palette).
+- **Palette** lists every `KindManifest` the host has registered (first-party + block-contributed, no distinction in UI — we don't promote trust tiers in the palette).
 - **Property panel** reads the selected node's kind manifest, renders `@rjsf/core` form, writes back through `POST /api/v1/config`.
 - **Store** (zustand) is UI-only: selection, clipboard, viewport, dirty flag, undo stack. Server state goes through TanStack Query + SSE invalidations.
 
@@ -104,7 +104,7 @@ No "flow document JSON" alongside the graph — the graph *is* the flow document
 
 | Feature | Notes |
 |---|---|
-| Node renderer | Default: icon + title + lifecycle badge + live-value badges (top 2 status slots). Plugins can replace via `contributes_to: node:<kind_id>` (MF-exposed `./Node`). |
+| Node renderer | Default: icon + title + lifecycle badge + live-value badges (top 2 status slots). Blocks can replace via `contributes_to: node:<kind_id>` (MF-exposed `./Node`). |
 | Edge renderer | Default: smoothstep with arrow; colour by source slot's type (number = blue, Msg = grey, error wires = red). |
 | Selection | Single-click, shift-click for multi, rubber-band. |
 | Keyboard | `Delete` / `Backspace` removes selection; `⌘/Ctrl-D` duplicates; `⌘/Ctrl-Z` / `⌘/Ctrl-⇧-Z` undo/redo; `⌘/Ctrl-A` select all; `F` focus selection. |
@@ -117,7 +117,7 @@ No "flow document JSON" alongside the graph — the graph *is* the flow document
 
 - Searchable list of `KindManifest`s from `GET /api/v1/kinds`.
 - Grouped by first facet (Driver, Compute, Logic, I/O, System).
-- Plugin-contributed kinds show a small badge (plugin id in tooltip) — factual, not a warning.
+- Block-contributed kinds show a small badge (block id in tooltip) — factual, not a warning.
 - Drag starts a `{type: "kind", id: "sys.compute.count"}` payload.
 
 ### Property panel (right side)
@@ -127,7 +127,7 @@ No "flow document JSON" alongside the graph — the graph *is* the flow document
 - Middle: `@rjsf/core` form generated from `kind.settings_schema`. Multi-variant schemas show the selection dropdown first, then the variant form.
 - Bottom: status slots (read-only, live-updating); links to/from this node.
 - "Save" button is autosave-with-debounce (500ms) — commits via `POST /api/v1/config`. Last-write-wins per [EVERYTHING-AS-NODE.md § "Validation — three layers"](../design/EVERYTHING-AS-NODE.md).
-- Plugin property panels contributed via `contributes_to: property-panel:<kind_id>` override the `@rjsf/core` default.
+- Block property panels contributed via `contributes_to: property-panel:<kind_id>` override the `@rjsf/core` default.
 
 ### Live data
 
@@ -161,7 +161,7 @@ No "dirty" state that needs a save button — the canvas is always consistent wi
 | **1a** — canvas foundations | React Flow mounted; renders current graph read-only; pan/zoom; minimap. Ties into `useNodes` + `useLinks`. | Canvas can't render 500 nodes at 60fps → pick a different canvas lib |
 | **1b** — CRUD loop | Palette, drag-drop, auto-save position, property panel with `@rjsf/core`, delete, link create/delete. Undo for these commands only. | `@rjsf/core` can't render a real Modbus variant schema → replace with `react-hook-form` |
 | **1c** — live data | SSE pump; node badges flash on `SlotChanged`; deadband coalescer. | CPU spikes past ~40% on realistic telemetry → back off to polling |
-| **1d** — plugin slots | `contributes_to: node:<kind_id>` and `property-panel:<kind_id>` loaders wired; plugin-hello ships a custom Panel that takes over its own kind's property panel. | MF remote refuses to load into the canvas context → restrict to sidebar/dashboard only |
+| **1d** — block slots | `contributes_to: node:<kind_id>` and `property-panel:<kind_id>` loaders wired; block-hello ships a custom Panel that takes over its own kind's property panel. | MF remote refuses to load into the canvas context → restrict to sidebar/dashboard only |
 | **Stage 2** (later) | Export/import flow subtrees, subflow authoring, live-wiring mode, `Run` semantics (engine start/stop per flow) | — |
 
 1a–1d target a single shipping increment (~1 week each at steady pace). Each 1x ships behind a flag if needed, but the goal is all four land as one page swap.
@@ -176,13 +176,13 @@ Frontend:
 | `dagre` (or `elkjs`) | Auto-layout. Start with `dagre` — smaller, fine for ≤ ~200 nodes. |
 | `@rjsf/core` + `@rjsf/validator-ajv8` | Schema-driven forms. Already in UI.md's stack table. |
 
-No backend changes required for 1a–1c. Stage 1d only needs the existing `GET /plugins/:id/*` MF wire.
+No backend changes required for 1a–1c. Stage 1d only needs the existing `GET /blocks/:id/*` MF wire.
 
 ## Invariants this scope commits to
 
 1. **The canvas never invents state.** Everything visible is derived from the graph; mutations round-trip through the agent. If the agent goes down mid-edit, the canvas shows the error banner, never silently buffers.
 2. **Position is a slot, not a side file.** `position` lives on the node as a `config` slot. Restarts preserve layout; RBAC on `config` writes governs who can rearrange flows.
-3. **Plugin UIs are opt-in overrides, never the default.** Every kind has a sensible default renderer + `@rjsf/core` panel the moment it's registered. Plugins enhance; they don't gate functionality.
+3. **Block UIs are opt-in overrides, never the default.** Every kind has a sensible default renderer + `@rjsf/core` panel the moment it's registered. Blocks enhance; they don't gate functionality.
 4. **SSE is the only live-update path.** No polling fallbacks, no WebSocket shim. If SSE breaks, that's the signal to fix the event bus, not paper over it in the frontend.
 5. **Undo is client-side only for now.** Server history is a separate feature (audit log exists but isn't a replayable command stream yet). The client stack is best-effort — closing the tab loses it.
 
@@ -196,4 +196,4 @@ No backend changes required for 1a–1c. Stage 1d only needs the existing `GET /
 
 ## One-line summary
 
-**Replace the read-only node list with a React Flow canvas that drives the agent's graph directly — palette → drag-drop → property panel → live data, all first-party, with plugin slots for custom renderers and property panels — landing in four tight stages (canvas, CRUD, live data, plugin slots) without introducing any new server primitive.**
+**Replace the read-only node list with a React Flow canvas that drives the agent's graph directly — palette → drag-drop → property panel → live data, all first-party, with block slots for custom renderers and property panels — landing in four tight stages (canvas, CRUD, live data, block slots) without introducing any new server primitive.**

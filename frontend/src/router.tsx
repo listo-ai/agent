@@ -4,8 +4,7 @@ import { FlowsListPage } from "@/pages/flows/FlowsListPage";
 import { FlowsPage } from "@/pages/flows/FlowsPage";
 import { PagesListPage } from "@/pages/pages/PagesListPage";
 import { PageBuilderPage } from "@/features/page-builder/PageBuilderPage";
-import { ExtensionsPage } from "@/pages/extensions/ExtensionsPage";
-import { PluginsPage } from "@/pages/plugins/PluginsPage";
+import { BlocksPage } from "@/pages/blocks/BlocksPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 import { SduiPage } from "@/sdui/SduiPage";
 import { SduiRenderPage } from "@/sdui/SduiRenderPage";
@@ -29,8 +28,7 @@ const router = createBrowserRouter([
       { path: "ui/:pageRef", element: <SduiPage /> },
       // SDUI render — pick the target kind's default view (S5).
       { path: "render/:targetId", element: <SduiRenderPage /> },
-      { path: "extensions", element: <ExtensionsPage /> },
-      { path: "plugins", element: <PluginsPage /> },
+      { path: "blocks", element: <BlocksPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

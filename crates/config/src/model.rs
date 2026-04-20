@@ -18,7 +18,7 @@ pub struct AgentConfig {
     pub role: Role,
     pub database: DatabaseConfig,
     pub log: LogConfig,
-    pub plugins: PluginsConfig,
+    pub blocks: PluginsConfig,
     pub fleet: FleetConfig,
     pub auth: AuthConfig,
 }
@@ -71,8 +71,8 @@ pub struct DatabaseConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginsConfig {
-    /// Directory `PluginRegistry::scan` reads at startup. Role defaults
-    /// per `docs/design/PLUGINS.md` § "Where plugins live".
+    /// Directory `BlockRegistry::scan` reads at startup. Role defaults
+    /// per `docs/design/PLUGINS.md` § "Where blocks live".
     pub dir: PathBuf,
 }
 
@@ -91,7 +91,7 @@ pub struct AgentConfigOverlay {
     pub role: Option<Role>,
     pub database: Option<DatabaseOverlay>,
     pub log: Option<LogOverlay>,
-    pub plugins: Option<PluginsOverlay>,
+    pub blocks: Option<PluginsOverlay>,
     /// Fleet transport. `fleet: null` in YAML parses as `None` here and
     /// resolves to `FleetConfig::Null`. `fleet: { backend: zenoh, … }`
     /// parses as `Some(FleetOverlay::Zenoh { … })`.
@@ -187,7 +187,7 @@ impl AgentConfigOverlay {
             role: self.role.or(other.role),
             database: merge_db(self.database, other.database),
             log: merge_log(self.log, other.log),
-            plugins: merge_plugins(self.plugins, other.plugins),
+            blocks: merge_plugins(self.blocks, other.blocks),
             fleet: merge_fleet(self.fleet, other.fleet),
             // Auth doesn't overlay field-by-field — a higher layer
             // either specifies a provider or defers to the next layer.
@@ -210,11 +210,11 @@ impl AgentConfigOverlay {
             .as_ref()
             .and_then(|l| l.filter.clone())
             .unwrap_or_else(|| "info".to_string());
-        let plugins_dir = self
-            .plugins
+        let blocks_dir = self
+            .blocks
             .as_ref()
             .and_then(|p| p.dir.clone())
-            .unwrap_or_else(|| (defaults.plugins_dir)(role));
+            .unwrap_or_else(|| (defaults.blocks_dir)(role));
         let fleet = match self.fleet {
             None => FleetConfig::Null,
             Some(FleetOverlay::Zenoh(z)) => FleetConfig::Zenoh {
@@ -232,7 +232,7 @@ impl AgentConfigOverlay {
             role,
             database: DatabaseConfig { path: db_path },
             log: LogConfig { filter: log_filter },
-            plugins: PluginsConfig { dir: plugins_dir },
+            blocks: PluginsConfig { dir: blocks_dir },
             fleet,
             auth,
         }
@@ -253,7 +253,7 @@ pub fn default_agent_id() -> String {
 /// field-by-field plumbing.
 pub struct Defaults<'a> {
     pub db_path: &'a dyn Fn(Role) -> Option<PathBuf>,
-    pub plugins_dir: &'a dyn Fn(Role) -> PathBuf,
+    pub blocks_dir: &'a dyn Fn(Role) -> PathBuf,
 }
 
 fn merge_plugins(

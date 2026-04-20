@@ -1,6 +1,6 @@
 # Versioning & Compatibility
 
-How the platform stays maintainable for years as extensions, flows, and the host itself evolve independently. The short version: **don't version the platform as one number — version each contract surface, and match capabilities at install time.**
+How the platform stays maintainable for years as blocks, flows, and the host itself evolve independently. The short version: **don't version the platform as one number — version each contract surface, and match capabilities at install time.**
 
 ## The surfaces that change
 
@@ -8,11 +8,11 @@ Things that have contracts, and therefore need independent versioning:
 
 | Surface | Where it's defined | Consumers |
 |---|---|---|
-| **`extension.proto`** | `crates/spi/proto/` | Every extension process |
+| **`block.proto`** | `crates/spi/proto/` | Every block process |
 | **`Msg` envelope** | `crates/spi/src/msg.rs` | Every node; Function-node JS API |
 | **Node manifest schema** (`node.schema.json`) | `crates/spi/schemas/` | Every node kind declaration |
 | **Flow document schema** (`flow.schema.json`) | `crates/spi/schemas/` | Persisted flows |
-| **Host-function ABI** (for Wasm nodes) | `crates/extensions-sdk` | Every Wasm extension |
+| **Host-function ABI** (for Wasm nodes) | `crates/blocks-sdk` | Every Wasm block |
 | **Node kind** (e.g. `sys.io.http.client`) | The kind's own manifest | Flows that use the kind |
 | **Public REST/gRPC API** (`/api/v1/`) | `crates/transport-rest` | External clients, SDKs |
 | **Database schema** | `crates/data-sqlite`, `crates/data-postgres` | Migrations per backend |
@@ -22,7 +22,7 @@ Eight or nine independently-versioned surfaces. Treating them as "the platform v
 
 ## The core mechanism: capability manifests
 
-The host **publishes** what it provides. Extensions **declare** what they need. Installation is a set-match; anything missing is a specific error.
+The host **publishes** what it provides. Blocks **declare** what they need. Installation is a set-match; anything missing is a specific error.
 
 ### Host-provided capability manifest
 
@@ -34,7 +34,7 @@ platform: { version: "1.4.2", role: "edge" }
 
 capabilities:
   # Contract versions — semver-disciplined, add-only within a major.
-  - id: spi.extension.proto
+  - id: spi.block.proto
     version: 1.3.0
     deprecated: []
   - id: spi.msg
@@ -69,15 +69,15 @@ capabilities:
     removal_planned: "2.0"
 ```
 
-### Extension's required-capabilities declaration
+### Block's required-capabilities declaration
 
 ```yaml
-# extension.yaml — manifest excerpt for a BACnet driver
+# block.yaml — manifest excerpt for a BACnet driver
 id: com.example.bacnet
 version: 2.1.0
 
 requires:
-  - id: spi.extension.proto
+  - id: spi.block.proto
     version: "^1.2"          # semver range; ≥ 1.2, < 2.0
   - id: spi.msg
     version: "^1"
@@ -121,7 +121,7 @@ Not all surfaces use semver the same way. Clear rules per surface keep the syste
 
 | Surface | Version rule | Enforcement |
 |---|---|---|
-| `extension.proto` | **Add-only** within a major. Removing or changing a field requires a major bump. | CI diffs the `.proto` against the last release; fails on removed/renamed fields. |
+| `block.proto` | **Add-only** within a major. Removing or changing a field requires a major bump. | CI diffs the `.proto` against the last release; fails on removed/renamed fields. |
 | `Msg` envelope | Add-only for user-visible fields (`payload`, `topic`, user customs). Platform-reserved (`_*`) may change across majors only. | Serde round-trip tests across versions. |
 | Node manifest schema | Add-only within major. New optional properties fine; new required properties are a major bump. | JSON-Schema-aware diff in CI. |
 | Flow document schema | Add-only within major. Migrations required for any major bump. | Migration test suite: every old flow fixture round-trips through to the current version. |
@@ -158,7 +158,7 @@ Every capability and kind carries optional `deprecated_since` and `removal_plann
 
 1. A release that marks it deprecated (no behaviour change).
 2. A minimum **12-month** window before removal, matching the public-API deprecation policy.
-3. Extensions using deprecated capabilities get install-time warnings (not errors) during the window.
+3. Blocks using deprecated capabilities get install-time warnings (not errors) during the window.
 4. A release-notes entry naming each removal, with migration guidance.
 
 This is the rule that makes "we can actually ship breaking changes someday without destroying the ecosystem" true.
@@ -171,9 +171,9 @@ This is the rule that makes "we can actually ship breaking changes someday witho
   src/capabilities.rs        # CapabilityId, CapabilityVersion, SemverRange types; matcher
   schemas/flow.schema.json   # has schema_version: 1
   schemas/node.schema.json   # has schema_version: 1
-  proto/extension.proto      # package extension.v1
+  proto/block.proto      # package block.v1
 
-/crates/extensions-host
+/crates/blocks-host
   src/capability_registry.rs # host-side: what this agent provides
   src/compat.rs              # install-time match; structured error type
 
@@ -192,7 +192,7 @@ They don't replace each other — they cover different things:
 | "What API version does this client speak?" | URI versioning (`/api/v1/...`). |
 | "What contract versions and features does this agent provide?" | Capability manifest. |
 
-An external SDK pins to `/api/v1/`. An extension running inside an agent declares required capabilities. Both mechanisms live in parallel because they answer different questions.
+An external SDK pins to `/api/v1/`. An block running inside an agent declares required capabilities. Both mechanisms live in parallel because they answer different questions.
 
 ## Operational: `yourapp` commands
 
@@ -200,11 +200,11 @@ An external SDK pins to `/api/v1/`. An extension running inside an agent declare
 yourapp capabilities               # list this agent's provided capabilities (human-readable)
 yourapp capabilities --json        # machine-readable, for scripting
 yourapp ext check <manifest>       # dry-run the compat match without installing
-yourapp ext upgrade <id>           # pick the newest extension version compatible with this host
-yourapp upgrade --dry-run          # report which installed extensions would break on a platform upgrade
+yourapp ext upgrade <id>           # pick the newest block version compatible with this host
+yourapp upgrade --dry-run          # report which installed blocks would break on a platform upgrade
 ```
 
-That last one is the real win: before upgrading the platform, you can see which extensions would stop working and act on it deliberately.
+That last one is the real win: before upgrading the platform, you can see which blocks would stop working and act on it deliberately.
 
 ## Operational: CI gates
 
@@ -213,10 +213,10 @@ Per release:
 1. **Contract diffs** — `.proto`, JSON Schemas, host-function ABI diffed against the last release. Removed/renamed items fail the build unless paired with a deprecation window commit.
 2. **Compat report generation** — the capability manifest is emitted as a release artifact and stored in a repo of compat snapshots.
 3. **Old-flow fixture suite** — every prior release's sample flows round-trip through the migration pipeline on the new binary.
-4. **Reference-extension suite** — a set of first-party extensions (math, HTTP, MQTT, the demo driver) is rebuilt and install-matched against each release candidate.
+4. **Reference-block suite** — a set of first-party blocks (math, HTTP, MQTT, the demo driver) is rebuilt and install-matched against each release candidate.
 
 A PR that breaks any of these fails CI with a specific message naming what broke.
 
 ## One-line summary
 
-**Every contract surface versions independently; the host publishes a capability manifest; extensions declare required capabilities; installation is a set-match with structured errors; node kinds and flow documents carry forward-migration code they ship with; deprecation windows keep a 12-month runway before anything breaks — so extensions written today can still run in two years, and users upgrading the platform see exactly what would stop working before they do it.**
+**Every contract surface versions independently; the host publishes a capability manifest; blocks declare required capabilities; installation is a set-match with structured errors; node kinds and flow documents carry forward-migration code they ship with; deprecation windows keep a 12-month runway before anything breaks — so blocks written today can still run in two years, and users upgrading the platform see exactly what would stop working before they do it.**

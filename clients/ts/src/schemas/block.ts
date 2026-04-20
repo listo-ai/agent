@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * Plugin summary as returned by `GET /api/v1/plugins` and
- * `GET /api/v1/plugins/:id`. Mirrors `LoadedPluginSummary` in
- * `crates/extensions-host/src/registry.rs` — every field here
+ * Block summary as returned by `GET /api/v1/blocks` and
+ * `GET /api/v1/blocks/:id`. Mirrors `LoadedPluginSummary` in
+ * `crates/blocks-host/src/registry.rs` — every field here
  * exists on the Rust side; nothing is invented client-side.
  *
  * The list and detail endpoints emit the same shape (no separate
@@ -34,8 +34,8 @@ export type PluginLifecycle = z.infer<typeof PluginLifecycleSchema>;
 export type PluginSummary = z.infer<typeof PluginSummarySchema>;
 
 /**
- * Process-plugin runtime state — mirrors
- * `PluginRuntimeState` in `crates/extensions-host/src/host.rs`.
+ * Process-block runtime state — mirrors
+ * `PluginRuntimeState` in `crates/blocks-host/src/host.rs`.
  * Discriminated on `status`; some variants carry extra fields.
  */
 export const PluginRuntimeStateSchema = z.discriminatedUnion("status", [
@@ -54,7 +54,7 @@ export const PluginRuntimeStateSchema = z.discriminatedUnion("status", [
 ]);
 
 /**
- * One entry in `GET /api/v1/plugins/runtime`. The server flattens
+ * One entry in `GET /api/v1/blocks/runtime`. The server flattens
  * `PluginRuntimeState` into the object so `id` sits alongside the
  * status fields.
  */

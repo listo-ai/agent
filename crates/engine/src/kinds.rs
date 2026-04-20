@@ -20,7 +20,7 @@
 //! `#[derive(NodeKind)]` so the SDK contract surface is the single
 //! source of truth (Stage 3a-1).
 
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 use graph::KindRegistry;
 
 /// Register every engine-contributed kind.
@@ -30,7 +30,7 @@ pub fn register(kinds: &KindRegistry) {
     kinds.register(<WriteSlot as NodeKind>::manifest());
 }
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.core.flow",
     manifest = "manifests/flow.yaml",
@@ -38,7 +38,7 @@ pub fn register(kinds: &KindRegistry) {
 )]
 pub struct Flow;
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.engine.read_slot",
     manifest = "manifests/read_slot.yaml",
@@ -46,7 +46,7 @@ pub struct Flow;
 )]
 pub struct ReadSlot;
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.engine.write_slot",
     manifest = "manifests/write_slot.yaml",

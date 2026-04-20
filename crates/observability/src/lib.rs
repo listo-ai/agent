@@ -37,7 +37,7 @@
 //! - NATS shipper (needs messaging wiring — later stage).
 //! - OTLP export (off by default per LOGGING.md; later stage).
 //! - Runtime filter reload via API (needs transport-rest — later).
-//! - Plugin host-function bindings (Stage 3).
+//! - Block host-function bindings (Stage 3).
 
 pub mod error;
 pub mod fields;

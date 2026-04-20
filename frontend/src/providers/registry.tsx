@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 // Service registry — a Map exposed via React Context.
-// Listed as an MF singleton so federated extension modules can call
+// Listed as an MF singleton so federated block modules can call
 // useServiceRegistry() and get the same map the host populated.
 //
 // ~50 LOC, as specified in UI.md.  No InversifyJS.
@@ -29,7 +29,7 @@ export function useService<T extends AnyService>(key: ServiceKey): T {
 }
 
 interface RegistryProviderProps {
-  /** Pre-populate with initial services (e.g. from extension loader). */
+  /** Pre-populate with initial services (e.g. from block loader). */
   initial?: Record<ServiceKey, AnyService>;
   children: ReactNode;
 }

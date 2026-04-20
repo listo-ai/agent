@@ -61,8 +61,8 @@ The repo is a Cargo workspace. Each crate has exactly one job. **This layout sup
     /data-sqlite            #   SQLite-native impls, migrations, queries (edge + standalone)
     /data-postgres          #   Postgres-native impls, migrations, queries (cloud)
     /data-tsdb              #   Time-series store — a seam, not a database. Holds the `TelemetryRepo` trait + two impls:
-                            #     • edge impl: rolling SQLite tables with time bucketing and retention (no TSDB extension available)
-                            #     • cloud impl: TimescaleDB (Postgres extension) — hypertables, continuous aggregates, compression, retention policies
+                            #     • edge impl: rolling SQLite tables with time bucketing and retention (no TSDB block available)
+                            #     • cloud impl: TimescaleDB (Postgres block) — hypertables, continuous aggregates, compression, retention policies
                             #   Shares a Postgres *instance* with data-postgres in cloud deployments, but the code stays separate:
                             #   time-series access patterns (range + bucket + downsample + group-by-tag) don't belong next to OLTP queries.
 
@@ -71,7 +71,7 @@ The repo is a Cargo workspace. Each crate has exactly one job. **This layout sup
                             # slot schemas, and business operations on them. Registers them with the graph crate.
     /domain-flows           #   `sys.core.flow` kind — flow lifecycle, validation, versioning
     /domain-devices         #   device kinds — registration, state machine, commissioning rules
-    /domain-extensions      #   extension kinds — manifest, capabilities, lifecycle
+    /domain-blocks      #   block kinds — manifest, capabilities, lifecycle
     /domain-fleet           #   rollouts, deployments, targeting (operates on graph subtrees)
 
   /transport                # Transport layer — external surfaces
@@ -87,11 +87,11 @@ The repo is a Cargo workspace. Each crate has exactly one job. **This layout sup
                             #   its node kinds here. Persistence goes through data-repos. Not a layer — it's the
                             #   substrate every other layer sits on.
 
-  /engine                   # Flow engine — crossflow integration, live-wire executor, node runtime, extension supervisor composition.
-                            # Not a layer — a vertical. Consumes graph, domain traits, messaging, extensions-host, auth.
+  /engine                   # Flow engine — crossflow integration, live-wire executor, node runtime, block supervisor composition.
+                            # Not a layer — a vertical. Consumes graph, domain traits, messaging, blocks-host, auth.
 
-  /extensions-sdk           # SDK for Rust extension authors (public API — stricter semver)
-  /extensions-host          # Extension process supervisor, IPC over UDS gRPC, cgroup limits
+  /blocks-sdk           # SDK for Rust block authors (public API — stricter semver)
+  /blocks-host          # Block process supervisor, IPC over UDS gRPC, cgroup limits
 
   /apps
     /agent                  # The single binary — ties everything together. Role selected at runtime (edge/cloud/standalone).
@@ -117,7 +117,7 @@ One source tree, targeted binaries. Edge binaries do not link Postgres; cloud bi
 |---|---|
 | Parallel compilation | Cargo builds independent crates in parallel; big crates serialize |
 | Explicit boundaries | You can't import from a crate you didn't declare as a dependency |
-| Reusability | `auth`, `messaging`, `query` — all usable in extensions, tools, future products |
+| Reusability | `auth`, `messaging`, `query` — all usable in blocks, tools, future products |
 | Testing | Smaller crates = smaller test surfaces = faster test cycles |
 | AI comprehension | An AI assistant given a focused crate produces focused changes; given a 50k-line monolith produces chaos |
 
@@ -125,7 +125,7 @@ One source tree, targeted binaries. Edge binaries do not link Postgres; cloud bi
 
 | Pattern | Example | Use for |
 |---|---|---|
-| Noun | `Flow`, `Device`, `Extension` | Entity types, value objects |
+| Noun | `Flow`, `Device`, `Block` | Entity types, value objects |
 | Noun + trait-y ending | `FlowRepository`, `MessageBus` | Traits |
 | Verb noun | `DeployFlow`, `RotateCredential` | Commands / domain operations |
 | Verbed noun | `FlowDeployed`, `DeviceRegistered` | Events / past-tense |
@@ -253,15 +253,15 @@ If it does, the dependency arrow is pointed the wrong way.
 
 Some concerns are genuinely cross-cutting. These live in small, focused library crates usable by:
 - The agent (cloud + edge roles)
-- Extensions (Rust SDK)
+- Blocks (Rust SDK)
 - Internal tools and tests
 - Future products built on the same foundation
 
 | Crate | What it owns | Used by |
 |---|---|---|
-| `spi` | Protobuf definitions, JSON schemas, trait signatures for extensions | Everyone |
-| `query` | Generic RSQL → AST → SeaQuery pipeline + `AuthContext` binding for enforced predicates | Transport, extensions, CLI |
-| `auth` | JWT verification, JWKS cache (24h stale ceiling), `AuthContext` type, RBAC checks, revocation deny-list consumer | Transport, extensions |
+| `spi` | Protobuf definitions, JSON schemas, trait signatures for blocks | Everyone |
+| `query` | Generic RSQL → AST → SeaQuery pipeline + `AuthContext` binding for enforced predicates | Transport, blocks, CLI |
+| `auth` | JWT verification, JWKS cache (24h stale ceiling), `AuthContext` type, RBAC checks, revocation deny-list consumer | Transport, blocks |
 | `messaging` | NATS client wrapper, tenant-scoped subject taxonomy, outbox pattern with bounded disk + backpressure signals | Transport, domain events |
 | `audit` | Audit event types, emission trait | Every layer that makes decisions |
 | `observability` | Tracing setup, metrics registration, structured log formatting. **Not storage** — don't confuse with `data-tsdb`. | Every binary at startup |
@@ -275,18 +275,18 @@ Rules for shared crates:
 3. **Semver-disciplined.** Breaking changes to a shared crate ripple everywhere. Discuss before making them.
 4. **Documented invariants.** Each crate's `lib.rs` has a doc comment explaining what it guarantees and what it assumes about its caller.
 
-## Plugin / extension SDK philosophy
+## Block / block SDK philosophy
 
-The extension SDK (`extensions-sdk`) is a public API for third parties. Different rules apply:
+The block SDK (`blocks-sdk`) is a public API for third parties. Different rules apply:
 
 | Rule | Reason |
 |---|---|
-| **Never break it.** | Third-party extensions depend on this. Additions only. |
-| **Re-export selectively.** | Extensions shouldn't see our internals; only what they need. |
+| **Never break it.** | Third-party blocks depend on this. Additions only. |
+| **Re-export selectively.** | Blocks shouldn't see our internals; only what they need. |
 | **Provide builders, not constructors.** | Builders are extensible; constructors break on new fields. |
 | **Default implementations for trait methods where possible.** | Adding a method is non-breaking if there's a default. |
 | **Version the SDK independently.** | It has its own release cadence tied to the SPI. |
-| **Example crates in the repo.** | `/examples/extension-hello-world/` — tested in CI, always works. |
+| **Example crates in the repo.** | `/examples/block-hello-world/` — tested in CI, always works. |
 
 ## What goes in which crate — quick heuristic
 
@@ -297,7 +297,7 @@ When you're writing something and wondering where it belongs, ask:
 | "If I swapped the database, would this change?" | Yes → `data/` · No → `domain/` |
 | "If I swapped REST for gRPC, would this change?" | Yes → `transport/` · No → `domain/` |
 | "Is this logic specific to one resource?" | Yes → `domain-<resource>/` · No → shared crate |
-| "Would an extension author need this?" | Yes → `extensions-sdk` or a shared crate · No → internal |
+| "Would an block author need this?" | Yes → `blocks-sdk` or a shared crate · No → internal |
 | "Is this about a specific HTTP status code or JSON shape?" | Yes → `transport-rest/` |
 | "Is this about a specific SQL query?" | Yes → `data/` |
 | "Is this a pure function of inputs?" | `domain/` or a utility crate |
@@ -350,7 +350,7 @@ Before merging any PR, the reviewer verifies:
 - [ ] No `TODO` or `FIXME` without an issue number
 - [ ] No `pub mod utils` or similar dumping grounds
 - [ ] Shared logic that could be reused lives in a shared crate
-- [ ] If the change touches the extension SDK, semver rules are respected
+- [ ] If the change touches the block SDK, semver rules are respected
 
 A PR that fails any of these is sent back. No exceptions, no "we'll fix it later."
 

@@ -11,7 +11,7 @@ This isn't a web server that handles requests and goes idle. This is a **supervi
 |---|---|
 | **Always running** | Starts on boot, restarts on crash, survives power cycles. Never "shut down for the night." |
 | **Deterministic timing behavior** | Not hard real-time, but predictable — a flow triggered by a 1-second timer fires at 1-second intervals, not drift |
-| **Graceful degradation** | Network drops, cloud outages, extension crashes — local flows keep running |
+| **Graceful degradation** | Network drops, cloud outages, block crashes — local flows keep running |
 | **Safe state on failure** | If the engine dies mid-flow, external outputs must not be left in half-applied states. What "safe" means is configurable per output — relevant for anything from HVAC actuators to API writes to database updates. |
 | **Stoppable, but deliberately** | Operators stop flows (maintenance, bring-up, emergencies) — explicit, logged, authorized |
 | **Observable** | An operator must be able to answer "is it running, is it healthy, what is it doing right now" at a glance |
@@ -39,7 +39,7 @@ When a flow stops, something has to happen to its outputs. Three policies, decla
 | **Go to fail-safe** | Output drives to a pre-configured safe value | HVAC actuators, configuration toggles, anything with a known-good default |
 | **Release to downstream default** | Output relinquishes to the target system's own default | Protocols that support releasable priorities (e.g. BACnet priority arrays); APIs that accept "unset" or "default" commands |
 
-This is a first-class concept in the node configuration UI. Every writable output declares its safe-state policy. The engine enforces it on stop, on crash, on disconnect. Protocol extensions like BACnet map cleanly onto the "release to downstream default" policy via their native mechanisms; extensions that talk to generic APIs or databases pick whichever policy fits the semantics of the write.
+This is a first-class concept in the node configuration UI. Every writable output declares its safe-state policy. The engine enforces it on stop, on crash, on disconnect. Protocol blocks like BACnet map cleanly onto the "release to downstream default" policy via their native mechanisms; blocks that talk to generic APIs or databases pick whichever policy fits the semantics of the write.
 
 **Where the policy lives — on the node, in the graph.** The safe-state policy is a **config-role slot on the writable output's own node**, not a registry entry the engine owns. The engine is a *reader* of policies, not an *owner*. On shutdown (or crash, or disconnect) the engine walks the graph for nodes with `kind.facets == IsWritable` and a non-null `config.safe_state.policy` slot, and applies each. This keeps the engine out of the "parallel state" antipattern (see [EVERYTHING-AS-NODE.md § "The agent itself is a node too — no parallel state"](EVERYTHING-AS-NODE.md)) — and it means the Studio, audit log, RBAC, and subscription fabric all treat safe-state exactly like any other config slot, with no special case.
 
@@ -129,7 +129,7 @@ It's not a game engine in use; Bevy is just the execution substrate. From your c
 | Our concept | crossflow equivalent |
 |---|---|
 | Built-in node | A registered service |
-| Extension node | A service that wraps a gRPC call to an extension process, or a Wasm invocation |
+| Block node | A service that wraps a gRPC call to an block process, or a Wasm invocation |
 | Flow on canvas | A workflow diagram |
 | Running a flow | `commands.request()` on the workflow service |
 | Flow-to-flow call | One workflow invoked as a service from another |
@@ -145,7 +145,7 @@ It's not a game engine in use; Bevy is just the execution substrate. From your c
 5. **`commands.request()` fires** → new session spawned, input message enters the workflow
 6. **Services execute** → ECS schedules them in parallel where possible, respecting data dependencies
 7. **Messages flow along edges** → output of one service feeds the next
-8. **Side effects happen** → extension processes called over gRPC, writes to KV, publishes to NATS
+8. **Side effects happen** → block processes called over gRPC, writes to KV, publishes to NATS
 9. **Outcome resolves** → final message yielded; live telemetry pushed to Studio subscribers via NATS
 10. **Session ends** → resources freed; next request spawns a fresh session
 
@@ -156,8 +156,8 @@ Every node on the canvas is backed by one of these:
 | Node backing | Implementation | Isolation |
 |---|---|---|
 | **Built-in native** | Rust function registered as a crossflow service, statically linked into the agent | Trusted, in-process |
-| **Extension process** | Rust adapter service that calls the extension over gRPC-over-UDS | Crash-isolated, cgroup-limited |
-| **Wasm extension** | Rust service that invokes a Wasm module via Wasmtime, with fuel metering | Sandboxed, memory-capped |
+| **Block process** | Rust adapter service that calls the block over gRPC-over-UDS | Crash-isolated, cgroup-limited |
+| **Wasm block** | Rust service that invokes a Wasm module via Wasmtime, with fuel metering | Sandboxed, memory-capped |
 | **Function node** | QuickJS interpreter executing user-authored JS inline | Inline but script-sandboxed |
 | **Subflow** | Another crossflow workflow registered as a service | Same as the parent |
 
@@ -169,9 +169,9 @@ Flow authors never see these differences. From the canvas they're all just nodes
 |---|---|
 | **crossflow engine crate** | The graph runtime itself — service registry, scheduler, session manager |
 | **Diagram loader** | Parses flow JSON, validates against schema, builds the service graph |
-| **Service registry** | Map of node type → service implementation; populated at startup by built-ins and discovered extensions |
-| **Extension supervisor** | Spawns extension processes, monitors health, restarts on crash |
-| **Wasm runtime** | Wasmtime instance per Wasm extension, with fuel and memory limits |
+| **Service registry** | Map of node type → service implementation; populated at startup by built-ins and discovered blocks |
+| **Block supervisor** | Spawns block processes, monitors health, restarts on crash |
+| **Wasm runtime** | Wasmtime instance per Wasm block, with fuel and memory limits |
 | **Message bus adapter** | Bridges crossflow messages to external transports — NATS for cross-agent, gRPC for external API |
 | **Telemetry pump** | Publishes live session events (message flow, timings, errors) to NATS for Studio live monitoring |
 | **Outbox** | Durable queue for cloud-bound messages when the NATS tunnel is down. Bounded by disk quota (default 1 GB) and age (default 7 days); on overflow, oldest-first drop for telemetry subjects, newest-first reject for command-ack subjects. Backpressure surfaces to producers via a NATS health event so flows can shed load rather than enqueue forever. Policy per subject class is declared in config. |
@@ -187,7 +187,7 @@ A single session is single-threaded unless it has parallel branches in the diagr
 | Failure | What happens |
 |---|---|
 | Service panics | Session cancelled, error emitted as outcome, other sessions unaffected |
-| Extension process crashes | gRPC call fails, service returns error, supervisor restarts the process with backoff |
+| Block process crashes | gRPC call fails, service returns error, supervisor restarts the process with backoff |
 | Wasm trap (out of fuel, OOM, illegal op) | Call fails with error outcome, Wasm instance destroyed, next call gets a fresh instance |
 | NATS tunnel drops | Local execution continues, cloud-bound messages queue in the outbox |
 | Diagram parse error | Flow marked invalid, never instantiated, error surfaced to Studio |
@@ -198,7 +198,7 @@ A single session is single-threaded unless it has parallel branches in the diagr
 | Addition | Why |
 |---|---|
 | Schema-versioned diagram wrapper | Forward/backward compatibility for flow documents across engine versions |
-| Extension supervision | Crossflow doesn't manage child processes; we do |
+| Block supervision | Crossflow doesn't manage child processes; we do |
 | Wasmtime integration | Crossflow doesn't ship a Wasm executor; we wire one in |
 | NATS bridge | Crossflow has zenoh/gRPC; we add NATS for fleet messaging |
 | QuickJS function node | Node-RED-style inline JS, not part of crossflow |
@@ -214,7 +214,7 @@ A single session is single-threaded unless it has parallel branches in the diagr
 | Load a flow from file | `yourapp flow deploy ./my-flow.json --to local` |
 | Inspect live messages | `yourapp flow logs <flow-id> --follow` |
 | Dry-run a flow | `yourapp flow test <flow-id> --input '{"temp": 72}'` |
-| Register a new node type | Drop the extension in `/extensions/*`, run `yourapp ext install --local ./extensions/my-node` |
+| Register a new node type | Drop the block in `/blocks/*`, run `yourapp ext install --local ./blocks/my-node` |
 | Hot-reload Wasm | Rebuild `.wasm`, engine picks it up on next session |
 
 ## Risks and mitigations
@@ -225,8 +225,8 @@ A single session is single-threaded unless it has parallel branches in the diagr
 | crossflow is at 0.0.x | **Vendor it in Stage 0.** Pin a commit, mirror into our monorepo, and treat upstream as a source we merge from — not a published crate we depend on. Validates forkability before we're betting a product on it. |
 | Bevy 0.16 target | Upstream tracks one Bevy version at a time; plan for version bumps on a 3–6 month cadence, with a dedicated upgrade checklist |
 | Learning curve (ECS model) | Most nodes never see ECS directly — they're just `async fn` services; ECS shows up only for engine-core developers |
-| Five node execution models (native / Wasmtime / browser-Wasm / QuickJS / gRPC extension) | One unified telemetry schema across all five: every node invocation emits the same `{node_id, session_id, duration, outcome, bytes_in, bytes_out}` record regardless of backing. Tracing spans cross the boundary for gRPC and QuickJS. Debuggability is a product requirement, not an afterthought. |
+| Five node execution models (native / Wasmtime / browser-Wasm / QuickJS / gRPC block) | One unified telemetry schema across all five: every node invocation emits the same `{node_id, session_id, duration, outcome, bytes_in, bytes_out}` record regardless of backing. Tracing spans cross the boundary for gRPC and QuickJS. Debuggability is a product requirement, not an afterthought. |
 
 ## One-line summary
 
-**crossflow is a reactive workflow engine over Bevy ECS that gives us hierarchical, cyclic, parallel flows with serializable diagrams — we wrap it with extension supervision, Wasm sandboxing, NATS messaging, QuickJS scripting, and versioning to turn the library into the product's runtime.**
+**crossflow is a reactive workflow engine over Bevy ECS that gives us hierarchical, cyclic, parallel flows with serializable diagrams — we wrap it with block supervision, Wasm sandboxing, NATS messaging, QuickJS scripting, and versioning to turn the library into the product's runtime.**

@@ -8,8 +8,8 @@ database:
   path: dev/cloud.db
 log:
   filter: info,agent=debug,extensions_host=debug
-plugins:
-  dir: dev/cloud-plugins
+blocks:
+  dir: dev/cloud-blocks
 fleet:
   backend: zenoh
   listen: ["tcp/127.0.0.1:17447"]

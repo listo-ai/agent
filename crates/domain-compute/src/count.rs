@@ -9,7 +9,7 @@
 //! the behaviour reads `count` fresh every time. Caching it on a struct
 //! field would break this test by design.
 
-use extensions_sdk::prelude::*;
+use blocks_sdk::prelude::*;
 use serde::Deserialize;
 
 #[derive(NodeKind)]

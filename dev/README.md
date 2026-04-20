@@ -13,8 +13,8 @@ dev/
 ├── edge.yaml               agent config: role=edge,  HTTP 8082
 ├── cloud.db                sqlite — created on first run, .gitignored
 ├── edge.db                 sqlite — created on first run, .gitignored
-├── cloud-plugins/          plugins the cloud agent scans
-└── edge-plugins/           plugins the edge agent scans
+├── cloud-blocks/          blocks the cloud agent scans
+└── edge-blocks/           blocks the edge agent scans
 ```
 
 ## Port map
@@ -48,20 +48,20 @@ make studio-edge
 
 `make dev` runs `dev/run.sh` — a self-contained bash script, no extra tools needed.
 
-## Staging plugins per agent
+## Staging blocks per agent
 
 ```bash
 # Stage into cloud:
-make -C examples/plugin-hello install-plugin \
-    PLUGINS_DIR=$(pwd)/dev/cloud-plugins
+make -C examples/block-hello install-block \
+    PLUGINS_DIR=$(pwd)/dev/cloud-blocks
 
 # Stage into edge:
-make -C examples/plugin-hello install-plugin \
-    PLUGINS_DIR=$(pwd)/dev/edge-plugins
+make -C examples/block-hello install-block \
+    PLUGINS_DIR=$(pwd)/dev/edge-blocks
 ```
 
-Then click **Rescan** in that Studio's Plugins page, or
-`curl -X POST http://localhost:8081/api/v1/plugins/reload`.
+Then click **Rescan** in that Studio's Blocks page, or
+`curl -X POST http://localhost:8081/api/v1/blocks/reload`.
 
 ## Resetting state
 
@@ -70,4 +70,4 @@ make dev-reset
 ```
 
 Removes `dev/cloud.db`, `dev/edge.db` (and WAL files), and empties both
-plugin dirs. The agents will seed a fresh graph on their next boot.
+block dirs. The agents will seed a fresh graph on their next boot.

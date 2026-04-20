@@ -6,9 +6,9 @@
 //! [`spi::KindManifest`] with a computed `placement_class` hint so the
 //! UI can group free vs. bound kinds without re-deriving it.
 //!
-//! Plugin-contributed kinds appear here the moment their plugin is
+//! Block-contributed kinds appear here the moment their block is
 //! loaded — the endpoint is the palette source of truth for both
-//! built-in and plugin kinds.
+//! built-in and block kinds.
 
 use axum::extract::{Query, State};
 use axum::routing::get;

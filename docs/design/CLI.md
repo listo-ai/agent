@@ -85,7 +85,7 @@ Table output:
 agent 0.0.1  ·  api v1  ·  flow_schema=1  node_schema=1
 
 CAPABILITY             VERSION
-spi.extension.proto    1.0.0
+spi.block.proto    1.0.0
 spi.msg                1.0.0
 spi.node.schema        1.0.0
 spi.flow.schema        1.0.0
@@ -283,7 +283,7 @@ Per [STEPS.md](../sessions/STEPS.md) Stage 11:
 
 - `agent flow {list,deploy,start,stop,status}` — flow lifecycle
 - `agent device {list,discover,commission}` — device management
-- `agent ext {install,enable,disable,publish,check,upgrade}` — extension lifecycle
+- `agent ext {install,enable,disable,publish,check,upgrade}` — block lifecycle
 - `agent login` — OIDC device flow
 - `agent mcp` — MCP server management
 - `--local` vs `--remote` targeting

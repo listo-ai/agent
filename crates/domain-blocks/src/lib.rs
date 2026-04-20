@@ -1,23 +1,23 @@
 //! Extension-related node kinds.
 //!
-//! Currently ships one kind: [`Plugin`] (`sys.agent.plugin`). Per
+//! Currently ships one kind: [`Block`] (`sys.agent.block`). Per
 //! `docs/design/EVERYTHING-AS-NODE.md` § "The agent itself is a node
-//! too", plugin state lives on graph nodes — not a parallel registry —
-//! so Studio subscribes to `graph.<tenant>.agent.plugins.*` the same
+//! too", block state lives on graph nodes — not a parallel registry —
+//! so Studio subscribes to `graph.<tenant>.agent.blocks.*` the same
 //! way it subscribes to every other node.
 
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 
 use graph::KindRegistry;
 
 pub fn register_kinds(kinds: &KindRegistry) {
-    kinds.register(<Plugin as NodeKind>::manifest());
+    kinds.register(<Block as NodeKind>::manifest());
 }
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
-    kind = "sys.agent.plugin",
-    manifest = "manifests/plugin.yaml",
+    kind = "sys.agent.block",
+    manifest = "manifests/block.yaml",
     behavior = "none"
 )]
-pub struct Plugin;
+pub struct Block;

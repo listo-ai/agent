@@ -81,7 +81,7 @@ mod tests {
     use std::sync::Arc;
 
     use engine::BehaviorRegistry;
-    use extensions_host::PluginRegistry;
+    use blocks_host::BlockRegistry;
     use graph::{seed as graph_seed, GraphStore, KindRegistry, NullSink};
     use spi::{KindId, NodePath};
     use tokio::sync::broadcast;
@@ -96,7 +96,7 @@ mod tests {
             .unwrap();
         let (events, _) = broadcast::channel(16);
         let (behaviors, _) = BehaviorRegistry::new(graph.clone());
-        AppState::new(graph, behaviors, events, PluginRegistry::new())
+        AppState::new(graph, behaviors, events, BlockRegistry::new())
     }
 
     /// The fleet handler and HTTP handler use the same core fn — verify

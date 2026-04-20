@@ -354,7 +354,7 @@ mod tests {
     use data_tsdb::ScalarRecord;
     use rusqlite;
     use engine::BehaviorRegistry;
-    use extensions_host::PluginRegistry;
+    use blocks_host::BlockRegistry;
     use graph::{seed, GraphStore, KindRegistry, NullSink};
     use spi::{KindId, NodePath};
     use tokio::sync::broadcast;
@@ -376,7 +376,7 @@ mod tests {
     fn make_state(graph: Arc<GraphStore>) -> AppState {
         let (behaviors, _) = BehaviorRegistry::new(graph.clone());
         let (events, _) = broadcast::channel(16);
-        AppState::new(graph, behaviors, events, PluginRegistry::new())
+        AppState::new(graph, behaviors, events, BlockRegistry::new())
     }
 
     fn make_history_repo_no_fk() -> Arc<SqliteHistoryRepo> {

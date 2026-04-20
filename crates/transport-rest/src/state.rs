@@ -8,7 +8,7 @@ use data_tsdb::TelemetryRepo;
 use domain_flows::FlowService;
 use domain_history::Historizer;
 use engine::BehaviorRegistry;
-use extensions_host::{PluginHost, PluginRegistry};
+use blocks_host::{BlockHost, BlockRegistry};
 use graph::GraphStore;
 use spi::{AuthProvider, FleetTransport, NullTransport};
 use tokio::sync::broadcast;
@@ -23,11 +23,11 @@ pub struct AppState {
     pub events: broadcast::Sender<SequencedEvent>,
     /// Ring buffer for reconnect replay — see `GET /api/v1/events?since=`.
     pub ring: EventRing,
-    pub plugins: PluginRegistry,
-    /// Process-plugin runtime manager. `None` when the agent's plugins
+    pub blocks: BlockRegistry,
+    /// Process-block runtime manager. `None` when the agent's blocks
     /// dir isn't writable (tests, read-only containers) — enable /
     /// disable endpoints fall back to registry-only flips in that case.
-    pub plugin_host: Option<PluginHost>,
+    pub plugin_host: Option<BlockHost>,
     /// Fleet transport — `NullTransport` when the agent is configured
     /// with `fleet: null` (standalone / offline). Holding it in
     /// `AppState` makes the one handler fn usable from both the REST
@@ -61,14 +61,14 @@ impl AppState {
         graph: Arc<GraphStore>,
         behaviors: BehaviorRegistry,
         events: broadcast::Sender<SequencedEvent>,
-        plugins: PluginRegistry,
+        blocks: BlockRegistry,
     ) -> Self {
         Self {
             graph,
             behaviors,
             events,
             ring: EventRing::new(crate::ring::DEFAULT_RING_CAPACITY),
-            plugins,
+            blocks,
             plugin_host: None,
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),
@@ -88,14 +88,14 @@ impl AppState {
         behaviors: BehaviorRegistry,
         events: broadcast::Sender<SequencedEvent>,
         ring: EventRing,
-        plugins: PluginRegistry,
+        blocks: BlockRegistry,
     ) -> Self {
         Self {
             graph,
             behaviors,
             events,
             ring,
-            plugins,
+            blocks,
             plugin_host: None,
             fleet: Arc::new(NullTransport),
             auth_provider: Arc::new(DevNullProvider::new()),
@@ -113,10 +113,10 @@ impl AppState {
         self
     }
 
-    /// Attach the process-plugin host. Without this, enable/disable
+    /// Attach the process-block host. Without this, enable/disable
     /// endpoints only flip the registry's bit; with it, they also
     /// start/stop the child processes.
-    pub fn with_plugin_host(mut self, host: PluginHost) -> Self {
+    pub fn with_plugin_host(mut self, host: BlockHost) -> Self {
         self.plugin_host = Some(host);
         self
     }

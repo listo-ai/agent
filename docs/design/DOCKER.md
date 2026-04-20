@@ -12,9 +12,9 @@ One registry (GitHub Container Registry for open-source parts, private registry 
 |---|---|---|---|
 | `yourapp/agent` | `gcr.io/distroless/cc-debian12` or `alpine` | The single Rust binary — edge + cloud + standalone roles | amd64, arm64, armv7 |
 | `yourapp/studio-web` | `nginx:alpine` | Static SPA build, served via nginx | amd64, arm64 |
-| `yourapp/extension-bacnet` | `distroless/cc` | BACnet extension process | amd64, arm64 |
-| `yourapp/extension-modbus` | `distroless/cc` | Modbus extension process | amd64, arm64 |
-| `yourapp/extension-mqtt` | `distroless/cc` | MQTT extension process | amd64, arm64 |
+| `yourapp/block-bacnet` | `distroless/cc` | BACnet block process | amd64, arm64 |
+| `yourapp/block-modbus` | `distroless/cc` | Modbus block process | amd64, arm64 |
+| `yourapp/block-mqtt` | `distroless/cc` | MQTT block process | amd64, arm64 |
 | `zitadel/zitadel` | Upstream | Auth IdP | amd64, arm64 |
 | `nats:alpine` | Upstream | NATS server (cluster or leaf) | amd64, arm64 |
 | `postgres:17-alpine` | Upstream | Postgres (cloud + dev only) | amd64, arm64 |
@@ -27,7 +27,7 @@ Everything we build uses **distroless** base images — no shell, no package man
 | Image | Target size | Why |
 |---|---|---|
 | `yourapp/agent` | < 50 MB | Pulls fast over slow edge connections |
-| Extension images | < 30 MB each | Many of them on a gateway; total matters |
+| Block images | < 30 MB each | Many of them on a gateway; total matters |
 | `yourapp/studio-web` | < 20 MB | Static assets only |
 | `zitadel/zitadel` | ~ 100 MB | Not ours to control |
 | `postgres:17-alpine` | ~ 250 MB | Not ours to control |
@@ -119,7 +119,7 @@ services:
     command: ["run", "--role=edge", "--config=/etc/yourapp/edge.yaml"]
     depends_on: [control-plane, nats]
     volumes: [edge-data:/var/lib/yourapp]
-    # extension processes run as sidecars or inside same container
+    # block processes run as sidecars or inside same container
 
   studio-web:
     image: yourapp/studio-web:dev
@@ -166,7 +166,7 @@ Docker on the edge is optional but supported. Recommended path:
 | Runtime | Docker or Podman |
 | Restart policy | `restart: unless-stopped` |
 | Memory limit | `mem_limit: 400M` for the agent container on 512 MB gateways (target RSS 350 MB + headroom). `deploy.resources.limits` is Swarm-only and ignored by `docker compose up` — use `mem_limit` for Compose. |
-| Volumes | One for SQLite, one for config, one per extension for versioned extension state (enables rollback per UI.md lifecycle) |
+| Volumes | One for SQLite, one for config, one per block for versioned block state (enables rollback per UI.md lifecycle) |
 | Network | `host` mode — BACnet/Modbus need real network access |
 | Healthcheck (liveness) | `HEALTHCHECK CMD yourapp health --liveness` — process is up, responding |
 | Healthcheck (readiness) | `yourapp health --readiness` — JWKS cached, DB open, engine in Running state. Kubernetes maps this to the readiness probe; Compose uses the liveness one. |
@@ -174,19 +174,19 @@ Docker on the edge is optional but supported. Recommended path:
 
 For really constrained hardware (legacy ARM), we also ship the agent as a standalone binary with a systemd unit — no Docker required. Users pick.
 
-## Extension processes in Docker
+## Block processes in Docker
 
 Three patterns, user's choice:
 
 | Pattern | Trade-off |
 |---|---|
-| **Sidecar containers** | Each extension is its own container, share a volume with the agent for the UDS socket. Clean isolation, cgroup memory caps per extension, independent restart. |
-| **Inside the agent container** | Extensions as child processes of the agent, using OS-level cgroups within the container. Smaller footprint, no per-extension image pull. |
-| **Host processes** | Agent runs in Docker, extensions run on host. Rare, for extensions needing hardware access Docker can't give cleanly. |
+| **Sidecar containers** | Each block is its own container, share a volume with the agent for the UDS socket. Clean isolation, cgroup memory caps per block, independent restart. |
+| **Inside the agent container** | Blocks as child processes of the agent, using OS-level cgroups within the container. Smaller footprint, no per-block image pull. |
+| **Host processes** | Agent runs in Docker, blocks run on host. Rare, for blocks needing hardware access Docker can't give cleanly. |
 
-**Default is sidecar containers** — matches the crash-isolation and per-extension resource-ceiling story in the main design. On memory-constrained edge (≤512 MB), the inside-container pattern is the escape hatch when sidecar overhead becomes material; switching is a config change, not a rebuild.
+**Default is sidecar containers** — matches the crash-isolation and per-block resource-ceiling story in the main design. On memory-constrained edge (≤512 MB), the inside-container pattern is the escape hatch when sidecar overhead becomes material; switching is a config change, not a rebuild.
 
-Extension-process images are signed with the same cosign + SLSA provenance as platform images (see CI section) and verified by the agent before spawn.
+Block-process images are signed with the same cosign + SLSA provenance as platform images (see CI section) and verified by the agent before spawn.
 
 ## Networking
 
@@ -197,7 +197,7 @@ Extension-process images are signed with the same cosign + SLSA provenance as pl
 | NATS | 4222 (clients), 8222 (monitoring) | 6222 (cluster) |
 | Zitadel | 8010 | — |
 | Postgres | 5432 | yes, in prod |
-| Edge agent | none by default; 9000 optional for local admin UI | UDS to extensions is filesystem-scoped |
+| Edge agent | none by default; 9000 optional for local admin UI | UDS to blocks is filesystem-scoped |
 
 In production, only the Control Plane and Studio web are exposed to the internet. Everything else is on a private network.
 
@@ -255,7 +255,7 @@ One consistent log format across all services — single parser, single dashboar
 | Tag release | Build, sign with cosign, push to `:v1.2.3` and `:latest` |
 | Nightly | Rebuild latest main to pick up base-image security patches |
 
-All production images — **platform AND extension-process images** — signed. Customers can verify signatures before pulling. Image attestation via SLSA provenance. The agent verifies extension-process image signatures before spawning the sidecar.
+All production images — **platform AND block-process images** — signed. Customers can verify signatures before pulling. Image attestation via SLSA provenance. The agent verifies block-process image signatures before spawning the sidecar.
 
 ## Kubernetes
 

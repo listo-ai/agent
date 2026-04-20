@@ -13,7 +13,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Settings page — presentational shell with theme controls.
-// More sections (auth, agent, extensions) will be added in later milestones.
+// More sections (auth, agent, blocks) will be added in later milestones.
 // ---------------------------------------------------------------------------
 
 export function SettingsPage() {
@@ -57,7 +57,7 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Configure the agent endpoint, authentication, and extension management.
+            Configure the agent endpoint, authentication, and block management.
           </p>
         </CardContent>
       </Card>

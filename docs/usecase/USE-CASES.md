@@ -1,12 +1,12 @@
 # Three Use Cases
 
-Concrete illustrations of what the platform can be used to build. None of them defines the platform — they're three very different applications of the same node / slot / flow / extension substrate. If they all work without the platform bending, the generic thesis is real.
+Concrete illustrations of what the platform can be used to build. None of them defines the platform — they're three very different applications of the same node / slot / flow / block substrate. If they all work without the platform bending, the generic thesis is real.
 
 - **Use case 1** — a building automation / IoT platform with a live dashboard builder.
-- **Use case 2** — a workflow automation platform where users bring their own AI accounts (Claude Code, OpenCode, etc.) and extensions orchestrate what the AI can reach.
+- **Use case 2** — a workflow automation platform where users bring their own AI accounts (Claude Code, OpenCode, etc.) and blocks orchestrate what the AI can reach.
 - **Use case 3** — a developer-productivity framework: scope work in the morning, hand it to an AI, review progress via Slack. The platform builds software for you.
 
-All three deploy on the same binary. None requires changes to the core. Each uses a different combination of first-party extensions plus its own domain-specific extensions.
+All three deploy on the same binary. None requires changes to the core. Each uses a different combination of first-party blocks plus its own domain-specific blocks.
 
 ---
 
@@ -25,13 +25,13 @@ A facilities company manages HVAC, lighting, and metering across dozens of build
 
 ### How the platform carries it
 
-Everything is already in the core. No platform changes. The company ships four domain extensions and composes them with what the platform gives for free.
+Everything is already in the core. No platform changes. The company ships four domain blocks and composes them with what the platform gives for free.
 
-#### Extensions they ship
+#### Blocks they ship
 
-| Extension | What it contributes | Platform facility used |
+| Block | What it contributes | Platform facility used |
 |---|---|---|
-| `com.acmefac.driver.bacnet` | `bacnet.network` / `bacnet.device` / `bacnet.point` kinds with placement rules, discovery, COV subscriptions, priority-array writes | Extension process over gRPC-UDS; kind registration; settings schemas (one variant for IP, one for MSTP) |
+| `com.acmefac.driver.bacnet` | `bacnet.network` / `bacnet.device` / `bacnet.point` kinds with placement rules, discovery, COV subscriptions, priority-array writes | Block process over gRPC-UDS; kind registration; settings schemas (one variant for IP, one for MSTP) |
 | `com.acmefac.driver.modbus` | `modbus.network` / `modbus.device` / `modbus.register` kinds | Multi-variant settings (serial RTU vs TCP) — see NODE-AUTHORING.md Modbus example |
 | `com.acmefac.ui.dashboard` | Widget node kinds: gauge, trend, value tile, setpoint control, schedule editor, floor-plan overlay | Module Federation UI bundle + schema-driven property panels |
 | `com.acmefac.alarm.router` | `alarm.rule` node kind with conditions and routing (email, SMS, webhook) | Slot subscription over NATS; reuse of the generic query layer |
@@ -123,9 +123,9 @@ Cloud is multi-tenant. Each building owner is one Zitadel org. Tenant IDs are ba
 - The multi-tenant subject taxonomy.
 - The property-panel form renderer.
 - The three-way variant-settings UI for Modbus RTU vs TCP.
-- Plugin isolation, crash recovery, signed install.
+- Block isolation, crash recovery, signed install.
 
-All of that came from the platform. The company shipped four extensions and a domain model.
+All of that came from the platform. The company shipped four blocks and a domain model.
 
 ---
 
@@ -137,20 +137,20 @@ A small engineering team wants to automate the boring parts of their work: triag
 
 Needs:
 
-- Install plugins that connect to the services they already use (GitHub, Linear, Slack, S3, internal APIs).
-- Author flows that combine those plugins with AI reasoning steps.
+- Install blocks that connect to the services they already use (GitHub, Linear, Slack, S3, internal APIs).
+- Author flows that combine those blocks with AI reasoning steps.
 - AI steps execute via the user's existing Claude Code (or other provider) session on the same machine — no new billing relationship.
-- The AI, when invoked, can reach into any installed plugin as a tool — via MCP.
+- The AI, when invoked, can reach into any installed block as a tool — via MCP.
 - Flows run on a schedule, a webhook, a Slack command, or manually.
-- Team members can install/uninstall plugins on themselves without breaking anyone else's flows.
+- Team members can install/uninstall blocks on themselves without breaking anyone else's flows.
 
 ### How the platform carries it
 
-Everything is already in the core. The team installs a few domain extensions. The AI-account integration is a single specialist extension category.
+Everything is already in the core. The team installs a few domain blocks. The AI-account integration is a single specialist block category.
 
-#### Extensions that make this work
+#### Blocks that make this work
 
-| Extension | What it contributes |
+| Block | What it contributes |
 |---|---|
 | `com.example.ai.claude_code_runner` | A `ai.run_cli` node kind. Spawns the user's locally-installed `claude` CLI as a subprocess; feeds it a prompt plus a temporary MCP config pointing at this agent's per-user MCP endpoint; streams events back. |
 | `com.example.ai.opencode_runner` | Same shape, different CLI. Users with OpenCode installed choose this runner. |
@@ -159,20 +159,20 @@ Everything is already in the core. The team installs a few domain extensions. Th
 | `com.example.integration.linear` | Nodes for Linear tickets. |
 | `com.example.integration.slack` | Nodes for sending messages, reading channels, handling slash-command triggers. |
 
-None of these are special. They're all extensions the same way a BACnet driver is an extension. What makes the AI use case work is the MCP endpoint the platform ships already.
+None of these are special. They're all blocks the same way a BACnet driver is an block. What makes the AI use case work is the MCP endpoint the platform ships already.
 
 #### The MCP story — the whole thing rests on this
 
-The platform's [MCP server](../design/MCP.md) is already per-user: an authenticated MCP client connects to `/mcp` and gets a scoped tool surface built from that user's installed extensions plus the public slot API. Tools are filtered by the user's RBAC, audited per call, and safely presented to the LLM.
+The platform's [MCP server](../design/MCP.md) is already per-user: an authenticated MCP client connects to `/mcp` and gets a scoped tool surface built from that user's installed blocks plus the public slot API. Tools are filtered by the user's RBAC, audited per call, and safely presented to the LLM.
 
-This means **the AI sees the user's installed extensions as tools, the moment they install them.** No intermediate app-tool packaging layer is needed on top — extensions already contribute node kinds, and node kinds already contribute their operations to the MCP surface through the generic path.
+This means **the AI sees the user's installed blocks as tools, the moment they install them.** No intermediate app-tool packaging layer is needed on top — blocks already contribute node kinds, and node kinds already contribute their operations to the MCP surface through the generic path.
 
 When a flow node of kind `ai.run_cli` fires, it:
 
 1. Generates a temporary MCP config file pointing at `http://localhost:<agent-port>/mcp` with a short-lived user token.
 2. Spawns `claude --mcp-config <file>` (or `opencode`, or whichever runner was configured) with the prompt from `msg.payload`.
 3. Streams the Claude Code CLI's stdout (structured JSON events) back through its output slot as a series of `Msg`es with `_parentid` chained to the input.
-4. Lets the user's Claude Code session drive the conversation — including calling any tool exposed via MCP, which is every installed extension.
+4. Lets the user's Claude Code session drive the conversation — including calling any tool exposed via MCP, which is every installed block.
 
 Because the CLI runs locally and uses the user's own credentials:
 
@@ -202,12 +202,12 @@ Because the CLI runs locally and uses the user's own credentials:
 [slack.send_message (channel=#code-review)]          ◀── posts Claude's review summary + PR link
 ```
 
-The `ai.run_cli` node's prompt template says "review this PR, check for X/Y/Z, and if you spot anything urgent, call the `github.comment_pr` tool to leave a line-specific comment." Claude Code — running as the user — does exactly that via the MCP endpoint. No glue code; the platform already routed `github.comment_pr` from the GitHub extension through the MCP surface to the CLI.
+The `ai.run_cli` node's prompt template says "review this PR, check for X/Y/Z, and if you spot anything urgent, call the `github.comment_pr` tool to leave a line-specific comment." Claude Code — running as the user — does exactly that via the MCP endpoint. No glue code; the platform already routed `github.comment_pr` from the GitHub block through the MCP surface to the CLI.
 
 #### Another — Slack slash command → Claude → action
 
 ```
-[slack.slash_command "/summarize-linear"]   (webhook trigger node from Slack extension)
+[slack.slash_command "/summarize-linear"]   (webhook trigger node from Slack block)
        │
        ▼
 [linear.list_issues (query from msg.payload.text)]
@@ -219,7 +219,7 @@ The `ai.run_cli` node's prompt template says "review this PR, check for X/Y/Z, a
 [slack.reply_in_thread (thread_ts from msg.payload)]
 ```
 
-Same pattern. AI runs as the user. Tools are the installed extensions. Platform is the orchestration layer.
+Same pattern. AI runs as the user. Tools are the installed blocks. Platform is the orchestration layer.
 
 #### Settings and msg overrides — why authoring is easy
 
@@ -229,11 +229,11 @@ The pattern from [NODE-AUTHORING.md](../design/NODE-AUTHORING.md) applies throug
 - When they want per-message dynamism, they set `msg.owner`, `msg.repo`, `msg.state` upstream. The engine resolves msg over config over schema defaults.
 - The `ai.run_cli` kind allows `msg.prompt` to override the static prompt template, and `msg.model` / `msg.system_prompt` to override those respectively. Security-sensitive fields (the MCP token, the CLI path on disk) are NOT overridable — they live in config only, enforced by the manifest omitting them from `msg_overrides`.
 
-This is the difference between "build your own integration scaffolding" and "write the specific thing you need." The team adds a GitHub extension in an afternoon, not a week.
+This is the difference between "build your own integration scaffolding" and "write the specific thing you need." The team adds a GitHub block in an afternoon, not a week.
 
 #### Multi-provider, one flow shape
 
-The three AI-runner extensions (Claude Code, OpenCode, Ollama) contribute different kinds but share the same shape: input is a `Msg` with a prompt and optional overrides, output is a stream of AI events ending in a final result. Flow authors can swap the runner node without rewiring anything else. The user picks based on cost, privacy, and what they already pay for.
+The three AI-runner blocks (Claude Code, OpenCode, Ollama) contribute different kinds but share the same shape: input is a `Msg` with a prompt and optional overrides, output is a stream of AI events ending in a final result. Flow authors can swap the runner node without rewiring anything else. The user picks based on cost, privacy, and what they already pay for.
 
 #### Memory and context — not in the platform
 
@@ -241,18 +241,18 @@ Session memory (what the AI "remembers" across runs) isn't a platform feature. T
 
 #### Per-user scoping
 
-MCP tool visibility is scoped to the authenticated user's installed extensions. Alice installs GitHub + Linear + Claude runner; Bob installs Slack + OpenCode runner. Alice's flows and AI sessions see only her tools. Bob's see only his. Everything is per-user because that's already how the graph, the MCP endpoint, and the auth layer work.
+MCP tool visibility is scoped to the authenticated user's installed blocks. Alice installs GitHub + Linear + Claude runner; Bob installs Slack + OpenCode runner. Alice's flows and AI sessions see only her tools. Bob's see only his. Everything is per-user because that's already how the graph, the MCP endpoint, and the auth layer work.
 
 #### What the team did NOT have to build
 
 - The MCP server, per-user scoping, and the auth/token dance.
-- The plugin install/update/uninstall pipeline with capability-based compat checks.
+- The block install/update/uninstall pipeline with capability-based compat checks.
 - The flow engine with cron / webhook / manual triggers and approval gates.
 - The JSON-Schema-driven settings forms and multi-variant UI (e.g. "which AI runner do you want to use on this node?" — that's just a multi-variant settings schema on the `ai.run_cli` kind).
 - Audit, per-call observability, rate limits, error routing.
 - Fan-out / fan-in semantics so `foreach` over PRs works correctly.
 
-All of that came from the platform. The team shipped a handful of integration extensions plus their choice of AI-runner extension.
+All of that came from the platform. The team shipped a handful of integration blocks plus their choice of AI-runner block.
 
 ---
 
@@ -275,15 +275,15 @@ This is the platform **building software for its own team**, and eventually for 
 
 ### How the platform carries it
 
-Reuse everything from use case 2 (AI runners, GitHub/Slack integrations, MCP per user). Add one new extension and one flow pattern.
+Reuse everything from use case 2 (AI runners, GitHub/Slack integrations, MCP per user). Add one new block and one flow pattern.
 
-#### The new extension
+#### The new block
 
-| Extension | What it contributes |
+| Block | What it contributes |
 |---|---|
 | `com.example.dev.scope` | A `scope` node kind with rich metadata; a `scope-plan` container kind; MCP tools for the AI to read/update scopes; a Studio tab for authoring scopes; CLI commands for the developer |
 
-A scope is a node. Its `config` slots are the authored content (title, description, stages, acceptance criteria, target repo). Its `status` slots are runtime state (current stage, PR links, last AI message, review state). Nothing about this kind is special to the platform — it's a domain extension following the same rules as a BACnet driver or a dashboard widget.
+A scope is a node. Its `config` slots are the authored content (title, description, stages, acceptance criteria, target repo). Its `status` slots are runtime state (current stage, PR links, last AI message, review state). Nothing about this kind is special to the platform — it's a domain block following the same rules as a BACnet driver or a dashboard widget.
 
 ```yaml
 kind: com.example.dev.scope
@@ -343,7 +343,7 @@ Scopes sit in a daily scope-plan. Running a scope means starting the `scope-exec
 
 #### The morning — authoring scopes
 
-The developer opens Studio to the "Scopes" tab (contributed by the `dev.scope` extension's UI bundle). A scope-plan for today is created if none exists. For each scope:
+The developer opens Studio to the "Scopes" tab (contributed by the `dev.scope` block's UI bundle). A scope-plan for today is created if none exists. For each scope:
 
 - Title + description: free-form, supports markdown.
 - **Stage plan**: a list of named stages ("scaffolding", "core logic", "tests", "docs"). Each stage has its own short description.
@@ -397,13 +397,13 @@ When `current_stage` exceeds `len(stages)`, the flow writes `state = done`, post
 
 #### Slack — the human-in-the-loop surface
 
-The developer's primary interface during execution is Slack, not the Studio. The `slack` extension contributes:
+The developer's primary interface during execution is Slack, not the Studio. The `slack` block contributes:
 
 - **Notifications** — "[scope-3] stage-1 done, PR #43, approve to continue" with inline buttons (Approve / Request Changes / Reject). Buttons hit the platform's approval API.
 - **Slash commands** — `/scope list`, `/scope pause scope-3`, `/scope comment scope-3 "rename the function"`. The comment command routes into the approval gate's `changes` branch, feeding the text back to the AI runner as additional context for the next iteration.
 - **Per-scope threads** — every scope has a Slack thread. Every AI checkpoint posts to that thread. If the developer replies in the thread, a `slack` inbound webhook turns the reply into a scope comment without them needing to know any commands.
 
-The platform already handles the substrate: Slack is an extension, threads are string IDs stored on slots, buttons are approval-gate decisions, inbound slash commands are webhook triggers. Nothing about this is a Slack-specific primitive in the core.
+The platform already handles the substrate: Slack is an block, threads are string IDs stored on slots, buttons are approval-gate decisions, inbound slash commands are webhook triggers. Nothing about this is a Slack-specific primitive in the core.
 
 #### The AI's view
 
@@ -424,7 +424,7 @@ The "request changes" path is the important one. When the developer hits the but
 1. Approval gate resolves to `changes` with the developer's comment as the payload.
 2. Flow loops back to `render_prompt` with `stage` unchanged but `extra_context` carrying the feedback.
 3. AI runner re-fires with "your last output is PR #43. The developer says: <comment>. Revise."
-4. AI amends the PR (`git commit --amend` + `github.update_pr` via the GitHub extension).
+4. AI amends the PR (`git commit --amend` + `github.update_pr` via the GitHub block).
 5. New Slack message: "[scope-3] stage-1 revised, same PR — approve?"
 6. Cycle repeats until approved, rejected, or timed-out.
 
@@ -444,20 +444,20 @@ Because scopes are nodes and dashboards are nodes over slot subscriptions, the d
 
 The platform's own `/crates/*` work can be scoped and executed this way. "Implement Stage 5 persistence" becomes a scope. "Fix the clippy warnings in `crates/graph`" becomes a scope. The developer writes scopes in the morning, AI chips through them using the developer's own Claude Code account, Slack mediates review, PRs land against the platform repo. The platform builds itself.
 
-This use case isn't hypothetical — once a team has the extensions from use case 2 and the `dev.scope` extension, they can drop their current IDE-driven workflow for this one.
+This use case isn't hypothetical — once a team has the blocks from use case 2 and the `dev.scope` block, they can drop their current IDE-driven workflow for this one.
 
 #### What the developer did NOT have to build
 
 - Persistent scope storage, versioning, audit trail — scopes are nodes.
 - The multi-stage approval state machine — flow engine + approval gates.
-- Slack threading, buttons, slash commands, inbound webhooks — Slack extension + trigger nodes.
-- The AI invocation, prompt resolution, msg overrides — AI-runner extension plus the authoring pattern from NODE-AUTHORING.
+- Slack threading, buttons, slash commands, inbound webhooks — Slack block + trigger nodes.
+- The AI invocation, prompt resolution, msg overrides — AI-runner block plus the authoring pattern from NODE-AUTHORING.
 - MCP tool serving so the AI can reach back into scopes and GitHub — built-in, per-user.
-- The dashboard for tracking today's progress — dashboard kind + widget extension.
+- The dashboard for tracking today's progress — dashboard kind + widget block.
 - Error handling, retry, scope pausing on failure — flow engine error policies.
 - Cross-scope coordination, mutual exclusion on a scope in flight — single flow instance + scope locking via `status.state`.
 
-Everything that ships as platform-provided is reused. The developer wrote one extension (`dev.scope`) and a single flow definition. The rest is authoring scopes and reviewing in Slack.
+Everything that ships as platform-provided is reused. The developer wrote one block (`dev.scope`) and a single flow definition. The rest is authoring scopes and reviewing in Slack.
 
 ---
 
@@ -470,11 +470,11 @@ None of the three use cases is the platform. They share a substrate:
 | **Everything is a node** | BMS devices / dashboards / flows (UC1). AI tasks / integrations / prompts (UC2). Scopes / stages / PR links (UC3). Same tree, same rules. |
 | **Typed slots + wires** | BACnet point values stream into dashboard widgets and HVAC flows. PR diffs and AI prompts stream through AI-runner nodes. Scope state transitions drive flow branches. Same `Msg` envelope. |
 | **Node-RED-compatible msg** | Ops engineers familiar with Node-RED port their logic. AI workflow authors port theirs. Developers writing flows to orchestrate their own work do the same. Same shape on the wire. |
-| **Extensions** | BACnet / Modbus drivers (UC1). GitHub / Linear / Slack / AI-runner plugins (UC2). Same three-layer model. UC3 reuses the UC2 extensions verbatim and adds one: `dev.scope`. |
-| **Capability manifests + install-time compat** | Site upgrades don't silently break driver extensions. Team upgrades don't break an AI flow. Platform upgrades don't break scope execution because the scope extension declares what it needs. Same matcher across all three. |
+| **Blocks** | BACnet / Modbus drivers (UC1). GitHub / Linear / Slack / AI-runner blocks (UC2). Same three-layer model. UC3 reuses the UC2 blocks verbatim and adds one: `dev.scope`. |
+| **Capability manifests + install-time compat** | Site upgrades don't silently break driver blocks. Team upgrades don't break an AI flow. Platform upgrades don't break scope execution because the scope block declares what it needs. Same matcher across all three. |
 | **MCP endpoint per user** | Optional in UC1. Essential in UC2 and UC3 — in UC3 the AI reaches back into scope status, GitHub PRs, Slack threads, and more through the same per-user scoped surface. |
 | **Flow engine with approval gates** | HVAC logic (UC1). Multi-step workflows with approval (UC2). The "ping-Slack-and-wait-for-developer" pattern is just an approval gate with a 24h timeout (UC3). |
-| **Fleet orchestration** | 40-site rollout (UC1). "Install the new Slack extension on every team member's agent" (UC2). "Run this developer's scope-execution flow on a dedicated agent per team member" (UC3). Same primitives. |
+| **Fleet orchestration** | 40-site rollout (UC1). "Install the new Slack block on every team member's agent" (UC2). "Run this developer's scope-execution flow on a dedicated agent per team member" (UC3). Same primitives. |
 | **Safe-state + commissioning + simulation modes** | Chiller setpoints don't get written in simulation. AI flow dry-runs don't actually comment on PRs. Scope flows in simulation don't open real PRs or send real Slack messages — useful for testing flow changes without billing AI tokens or spamming the team channel. |
 | **Dashboards as nodes** | Live plant view (UC1). Team activity (UC2, if wanted). Today's scope progress (UC3). Same `dashboard` + widget kinds. |
 | **Multi-tenant + per-user RBAC** | Each building owner sees only their site. Each teammate sees only their installed tools. Each developer sees only their scopes. Same RBAC. |

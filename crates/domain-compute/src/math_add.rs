@@ -14,7 +14,7 @@
 //! `last_sum` status slot mirrors the latest emission so the property
 //! panel can show it without subscribing to the wire.
 
-use extensions_sdk::prelude::*;
+use blocks_sdk::prelude::*;
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 

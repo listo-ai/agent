@@ -10,12 +10,12 @@
 //!   that proves placement rules work end-to-end.
 //!
 //! Every kind here is defined by a YAML manifest under `manifests/` in
-//! this crate, wired via `#[derive(NodeKind)]` from `extensions-sdk`.
+//! this crate, wired via `#[derive(NodeKind)]` from `blocks-sdk`.
 //! The YAML is the single source of truth — placement rules, facets,
 //! slot schemas all live in the file. See
 //! `docs/sessions/NODE-SCOPE.md` for the broader picture.
 
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 
 use crate::kind::KindRegistry;
 
@@ -29,7 +29,7 @@ pub fn register_builtins(kinds: &KindRegistry) {
     kinds.register(<DriverDemoPoint as NodeKind>::manifest());
 }
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.core.station",
     manifest = "manifests/station.yaml",
@@ -37,7 +37,7 @@ pub fn register_builtins(kinds: &KindRegistry) {
 )]
 pub struct Station;
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.core.folder",
     manifest = "manifests/folder.yaml",
@@ -45,7 +45,7 @@ pub struct Station;
 )]
 pub struct Folder;
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.compute.math.add",
     manifest = "manifests/math_add.yaml",
@@ -53,7 +53,7 @@ pub struct Folder;
 )]
 pub struct MathAdd;
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.driver.demo",
     manifest = "manifests/driver_demo.yaml",
@@ -61,7 +61,7 @@ pub struct MathAdd;
 )]
 pub struct DriverDemo;
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.driver.demo.device",
     manifest = "manifests/driver_demo_device.yaml",
@@ -69,7 +69,7 @@ pub struct DriverDemo;
 )]
 pub struct DriverDemoDevice;
 
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.driver.demo.point",
     manifest = "manifests/driver_demo_point.yaml",

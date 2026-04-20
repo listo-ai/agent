@@ -14,7 +14,7 @@
 //!
 //! Declarative types (`KindManifest`, `KindId`, `NodeId`, `NodePath`,
 //! `ContainmentSchema`, `Facet`/`FacetSet`, `SlotSchema`, `SlotRole`)
-//! live in the [`spi`] crate — extension authors reach them through the
+//! live in the [`spi`] crate — block authors reach them through the
 //! SDK prelude without pulling in the graph runtime.
 
 mod error;

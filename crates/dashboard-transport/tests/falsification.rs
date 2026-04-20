@@ -4,7 +4,7 @@
 //!
 //! Each scenario ships as:
 //!
-//! 1. A fixture `layout` — the JSON a plugin author would write once.
+//! 1. A fixture `layout` — the JSON a block author would write once.
 //! 2. A handler registration for each interactive action.
 //! 3. A resolve + action round-trip that proves the page renders and
 //!    its buttons fire the right handler.
@@ -94,7 +94,7 @@ fn count_where(tree: &ComponentTree, mut pred: impl FnMut(&ui_ir::Component) -> 
 // device to the graph, see it live-update — driven entirely by IR the
 // backend emits."
 //
-// The falsification: a plugin ships a `ui.page.layout` with a
+// The falsification: a block ships a `ui.page.layout` with a
 // heading, a `scan` button (action → `bacnet.scan`), and a table of
 // nodes matching `kind==sys.driver.demo.device`. Clicking the button
 // fires a handler that returns a toast. The renderer sees only IR.

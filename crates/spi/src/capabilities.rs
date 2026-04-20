@@ -1,10 +1,10 @@
-//! Capability registry types — the spine of long-term extension compatibility.
+//! Capability registry types — the spine of long-term block compatibility.
 //!
 //! See `docs/design/VERSIONING.md`. The host publishes what it provides;
 //! extensions declare what they need; installation is a set-match.
 //!
 //! Stage 0 ships only the types and the matcher. Host-side registration
-//! lives in `extensions-host::capability_registry` in a later stage.
+//! lives in `blocks-host::capability_registry` in a later stage.
 //!
 //! # Example
 //!

@@ -1,15 +1,15 @@
-//! Proc-macros for the Rust extension SDK.
+//! Proc-macros for the Rust blocks-sdk.
 //!
-//! The centrepiece is [`NodeKind`], which wires a plugin-author struct
+//! The centrepiece is [`NodeKind`], which wires a block-author struct
 //! to its declarative YAML manifest. See the
-//! [`extensions_sdk`](../extensions_sdk/index.html) crate for the
+//! [`blocks_sdk`](../blocks_sdk/index.html) crate for the
 //! user-facing documentation and examples.
 //!
 //! ## Why a derive, not a builder?
 //!
 //! The YAML manifest is the single source of truth: the Studio renders
 //! from it, the installer validates capabilities against it, the
-//! process-plugin gRPC adapter describes kinds with it. Hand-building a
+//! process-block gRPC adapter describes kinds with it. Hand-building a
 //! `KindManifest` in Rust would let the two drift. The derive reads the
 //! YAML at compile time, validates it parses, and emits the glue.
 //!
@@ -26,7 +26,7 @@ mod node_kind;
 
 use proc_macro::TokenStream;
 
-/// Derive an [`extensions_sdk::NodeKind`](../extensions_sdk/trait.NodeKind.html)
+/// Derive an [`blocks_sdk::NodeKind`](../blocks_sdk/trait.NodeKind.html)
 /// impl for a struct from a declarative YAML manifest.
 ///
 /// # Attributes
@@ -38,7 +38,7 @@ use proc_macro::TokenStream;
 /// - `manifest = "manifests/name.yaml"` — path to the manifest YAML,
 ///   **relative to `CARGO_MANIFEST_DIR`**.
 /// - `behavior = "none" | "custom"` — whether this kind has a runtime
-///   [`NodeBehavior`](../extensions_sdk/trait.NodeBehavior.html) impl.
+///   [`NodeBehavior`](../blocks_sdk/trait.NodeBehavior.html) impl.
 ///   `"none"` marks it as a manifest-only (container) kind; `"custom"`
 ///   means the author provides their own impl. Omitting the attribute
 ///   is a compile error — the forcing function keeps behaviour-less
@@ -47,7 +47,7 @@ use proc_macro::TokenStream;
 /// # Example (manifest-only container)
 ///
 /// ```ignore
-/// use extensions_sdk::NodeKind;
+/// use blocks_sdk::NodeKind;
 ///
 /// #[derive(NodeKind)]
 /// #[node(

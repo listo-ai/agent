@@ -39,7 +39,7 @@ export type {
   PluginLifecycle,
   PluginRuntimeState,
   PluginRuntimeEntry,
-} from "./schemas/plugin.js";
+} from "./schemas/block.js";
 export type { WhoAmI, Scope } from "./schemas/auth.js";
 // FleetScope is both a const namespace (constructors/guards) and a discriminated
 // union type — a single export covers both because TS tracks value and type

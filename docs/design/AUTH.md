@@ -34,7 +34,7 @@ Multi-tenancy is native, not simulated. Every token carries the org it was issue
 | **Human user** | Admins, operators, developers | OIDC with PKCE via Zitadel login UI | Short access token (1h), refresh token (30d) |
 | **Edge agent** | Every deployed agent | Service account with rotating key, JWT-signed | Short access token (1h), refreshed automatically |
 | **CLI user** | Developers on their laptop | Device authorization flow, tokens cached in OS keystore | Same as human user |
-| **Extension author / publisher** | People publishing to the registry | OIDC + scoped API key | API key long-lived, per-action JWT short |
+| **Block author / publisher** | People publishing to the registry | OIDC + scoped API key | API key long-lived, per-action JWT short |
 | **MCP session** | LLM acting on behalf of a user | Inherits user's token; per-session capability limits | Scoped to the parent session |
 
 ## The authentication flows
@@ -75,9 +75,9 @@ Client credentials flow with service account:
 3. Tokens refreshed automatically before expiry
 4. Credential key rotatable via Control Plane without agent redeploy
 
-### Extension publisher
+### Block publisher
 
-API key for long-running automation (CI/CD pipelines publishing extensions), OIDC for interactive use. API keys are scoped — publish-only, not admin.
+API key for long-running automation (CI/CD pipelines publishing blocks), OIDC for interactive use. API keys are scoped — publish-only, not admin.
 
 ## Token format
 
@@ -136,12 +136,12 @@ Separate from authentication. After we know *who* the caller is, we decide *what
 | **Flow editor** | Within an org | CRUD flows, deploy to dev environments |
 | **Flow operator** | Within an org | Pause/resume flows, view logs; cannot edit |
 | **Viewer** | Within an org | Read-only |
-| **Extension publisher** | Within an org | Publish extensions to private registry |
+| **Block publisher** | Within an org | Publish blocks to private registry |
 | **Service account** | Limited | Only what its scopes allow |
 
 ### Permission model
 
-Role-based for most things, capability-based for MCP and extensions:
+Role-based for most things, capability-based for MCP and blocks:
 
 - **RBAC** — role → set of permitted actions, attached to every endpoint
 - **Capability tokens** — scoped tokens for narrow actions (e.g. "this MCP session can only read flows X, Y, Z")
@@ -157,7 +157,7 @@ Zitadel handles what it's good at; we handle what it isn't:
 |---|---|
 | User accounts, passwords, MFA | Per-resource ownership checks |
 | SSO federation (SAML, OIDC) | Flow-specific permissions (who can deploy where) |
-| Social login | Extension registry permissions |
+| Social login | Block registry permissions |
 | Password policies, lockout | MCP per-tool permissions |
 | User lifecycle (invite, suspend, delete) | Fine-grained audit of every action |
 | Organization structure | Quota enforcement |
@@ -173,12 +173,12 @@ This is the reason Zitadel beats rolling our own — enterprise SSO is thousands
 
 ## Offline operation
 
-The edge agent must keep running when the cloud is unreachable. We honor JWT semantics — **no local extension of token lifetime past `exp`**. Offline tolerance comes from token lifetime, not from bending verification.
+The edge agent must keep running when the cloud is unreachable. We honor JWT semantics — **no local block of token lifetime past `exp`**. Offline tolerance comes from token lifetime, not from bending verification.
 
 | Scenario | Behavior |
 |---|---|
 | JWKS cached (fresh or within 24h stale ceiling), token unexpired | Full verification, all operations allowed |
-| Token expired, refresh endpoint unreachable | Session ends at `exp`. No fake extensions. User must re-authenticate when cloud returns. |
+| Token expired, refresh endpoint unreachable | Session ends at `exp`. No fake blocks. User must re-authenticate when cloud returns. |
 | JWKS cache expired past 24h ceiling | Verification fails closed |
 | Cache completely empty | Agent refuses to authenticate new sessions; existing sessions continue on their current tokens until `exp` |
 
@@ -219,7 +219,7 @@ Stored durably, queryable by org admins, exportable for compliance.
 | Edge agent service credential | Sealed file with OS permissions, or TPM if available |
 | Zitadel admin API credential | Control Plane secret store (sealed config / k8s secret) |
 | JWKS cache | In-memory, refreshed on startup |
-| Signing keys for extension registry | HSM in production, encrypted file in dev |
+| Signing keys for block registry | HSM in production, encrypted file in dev |
 
 ## Failure modes and mitigations
 
@@ -242,7 +242,7 @@ Stored durably, queryable by org admins, exportable for compliance.
 
 ## Stage in the coding plan
 
-Stage 7 — after persistence, deployment profiles, and messaging are stable. Early enough that every subsequent stage (API, CLI, MCP, extensions) is built on the final auth model. Building auth retroactively means touching every endpoint.
+Stage 7 — after persistence, deployment profiles, and messaging are stable. Early enough that every subsequent stage (API, CLI, MCP, blocks) is built on the final auth model. Building auth retroactively means touching every endpoint.
 
 ## Stack recap
 

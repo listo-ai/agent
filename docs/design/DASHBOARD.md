@@ -1,6 +1,6 @@
 # Scope — Generic Dashboard Backend
 
-A framework-level backend for user-authored dashboards. Domain-agnostic: ships zero concepts about buildings, devices, tickets, CRMs, or anything else. Users and extensions bring the domain; the framework provides structure, reuse, and wiring.
+A framework-level backend for user-authored dashboards. Domain-agnostic: ships zero concepts about buildings, devices, tickets, CRMs, or anything else. Users and blocks bring the domain; the framework provides structure, reuse, and wiring.
 
 ## Current status
 
@@ -13,7 +13,7 @@ Let users compose navigable, reusable, context-driven dashboards out of nodes �
 ## Non-goals
 
 - Rendering. This is backend only. json-render + Studio own rendering.
-- Widget implementations. Widget *types* are contributed by extensions, not the framework.
+- Widget implementations. Widget *types* are contributed by blocks, not the framework.
 - Domain vocabulary. No assumptions about what a user's nodes mean.
 - Time-series storage. Telemetry lives in the TSDB; widgets query it through existing telemetry APIs.
 - A second query language. Reuse `/crates/query/` and the existing template resolver.
@@ -147,7 +147,7 @@ Templates evolve. Pages must not silently break.
 3. **Context resolver** — given a `ui.nav` path (or explicit stack), produce a validated context stack with alias-collision handling.
 4. **Binding resolver** — given a `ui.page` + context stack + pageState, produce a resolved render tree **and** a subscription plan. Cache-key-indexed.
 5. **Query templating integration** — feeds `$stack.*`, `$self.*`, `$user.*`, `$page.*` into the existing template engine used by RSQL.
-6. **Widget-type registry** — extensions register widget types via `contributions.widgets[]`. Backend validates that a `ui.widget.widgetType` references a known type.
+6. **Widget-type registry** — blocks register widget types via `contributions.widgets[]`. Backend validates that a `ui.widget.widgetType` references a known type.
 7. **ACL redaction** — per-widget forbidden placeholders with audit events.
 8. **Transport** — REST endpoints (gRPC deferred; the Rust/TS clients + CLI all speak REST):
    - `GET /api/v1/ui/nav?root=<id>` → nav tree slice rooted at the given `ui.nav` id
@@ -205,7 +205,7 @@ No `dashboard-data` crate — persistence goes through the existing node reposit
 - Deleting a bound node mid-session emits `ui.invalidate`; the next resolve returns `ui.widget.dangling`.
 - Editing a template to a non-breaking new version auto-upgrades dependent pages on next save; a breaking edit leaves pages pinned to the old version and surfaces a migration signal.
 - Subscription subjects emitted by the resolver match exactly the set of bound node slots the caller has read access to.
-- Adding a new widget type in an extension requires zero backend changes.
+- Adding a new widget type in an block requires zero backend changes.
 - Resolve of a well-formed 200-widget page completes within agreed latency budget (TBD; measured under M3).
 - Zero occurrences of domain-specific strings in `/crates/dashboard-*`.
 

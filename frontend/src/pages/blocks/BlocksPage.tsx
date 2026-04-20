@@ -1,7 +1,7 @@
 import { useState, version as hostReactVersion, type ComponentType } from "react";
-import { useExtensionsStore } from "@/store/extensions";
-import { loadExtension } from "@/extensions/loader";
-import type { ExtensionManifest } from "@/extensions/types";
+import { useBlocksStore } from "@/store/blocks";
+import { loadBlock } from "@/blocks/loader";
+import type { BlockManifest } from "@/blocks/types";
 import {
   Badge,
   Button,
@@ -12,11 +12,11 @@ import {
   CardTitle,
 } from "@/components/ui";
 
-// Hard-coded manifest for the dev example plugin.
+// Hard-coded manifest for the dev example block.
 // In production, manifests come from the Control Plane (Stage 10 / backend).
-const HELLO_MANIFEST: ExtensionManifest = {
+const HELLO_MANIFEST: BlockManifest = {
   id: "sys.example.hello",
-  name: "Hello Plugin",
+  name: "Hello Block",
   version: "0.1.0",
   trust: "first-party",
   remoteEntry: "http://localhost:3001/mf-manifest.json",
@@ -34,14 +34,14 @@ type RemoteModule = {
 // Page component
 // ---------------------------------------------------------------------------
 
-export function ExtensionsPage() {
-  const extensions = useExtensionsStore((s) => [...s.extensions.values()]);
+export function BlocksPage() {
+  const blocks = useBlocksStore((s) => [...s.blocks.values()]);
   const [remote, setRemote] = useState<RemoteModule | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function loadHello() {
     setLoading(true);
-    const mod = (await loadExtension(HELLO_MANIFEST)) as RemoteModule | null;
+    const mod = (await loadBlock(HELLO_MANIFEST)) as RemoteModule | null;
     setRemote(mod);
     setLoading(false);
   }
@@ -52,7 +52,7 @@ export function ExtensionsPage() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
-      <h1 className="text-base font-semibold">Extensions</h1>
+      <h1 className="text-base font-semibold">Blocks</h1>
 
       {/* --- MF proof-of-concept panel --- */}
       <MFPocCard
@@ -64,12 +64,12 @@ export function ExtensionsPage() {
         RemotePanel={RemotePanel}
       />
 
-      {/* --- Installed extensions list --- */}
-      {extensions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No extensions loaded.</p>
+      {/* --- Installed blocks list --- */}
+      {blocks.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No blocks loaded.</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {extensions.map(({ manifest, status, error }) => (
+          {blocks.map(({ manifest, status, error }) => (
             <li key={manifest.id}>
               <Card className="py-3">
                 <CardContent className="px-4 py-0">
@@ -121,15 +121,15 @@ function MFPocCard({
       <CardHeader>
         <CardTitle className="text-sm">Module Federation POC</CardTitle>
         <CardDescription>
-          Loads <code>@sys/plugin-hello</code> from{" "}
+          Loads <code>@sys/block-hello</code> from{" "}
           <code>http://localhost:3001</code>.
-          Run <code>pnpm -F @sys/plugin-hello dev</code> first.
+          Run <code>pnpm -F @sys/block-hello dev</code> first.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-3 text-xs">
           <Button size="xs" onClick={onLoad} disabled={loading}>
-            {loading ? "Loading…" : hasRemote ? "Reload plugin" : "Load plugin"}
+            {loading ? "Loading…" : hasRemote ? "Reload block" : "Load block"}
           </Button>
           <span>
             host React: <code>{hostReactVersion}</code>

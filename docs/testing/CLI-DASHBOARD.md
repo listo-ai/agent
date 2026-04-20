@@ -1,6 +1,6 @@
 # Testing dashboards via the CLI
 
-Goal: author SDUI pages (and plugin-owned views) entirely from `agent <cmd>` — the frontend becomes a pure projector of whatever JSON the agent serves. This is the workflow AI assistants should use when a user prompt says *"make me a dashboard for this flow"* or *"add a panel that shows the heartbeat live."*
+Goal: author SDUI pages (and block-owned views) entirely from `agent <cmd>` — the frontend becomes a pure projector of whatever JSON the agent serves. This is the workflow AI assistants should use when a user prompt says *"make me a dashboard for this flow"* or *"add a panel that shows the heartbeat live."*
 
 See also:
 
@@ -23,7 +23,7 @@ Two routes matter in Studio:
 
 Both return the same response shape: `{ render, subscriptions, meta }`. The renderer doesn't care which endpoint produced the tree.
 
-LLM heuristic: if the user wants *one specific dashboard* → author a `ui.page`. If the user wants *every instance of kind X to have a page* → ship a `views:` entry on the kind manifest (plugin-authored, not CLI) and use `/render/<id>` to hit any instance.
+LLM heuristic: if the user wants *one specific dashboard* → author a `ui.page`. If the user wants *every instance of kind X to have a page* → ship a `views:` entry on the kind manifest (block-authored, not CLI) and use `/render/<id>` to hit any instance.
 
 ---
 
@@ -139,11 +139,11 @@ Each plan's `subjects` array should contain one `node.<id>.slot.<name>` per slot
 
 ---
 
-## Authoring a kind view — plugin-authored default screens
+## Authoring a kind view — block-authored default screens
 
 When every instance of `sys.logic.heartbeat` should get the same dashboard, don't create N pages — add a `views:` entry to the kind manifest. The `/ui/render` endpoint picks it up automatically.
 
-Kind manifests live in YAML alongside the plugin ([`crates/domain-logic/manifests/heartbeat.yaml`](../../crates/domain-logic/manifests/heartbeat.yaml) is the live example):
+Kind manifests live in YAML alongside the block ([`crates/domain-logic/manifests/heartbeat.yaml`](../../crates/domain-logic/manifests/heartbeat.yaml) is the live example):
 
 ```yaml
 views:
@@ -181,7 +181,7 @@ Supported `$target` bindings: `id`, `path`, `name`, `kind`, and any slot name.
 
 When no `view` parameter is supplied, the highest-`priority` view wins; ties break by declaration order.
 
-If a target is a `ui.page`, `/render/<id>` falls through to the page's `layout` slot — same tree `/ui/resolve` returns. This is why Studio sidebar clicks can use a single route regardless of whether the clicked node is an authored page or a plugin-kind instance.
+If a target is a `ui.page`, `/render/<id>` falls through to the page's `layout` slot — same tree `/ui/resolve` returns. This is why Studio sidebar clicks can use a single route regardless of whether the clicked node is an authored page or a block-kind instance.
 
 ---
 

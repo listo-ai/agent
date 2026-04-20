@@ -26,6 +26,8 @@ dependencies = [
  "anyhow",
  "auth",
  "axum",
+ "blocks-host",
+ "blocks-sdk",
  "clap",
  "config",
  "dashboard-nodes",
@@ -34,15 +36,13 @@ dependencies = [
  "data-repos",
  "data-sqlite",
  "data-tsdb",
+ "domain-blocks",
  "domain-compute",
- "domain-extensions",
  "domain-fleet",
  "domain-flows",
  "domain-history",
  "domain-logic",
  "engine",
- "extensions-host",
- "extensions-sdk",
  "graph",
  "messaging",
  "serde_json",
@@ -372,6 +372,65 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "blocks-host"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "futures-core",
+ "graph",
+ "hyper-util",
+ "process-wrap",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "spi",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tonic",
+ "tower 0.5.3",
+ "tracing",
+ "transport-grpc",
+ "wasmtime",
+ "wat",
+]
+
+[[package]]
+name = "blocks-sdk"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "blocks-sdk-macros",
+ "hyper-util",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "spi",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tower 0.5.3",
+ "transport-grpc",
+]
+
+[[package]]
+name = "blocks-sdk-macros"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "serde_yml",
+ "spi",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -799,7 +858,7 @@ dependencies = [
 name = "dashboard-nodes"
 version = "0.0.1"
 dependencies = [
- "extensions-sdk",
+ "blocks-sdk",
  "graph",
  "serde",
  "serde_json",
@@ -982,11 +1041,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-blocks"
+version = "0.0.1"
+dependencies = [
+ "blocks-sdk",
+ "graph",
+ "spi",
+]
+
+[[package]]
 name = "domain-compute"
 version = "0.0.1"
 dependencies = [
+ "blocks-sdk",
  "engine",
- "extensions-sdk",
  "graph",
  "serde",
  "serde_json",
@@ -1004,19 +1072,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain-extensions"
-version = "0.0.1"
-dependencies = [
- "extensions-sdk",
- "graph",
- "spi",
-]
-
-[[package]]
 name = "domain-fleet"
 version = "0.0.1"
 dependencies = [
- "extensions-sdk",
+ "blocks-sdk",
  "graph",
  "spi",
 ]
@@ -1038,11 +1097,11 @@ dependencies = [
 name = "domain-history"
 version = "0.0.1"
 dependencies = [
+ "blocks-sdk",
  "data-repos",
  "data-sqlite",
  "data-tsdb",
  "engine",
- "extensions-sdk",
  "graph",
  "serde",
  "serde_json",
@@ -1058,8 +1117,8 @@ dependencies = [
 name = "domain-logic"
 version = "0.0.1"
 dependencies = [
+ "blocks-sdk",
  "engine",
- "extensions-sdk",
  "graph",
  "serde",
  "serde_json",
@@ -1096,7 +1155,7 @@ name = "engine"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "extensions-sdk",
+ "blocks-sdk",
  "graph",
  "serde",
  "serde_json",
@@ -1131,65 +1190,6 @@ dependencies = [
  "concurrent-queue",
  "parking",
  "pin-project-lite",
-]
-
-[[package]]
-name = "extensions-host"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "futures-core",
- "graph",
- "hyper-util",
- "process-wrap",
- "semver",
- "serde",
- "serde_json",
- "serde_yml",
- "spi",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tonic",
- "tower 0.5.3",
- "tracing",
- "transport-grpc",
- "wasmtime",
- "wat",
-]
-
-[[package]]
-name = "extensions-sdk"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "extensions-sdk-macros",
- "hyper-util",
- "serde",
- "serde_json",
- "serde_yml",
- "spi",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-stream",
- "tonic",
- "tower 0.5.3",
- "transport-grpc",
-]
-
-[[package]]
-name = "extensions-sdk-macros"
-version = "0.0.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_json",
- "serde_yml",
- "spi",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -1456,9 +1456,9 @@ dependencies = [
 name = "graph"
 version = "0.0.1"
 dependencies = [
+ "blocks-sdk",
  "data-repos",
  "data-sqlite",
- "extensions-sdk",
  "serde",
  "serde_json",
  "spi",
@@ -4330,6 +4330,8 @@ dependencies = [
  "agent-client",
  "anyhow",
  "axum",
+ "blocks-host",
+ "blocks-sdk",
  "clap",
  "dashboard-nodes",
  "dashboard-runtime",
@@ -4339,8 +4341,6 @@ dependencies = [
  "domain-flows",
  "domain-logic",
  "engine",
- "extensions-host",
- "extensions-sdk",
  "graph",
  "schemars 0.8.22",
  "serde",
@@ -4395,6 +4395,8 @@ dependencies = [
  "async-trait",
  "auth",
  "axum",
+ "blocks-host",
+ "blocks-sdk",
  "data-entities",
  "data-repos",
  "data-sqlite",
@@ -4402,8 +4404,6 @@ dependencies = [
  "domain-flows",
  "domain-history",
  "engine",
- "extensions-host",
- "extensions-sdk",
  "futures-util",
  "graph",
  "query",

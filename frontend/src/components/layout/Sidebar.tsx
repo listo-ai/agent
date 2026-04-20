@@ -39,8 +39,8 @@ interface NavItem { label: string; to: string; icon: React.ElementType; }
 
 const BOTTOM_NAV: NavItem[] = [
   { label: "Pages",      to: "/pages",      icon: FileText },
-  { label: "Extensions", to: "/extensions", icon: Puzzle },
-  { label: "Plugins",    to: "/plugins",    icon: Package },
+  { label: "Blocks", to: "/blocks", icon: Puzzle },
+  { label: "Plugins",    to: "/blocks",    icon: Package },
   { label: "Settings",   to: "/settings",   icon: Settings },
 ];
 

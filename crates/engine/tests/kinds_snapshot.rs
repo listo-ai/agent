@@ -9,7 +9,7 @@
 //! gate on seed kinds.
 
 use engine::kinds::{Flow, ReadSlot, WriteSlot};
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 use serde_json::json;
 use spi::{
     Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindId, KindManifest,

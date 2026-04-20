@@ -16,7 +16,7 @@ export interface CapabilityRequirement {
 
 /**
  * Capabilities the host agent must provide before any call proceeds.
- * Mirrors the `requires!` macro pattern in the Rust extension system.
+ * Mirrors the `requires!` macro pattern in the Rust block system.
  */
 export const REQUIRED_CAPABILITIES: readonly CapabilityRequirement[] = [
   { id: "spi.msg",         range: "^1" },

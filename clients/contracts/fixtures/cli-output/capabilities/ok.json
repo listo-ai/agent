@@ -9,7 +9,7 @@
   },
   "capabilities": [
     {
-      "id": "spi.extension.proto",
+      "id": "spi.block.proto",
       "version": "1.0.0",
       "deprecated_since": null,
       "removal_planned": null

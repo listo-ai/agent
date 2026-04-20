@@ -48,9 +48,9 @@ pub fn mount(state: AppState) -> Router {
         .route("/api/v1/seed", post(seed_preset))
         // UI is unversioned — it's a tool, not a contract.
         .route("/", get(ui::index))
-        // Plugin REST + MF bundle serving — contributed by the plugins
+        // Block REST + MF bundle serving — contributed by the blocks
         // module, merged in so the tower layers below apply uniformly.
-        .merge(crate::plugins::routes())
+        .merge(crate::blocks::routes())
         .merge(crate::kinds::routes())
         .merge(crate::auth_routes::routes())
         .merge(crate::flows::routes())
@@ -618,7 +618,7 @@ mod tests {
     use std::sync::Arc;
 
     use engine::BehaviorRegistry;
-    use extensions_host::PluginRegistry;
+    use blocks_host::BlockRegistry;
     use graph::{seed, GraphStore, KindRegistry};
     use tokio::sync::broadcast;
 
@@ -637,7 +637,7 @@ mod tests {
             .unwrap();
         let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
         let (events, _) = broadcast::channel(16);
-        AppState::new(graph, behaviors, events, PluginRegistry::new())
+        AppState::new(graph, behaviors, events, BlockRegistry::new())
     }
 
     #[tokio::test]

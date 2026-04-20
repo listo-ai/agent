@@ -1014,14 +1014,14 @@ static KINDS_LIST: CommandMeta = CommandMeta {
     }],
 };
 
-// ---- plugins --------------------------------------------------------------
+// ---- blocks --------------------------------------------------------------
 
 static PLUGINS_LIST: CommandMeta = CommandMeta {
-    name: "plugins list",
-    summary: "List all loaded plugins.",
+    name: "blocks list",
+    summary: "List all loaded blocks.",
     args: &[],
-    examples: &["agent plugins list"],
-    related: &["plugins get", "plugins reload"],
+    examples: &["agent blocks list"],
+    related: &["blocks get", "blocks reload"],
     input_schema: empty_input,
     output_schema: schema_for_vec::<types::PluginSummary>,
     errors: &[ErrorInfo {
@@ -1031,16 +1031,16 @@ static PLUGINS_LIST: CommandMeta = CommandMeta {
 };
 
 static PLUGINS_GET: CommandMeta = CommandMeta {
-    name: "plugins get",
-    summary: "Get details for a single plugin by id.",
+    name: "blocks get",
+    summary: "Get details for a single block by id.",
     args: &[ArgInfo {
         name: "id",
         required: true,
-        type_name: "plugin-id",
-        description: "Plugin id",
+        type_name: "block-id",
+        description: "Block id",
     }],
-    examples: &["agent plugins get acme-plugin"],
-    related: &["plugins list", "plugins enable", "plugins disable"],
+    examples: &["agent blocks get acme-block"],
+    related: &["blocks list", "blocks enable", "blocks disable"],
     input_schema: || {
         serde_json::json!({
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1065,16 +1065,16 @@ static PLUGINS_GET: CommandMeta = CommandMeta {
 };
 
 static PLUGINS_ENABLE: CommandMeta = CommandMeta {
-    name: "plugins enable",
-    summary: "Enable a plugin.",
+    name: "blocks enable",
+    summary: "Enable a block.",
     args: &[ArgInfo {
         name: "id",
         required: true,
-        type_name: "plugin-id",
-        description: "Plugin id",
+        type_name: "block-id",
+        description: "Block id",
     }],
-    examples: &["agent plugins enable acme-plugin"],
-    related: &["plugins list", "plugins disable"],
+    examples: &["agent blocks enable acme-block"],
+    related: &["blocks list", "blocks disable"],
     input_schema: || {
         serde_json::json!({
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1099,16 +1099,16 @@ static PLUGINS_ENABLE: CommandMeta = CommandMeta {
 };
 
 static PLUGINS_DISABLE: CommandMeta = CommandMeta {
-    name: "plugins disable",
-    summary: "Disable a plugin.",
+    name: "blocks disable",
+    summary: "Disable a block.",
     args: &[ArgInfo {
         name: "id",
         required: true,
-        type_name: "plugin-id",
-        description: "Plugin id",
+        type_name: "block-id",
+        description: "Block id",
     }],
-    examples: &["agent plugins disable acme-plugin"],
-    related: &["plugins list", "plugins enable"],
+    examples: &["agent blocks disable acme-block"],
+    related: &["blocks list", "blocks enable"],
     input_schema: || {
         serde_json::json!({
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1133,11 +1133,11 @@ static PLUGINS_DISABLE: CommandMeta = CommandMeta {
 };
 
 static PLUGINS_RELOAD: CommandMeta = CommandMeta {
-    name: "plugins reload",
-    summary: "Trigger a full plugin reload scan.",
+    name: "blocks reload",
+    summary: "Trigger a full block reload scan.",
     args: &[],
-    examples: &["agent plugins reload"],
-    related: &["plugins list"],
+    examples: &["agent blocks reload"],
+    related: &["blocks list"],
     input_schema: empty_input,
     output_schema: status_output,
     errors: &[ErrorInfo {
@@ -1147,16 +1147,16 @@ static PLUGINS_RELOAD: CommandMeta = CommandMeta {
 };
 
 static PLUGINS_RUNTIME: CommandMeta = CommandMeta {
-    name: "plugins runtime",
-    summary: "Get the process-runtime state for one plugin.",
+    name: "blocks runtime",
+    summary: "Get the process-runtime state for one block.",
     args: &[ArgInfo {
         name: "id",
         required: true,
-        type_name: "plugin-id",
-        description: "Plugin id",
+        type_name: "block-id",
+        description: "Block id",
     }],
-    examples: &["agent plugins runtime com.acme.bacnet"],
-    related: &["plugins runtime-all", "plugins list"],
+    examples: &["agent blocks runtime com.acme.bacnet"],
+    related: &["blocks runtime-all", "blocks list"],
     input_schema: || {
         serde_json::json!({
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1181,11 +1181,11 @@ static PLUGINS_RUNTIME: CommandMeta = CommandMeta {
 };
 
 static PLUGINS_RUNTIME_ALL: CommandMeta = CommandMeta {
-    name: "plugins runtime-all",
-    summary: "Snapshot runtime state of every process plugin.",
+    name: "blocks runtime-all",
+    summary: "Snapshot runtime state of every process block.",
     args: &[],
-    examples: &["agent plugins runtime-all"],
-    related: &["plugins runtime", "plugins list"],
+    examples: &["agent blocks runtime-all"],
+    related: &["blocks runtime", "blocks list"],
     input_schema: empty_input,
     output_schema: schema_for_vec::<types::PluginRuntimeState>,
     errors: &[ErrorInfo {

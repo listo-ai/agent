@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use engine::BehaviorRegistry;
-use extensions_host::PluginRegistry;
+use blocks_host::BlockRegistry;
 use graph::{seed as graph_seed, GraphStore, KindRegistry, NullSink};
 use spi::{FleetTransport, KindId, NodePath, Subject, TenantId};
 use tokio::sync::broadcast;
@@ -38,7 +38,7 @@ fn make_state_with_fleet(fleet: Arc<dyn FleetTransport>) -> AppState {
 
     let (events, _) = broadcast::channel(16);
     let (behaviors, _) = BehaviorRegistry::new(graph.clone());
-    AppState::new(graph, behaviors, events, PluginRegistry::new()).with_fleet(fleet)
+    AppState::new(graph, behaviors, events, BlockRegistry::new()).with_fleet(fleet)
 }
 
 /// Run two Zenoh peers on loopback: `edge` mounts the fleet handlers,

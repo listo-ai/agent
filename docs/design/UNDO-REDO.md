@@ -401,7 +401,7 @@ Numbers are **uncompressed JSON**. With zstd (see open questions) expect 3–5×
 
 ## Historical settings materialisation (v1 contract)
 
-Extension authors ship outside our release cycle. A node kind on v2 of its schema may have revisions in the table written against v1. `GET /nodes/{id}/settings/revisions/{revId}` must always return *something usable*, not crash or return corrupted data.
+Block authors ship outside our release cycle. A node kind on v2 of its schema may have revisions in the table written against v1. `GET /nodes/{id}/settings/revisions/{revId}` must always return *something usable*, not crash or return corrupted data.
 
 **Contract**, effective v1:
 
@@ -419,7 +419,7 @@ Extension authors ship outside our release cycle. A node kind on v2 of its schem
    }
    ```
    The UI renders a read-only diff/preview with a "this revision predates the current kind schema; revert is disabled" banner. **Revert is blocked** when `migration_status != "ok"` — reverting to uninterpretable data would corrupt the live state.
-5. **Missing kind** (extension uninstalled): same shape with `migration_status = "kind-missing"`. Same restriction.
+5. **Missing kind** (block uninstalled): same shape with `migration_status = "kind-missing"`. Same restriction.
 
 The registry hook is a single method on the kind provider: `migrate_settings(from: SchemaVersion, to: SchemaVersion, payload: Value) -> Result<Value, MigrationError>`. Kinds that never break their schema implement a trivial identity. This is additive to [VERSIONING.md](../design/VERSIONING.md)'s existing schema-version discipline; the work is wiring, not new policy.
 

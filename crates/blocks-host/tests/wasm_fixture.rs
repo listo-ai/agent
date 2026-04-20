@@ -1,20 +1,20 @@
 //! Integration tests for `WasmSupervisor` using a hand-written WAT
 //! fixture compiled at test time.
 //!
-//! Using WAT (not the real example plugin) keeps CI independent of
+//! Using WAT (not the real example block) keeps CI independent of
 //! the wasm toolchain — the test always runs, even without
-//! `wasm32-unknown-unknown` installed. The example plugin under
-//! `plugins/com.acme.wasm-demo/` is verified end-to-end by an
+//! `wasm32-unknown-unknown` installed. The example block under
+//! `blocks/com.acme.wasm-demo/` is verified end-to-end by an
 //! integration workflow when the toolchain IS available.
 
 #![allow(clippy::unwrap_used)]
 
 use std::io::Write;
 
-use extensions_host::wasm::{
+use blocks_host::wasm::{
     DescribeResponse, KindDecl, OutputMsg, WasmError, WasmLimits, WasmSupervisor,
 };
-use extensions_host::PluginId;
+use blocks_host::BlockId;
 
 /// Build a minimal `.wasm` fixture in a temp file and return its path.
 ///
@@ -112,7 +112,7 @@ fn bytes_to_wat_literal(bytes: &[u8]) -> String {
 
 #[test]
 fn load_describes_identity_and_kinds() {
-    let pid = PluginId::parse("com.acme.wasm-demo").unwrap();
+    let pid = BlockId::parse("com.acme.wasm-demo").unwrap();
     let f = build_fixture(
         "com.acme.wasm-demo",
         &[
@@ -130,17 +130,17 @@ fn load_describes_identity_and_kinds() {
 
 #[test]
 fn identity_mismatch_is_rejected() {
-    let pid = PluginId::parse("com.acme.wasm-demo").unwrap();
+    let pid = BlockId::parse("com.acme.wasm-demo").unwrap();
     // Fixture claims a different id.
-    let f = build_fixture("com.other.plugin", &[]);
+    let f = build_fixture("com.other.block", &[]);
     let err = WasmSupervisor::load(&pid, f.path(), WasmLimits::default()).unwrap_err();
     assert!(matches!(err, WasmError::IdentityMismatch { .. }));
 }
 
 #[test]
 fn namespace_violation_is_rejected() {
-    let pid = PluginId::parse("com.acme.wasm-demo").unwrap();
-    // Kind id lives outside the plugin's namespace.
+    let pid = BlockId::parse("com.acme.wasm-demo").unwrap();
+    // Kind id lives outside the block's namespace.
     let f = build_fixture("com.acme.wasm-demo", &["sys.core.folder"]);
     let err = WasmSupervisor::load(&pid, f.path(), WasmLimits::default()).unwrap_err();
     assert!(matches!(err, WasmError::NamespaceViolation { .. }));
@@ -148,7 +148,7 @@ fn namespace_violation_is_rejected() {
 
 #[test]
 fn on_input_returns_empty_vec() {
-    let pid = PluginId::parse("com.acme.wasm-demo").unwrap();
+    let pid = BlockId::parse("com.acme.wasm-demo").unwrap();
     let f = build_fixture("com.acme.wasm-demo", &["com.acme.wasm-demo.double"]);
     let sup = WasmSupervisor::load(&pid, f.path(), WasmLimits::default()).unwrap();
     let out = sup
@@ -169,7 +169,7 @@ fn missing_export_is_reported() {
     let wasm = wat::parse_str(wat).unwrap();
     let mut f = tempfile::Builder::new().suffix(".wasm").tempfile().unwrap();
     f.write_all(&wasm).unwrap();
-    let pid = PluginId::parse("com.acme.wasm-demo").unwrap();
+    let pid = BlockId::parse("com.acme.wasm-demo").unwrap();
     let err = WasmSupervisor::load(&pid, f.path(), WasmLimits::default()).unwrap_err();
     assert!(matches!(err, WasmError::MissingExport { .. }));
 }

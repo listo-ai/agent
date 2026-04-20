@@ -17,7 +17,7 @@ Slots today hold live values. There is no declared way to:
 - Query historical values through the same surfaces as current values.
 - Keep the same behaviour on a 512 MB edge box as on a cloud pod.
 
-Without this, every extension that wants history invents its own table and every flow that wants "last hour of values" calls a different API per driver. That is the exact failure mode [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) exists to prevent.
+Without this, every block that wants history invents its own table and every flow that wants "last hour of values" calls a different API per driver. That is the exact failure mode [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) exists to prevent.
 
 ## Goals
 
@@ -27,11 +27,11 @@ Without this, every extension that wants history invents its own table and every
    - **COV** — semantics depend on slot type (see "COV semantics per type" below).
    - **Interval** — periodic sample at `period_ms`, optionally aligned to wall-clock multiples of `period_ms` from epoch.
    - **On demand** — only records when a flow or REST call fires `history.record`.
-4. **One database per deployment, schema-split by access pattern.** The same DB holds OLTP tables, time-series tables, and structured-history tables. Edge = single SQLite file. Cloud = single Postgres with the TimescaleDB extension enabled. No separate telemetry service, no dual-write coordination.
+4. **One database per deployment, schema-split by access pattern.** The same DB holds OLTP tables, time-series tables, and structured-history tables. Edge = single SQLite file. Cloud = single Postgres with the TimescaleDB block enabled. No separate telemetry service, no dual-write coordination.
 5. **Storage split as a hard contract (schema, not DB).** `Bool` and `Number` slots → time-series tables (rolling buckets on edge, Timescale hypertables on cloud). `String`, `Json`, `Binary` → regular `slot_history` table. Declaration at schema time binds the table shape; no implicit routing, no overrides. If an author wants time-series semantics (downsample, range aggregation), they declare `Number`.
 6. **Edge ↔ cloud parity.** The historizer trait is identical in both. The `TelemetryRepo` seam ([CODE-LAYOUT.md `data-tsdb`](CODE-LAYOUT.md)) exists to hide SQL-dialect differences (SQLite window functions vs Timescale `time_bucket`), **not** to hide a separate database.
 7. **Queryable through existing surfaces.** Current value via `GET /slots/{slot}` (unchanged); scalar history via `/api/v1/telemetry/*` (range + aggregation + downsample); structured history via RSQL on `/slots/{slot}/history`.
-8. **Generic.** Any node kind — first-party or extension — gets historization for free by declaring slot types and letting users attach a `HistoryConfig` child.
+8. **Generic.** Any node kind — first-party or block — gets historization for free by declaring slot types and letting users attach a `HistoryConfig` child.
 
 ## Non-goals
 
@@ -50,7 +50,7 @@ Without this, every extension that wants history invents its own table and every
 
 | Decision | Choice | Why |
 |---|---|---|
-| Where policy config lives | A child node (`sys.core.history.config`) | Composable, RBAC-uniform, audit-uniform, extensions can add new store kinds |
+| Where policy config lives | A child node (`sys.core.history.config`) | Composable, RBAC-uniform, audit-uniform, blocks can add new store kinds |
 | Cardinality | **One `HistoryConfig` per node**, per-slot policy in its settings | Collapses 500k-slot fan-out by ~20× on typical device trees; keeps everything declarative and queryable |
 | Database topology | One DB per deployment (SQLite on edge, Postgres+Timescale on cloud) | One transaction domain, one backup, one auth, one connection pool |
 | Storage split | Hard contract: `Bool|Number` → time-series tables, `String|Json|Binary` → regular `slot_history` table | Schema-level split in the same DB; authors pick table shape by picking the slot type |
@@ -111,7 +111,7 @@ The precedence is slot → config → platform. Enforcement is a rolling window:
 
 For time-series tables, the cap translates to either row-count on the hypertable/rolling-bucket, or to Timescale retention policies with matching chunk boundaries. For `slot_history`, it's a simple `DELETE ... WHERE id IN (SELECT ... LIMIT 1)` co-committed with the insert.
 
-**Why a global default exists at all.** An extension author declaring a new node kind shouldn't be able to default-configure a slot that eats a gateway's disk in a week. The platform default is a safety net. Operators with real sizing information raise it per-config or per-slot.
+**Why a global default exists at all.** An block author declaring a new node kind shouldn't be able to default-configure a slot that eats a gateway's disk in a week. The platform default is a safety net. Operators with real sizing information raise it per-config or per-slot.
 
 ## Buffered writes — in-memory pool, bulk flush
 
@@ -140,7 +140,7 @@ When the historizer can't keep up, its behaviour depends on the config's tier:
 
 **`SlotWriteRejected` contract (critical tier only):**
 
-- **Extensions:** propagate as a typed error to the caller. No retry inside the extension.
+- **Blocks:** propagate as a typed error to the caller. No retry inside the block.
 - **Flow engine:** fails the flow node with a `SlotWriteRejected` outcome; the flow's error-handling wires decide what happens next (retry node, alarm, drop).
 - **REST/gRPC:** returns HTTP `503` with `Retry-After: <ms>` / gRPC `RESOURCE_EXHAUSTED` with equivalent metadata.
 - **Historizer itself:** never retries internally. No unbounded in-process queues, no silent drops.
@@ -176,7 +176,7 @@ The slot's *live value* is never affected — only history records in-flight bet
 - **Historizer internal back-pressure.** The historizer maintains a bounded per-config ring buffer (default 10k records on edge, 100k cloud). Overflow behaviour is tiered — see "Back-pressure and the `SlotWriteRejected` contract" above. Throughout this doc, "ring buffer" and "queue" refer to the same structure; the former is the implementation, the latter the observable shape.
 - **Config-node fan-out at scale.** With one config per node (not per slot), a 500k-point tree of ~25k devices produces ~25k config nodes, not 500k. Still non-trivial but within the graph's designed envelope. `isSystem` facet hides them from default children listings; `list_children(path, include_system=false)` is the default.
 - **Legacy ARM (`armv7`, 256 MB).** `Json` and `Binary` historization feature-gated off; scalar-only (`Bool`/`Number`) always available.
-- **Extension crash mid-record.** Same `Stale` lifecycle rule as [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) — subscribers see the transition. In-flight records in the historizer queue survive the extension's death (the extension doesn't own the queue).
+- **Block crash mid-record.** Same `Stale` lifecycle rule as [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) — subscribers see the transition. In-flight records in the historizer queue survive the block's death (the block doesn't own the queue).
 - **Clock skew on edge.** COV `min_interval_ms` and interval spacing use the agent's monotonic clock; wall-clock only for `align_to: wall` (align to the nearest multiple of `period_ms` from Unix epoch). Records carry both monotonic offset and wall-clock timestamp. **Each record also carries the edge's NTP sync state at record time**: `ntp_synced: bool` and `last_sync_age_ms`. Downstream consumers can weight or flag records written while the clock was drifting. Post-hoc wall-clock correction is still impossible (we never learn the true offset at record time), but consumers have the signal they need to detect suspect records.
 - **`SlotValue` migration.** Existing `slots.value` is `TEXT NOT NULL` (JSON-encoded). Strategy: add nullable `kind` column; lazy-populate on next write; one-shot backfill at upgrade time behind a progress indicator, chunked to avoid long SQLite write locks (batch size 1000, commit per batch). **Routing is driven by the kind registry, not by `slots.kind`.** The column is a denormalisation for query filters (e.g. `?filter=kind==number`); its population status has no effect on historizer behaviour, because the historizer reads the declared slot type from the kind registry built at boot.
 
@@ -212,7 +212,7 @@ The slot's *live value* is never affected — only history records in-flight bet
 
 - **Retention profile shape** — single `keep_for_days` on the config, or separate per-table-shape (time-series downsample tiers vs regular-table row cap)? Leaning single field with an optional override escape hatch.
 - **History discovery UX** — dedicated "History" tab vs standard child-node listing under the parent?
-- **User-authored history backends** — allow extensions to contribute new backends in v1, or defer to v2?
+- **User-authored history backends** — allow blocks to contribute new backends in v1, or defer to v2?
 - **Edge compression/downsampling** — opt-in per config, or platform-wide policy? (SQLite has no native hypertable compression; we'd implement coarse-bucket rollups manually if needed.)
 - **Critical-config designation** — now defined as `critical: true` in `HistoryConfig` settings (bypasses buffer, per-write commit, refuses rather than drops under back-pressure). Open question: should `critical` also be a queryable **facet** on the config node for RBAC/audit filtering, or is the settings flag enough?
 

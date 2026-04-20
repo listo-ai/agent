@@ -4,7 +4,7 @@
 //! graph tree can hold discovered remotes without any parallel state.
 //! See `docs/design/FLEET-TRANSPORT.md § "The remote-agent node"`.
 
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 use graph::KindRegistry;
 
 /// Register both fleet kinds into the shared [`KindRegistry`].
@@ -19,7 +19,7 @@ pub fn register_kinds(kinds: &KindRegistry) {
 /// `FleetScope::Remote { tenant, agent_id }` (sourced from the config
 /// slots) and all subsequent `AgentClient` calls route via fleet
 /// req/reply instead of local HTTP.
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.fleet.remote-agent",
     manifest = "manifests/remote_agent.yaml",
@@ -30,7 +30,7 @@ pub struct RemoteAgent;
 /// `sys.fleet.group` — container for grouping remote agents by
 /// site, region, or tenant. Nested groups are allowed so operators
 /// can build region → site → rack hierarchies.
-#[derive(extensions_sdk::NodeKind)]
+#[derive(blocks_sdk::NodeKind)]
 #[node(
     kind = "sys.fleet.group",
     manifest = "manifests/group.yaml",

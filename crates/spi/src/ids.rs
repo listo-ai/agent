@@ -1,6 +1,6 @@
 //! Identifier types — small, cheap to clone, serialisable.
 //!
-//! These are part of the contract surface: plugin authors reference them
+//! These are part of the contract surface: block authors reference them
 //! via the SDK's prelude. Keep them here (not in `graph`) so an extension
 //! crate never transitively depends on the graph runtime.
 

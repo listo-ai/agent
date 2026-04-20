@@ -12,7 +12,7 @@ Staged so each stage produces something that runs and each stage proves a specif
 - [DEFERRED] pnpm workspace — lands with Stage 4 (Studio shell) when frontend code is first needed
 - [DEFERRED] CI: fmt, clippy, test, build for `aarch64-unknown-linux-gnu` and `x86_64-unknown-linux-gnu` — repo builds locally; workflow to be added
 - [DONE] `/crates/spi/` — the contracts, written before anything that uses them (path updated from the README's legacy `/packages/spi/`):
-  - [DONE] `extension.proto` — gRPC schema for extensions (describe, discover, subscribe, invoke, health)
+  - [DONE] `block.proto` — gRPC schema for blocks (describe, discover, subscribe, invoke, health)
   - [DONE] `flow.schema.json` — flow document format with `schema_version: 1`
   - [DONE] `node.schema.json` — node manifest format
   - [DONE] `Msg` / `MessageId` envelope (Node-RED-compatible wire shape) per [NODE-AUTHORING.md](../design/NODE-AUTHORING.md)
@@ -34,7 +34,7 @@ Staged so each stage produces something that runs and each stage proves a specif
 - [DONE] `/crates/graph/` — the core crate (see [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md))
 - [DONE] `SlotMap`, `Link`, `NodePath`, `NodeId`, `KindId`, `Lifecycle` state machine with legal-transition table (no single `Node` trait — snapshot access via `NodeSnapshot`; internal `NodeRecord` owned by the store per the "graph is THE CORE" rule)
 - [DONE] Kind registry with reverse-DNS IDs (`sys.*`), facet flags (`Facet`/`FacetSet`), containment schema (`must_live_under`, `may_contain` with kind or facet matchers, `cardinality_per_parent`, `cascade`)
-- [DONE] Placement enforcement on every mutation — single code path in `GraphStore::create_child` covering CRUD. Move / import / extension sync paths land later and reuse the same validator.
+- [DONE] Placement enforcement on every mutation — single code path in `GraphStore::create_child` covering CRUD. Move / import / block sync paths land later and reuse the same validator.
 - [DONE] Cascading delete with link-breakage semantics and `cascade: strict | deny | orphan` per kind (only `strict` and `deny` tested today — `orphan` is parseable but not wired)
 - [DONE] Event bus: `NodeCreated`, `NodeRemoved`, `NodeRenamed`, `SlotChanged`, `LifecycleTransition`, `LinkAdded`, `LinkRemoved`, `LinkBroken` — in-process `EventSink` trait with `VecSink` (tests) and `NullSink`. Adapter from `EventSink` to `messaging::MessageBus` will live in the agent composition root. NATS subject mapping in Stage 6.
 - [DONE] Seed kinds registered: `sys.core.station` (root, cascade=deny), `sys.core.folder` (free container), `sys.compute.math.add` (free leaf), plus the bound-kind demo trio (`sys.driver.demo`, `sys.driver.demo.device`, `sys.driver.demo.point`) proving placement rules end-to-end.
@@ -98,13 +98,13 @@ Staged so each stage produces something that runs and each stage proves a specif
 - Confirm the `println!` / `eprintln!` grep-lint from LOGGING.md passes on the touched crates.
 - Engine's `sys.agent.engine.state` transitions (from Stage 2c) each emit an `info`-level log event with `canonical.kind_id = sys.agent.engine` and the from→to transition — one event per transition, correlatable via the same `request_id` that drove the transition.
 
-**Proves**: the "one log format everywhere" thesis holds across the engine/graph/agent boundary before Stage 3 brings plugin logs into the same stream.
+**Proves**: the "one log format everywhere" thesis holds across the engine/graph/agent boundary before Stage 3 brings block logs into the same stream.
 
 **Proves (today, for 2a):** the graph and engine are one system. Graph events drive propagation through the engine's worker without any special cases, the state machine is the canonical on/off switch for the runtime, and safe-state is a first-class shutdown concern from day one. **Proves (later, for 2b):** flow documents execute through crossflow against the same graph substrate that live-wire already uses.
 
 ## Stage 3 — The three node flavors + the shared SDK
 
-**Goal:** Ship `extensions-sdk` (Rust) + `@sys/extensions-sdk-ts` (TypeScript) and validate that native, Wasm, and extension-process nodes all execute in the same flow through one authoring API.
+**Goal:** Ship `blocks-sdk` (Rust) + `@sys/blocks-sdk-ts` (TypeScript) and validate that native, Wasm, and block-process nodes all execute in the same flow through one authoring API.
 
 **Full scope in [NODE-SCOPE.md](NODE-SCOPE.md).** This section is the stage breakdown; NODE-SCOPE has the manifests, code, decision tables, and deliverable acceptance criteria. Read NODE-SCOPE before starting.
 
@@ -118,9 +118,9 @@ Stage 3a is split into four sub-stages; each merges independently with fmt/clipp
 
 The forcing function for the SDK design: if the SDK can't cleanly describe the kinds Stages 1–2 already ship, the design is wrong.
 
-- [DONE] **Manifest types moved from `graph` to `spi`** — `KindId`, `NodeId`, `NodePath`, `Facet`/`FacetSet`, `ContainmentSchema`/`ParentMatcher`/`Cardinality`/`CascadePolicy`, `SlotRole`/`SlotSchema`, `KindManifest`. The graph crate retains only runtime state (`KindRegistry`, `SlotMap`/`SlotValue`, `NodeRecord`, events, store). Dep arrow is now `extensions-sdk → spi` (not through `graph`), satisfying NODE-SCOPE rule #1. No plugin crate transitively pulls in the graph runtime.
-- [DONE] **`crates/extensions-sdk-macros`** proc-macro crate with `#[derive(NodeKind)]`. Reads the YAML manifest at compile time (path resolved relative to `CARGO_MANIFEST_DIR`), validates it parses as `spi::KindManifest`, checks the `kind` attribute matches the manifest's `id`, and emits `impl NodeKind for T`. Behaviour-less kinds declare `#[node(..., behavior = "none")]`; kinds with their own `impl NodeBehavior` declare `behavior = "custom"`. Omitting the attribute is a compile error — the forcing function so containers can't silently read as no-op behaviour kinds.
-- [DONE] **`crates/extensions-sdk`** — `NodeKind` trait (declarative), `NodeBehavior` trait (declared; dispatch lands in 3a-2), `NodeCtx` stub, `NodeError`, `prelude`, contract-surface re-exports of `spi` types, and mutually-exclusive `native` / `wasm` / `process` features with a `compile_error!` guard enforcing "exactly one".
+- [DONE] **Manifest types moved from `graph` to `spi`** — `KindId`, `NodeId`, `NodePath`, `Facet`/`FacetSet`, `ContainmentSchema`/`ParentMatcher`/`Cardinality`/`CascadePolicy`, `SlotRole`/`SlotSchema`, `KindManifest`. The graph crate retains only runtime state (`KindRegistry`, `SlotMap`/`SlotValue`, `NodeRecord`, events, store). Dep arrow is now `blocks-sdk → spi` (not through `graph`), satisfying NODE-SCOPE rule #1. No block crate transitively pulls in the graph runtime.
+- [DONE] **`crates/blocks-sdk-macros`** proc-macro crate with `#[derive(NodeKind)]`. Reads the YAML manifest at compile time (path resolved relative to `CARGO_MANIFEST_DIR`), validates it parses as `spi::KindManifest`, checks the `kind` attribute matches the manifest's `id`, and emits `impl NodeKind for T`. Behaviour-less kinds declare `#[node(..., behavior = "none")]`; kinds with their own `impl NodeBehavior` declare `behavior = "custom"`. Omitting the attribute is a compile error — the forcing function so containers can't silently read as no-op behaviour kinds.
+- [DONE] **`crates/blocks-sdk`** — `NodeKind` trait (declarative), `NodeBehavior` trait (declared; dispatch lands in 3a-2), `NodeCtx` stub, `NodeError`, `prelude`, contract-surface re-exports of `spi` types, and mutually-exclusive `native` / `wasm` / `process` features with a `compile_error!` guard enforcing "exactly one".
 - [DONE] **Seed + flow-internal kinds migrated** — all nine kinds (`sys.core.station`, `.core.folder`, `.compute.math.add`, `.driver.demo`, `.driver.demo.device`, `.driver.demo.point`, `.core.flow`, `.engine.read_slot`, `.engine.write_slot`) now live as YAML manifests under `crates/{graph,engine}/manifests/` wired via `#[derive(NodeKind)]`. Each kind is a unit struct; registration is `kinds.register(<T as NodeKind>::manifest())`.
 - [DONE] **Snapshot regression tests** (`crates/graph/tests/seed_snapshot.rs`, `crates/engine/tests/kinds_snapshot.rs`) pin the pre-migration `KindManifest` values via JSON-equality. A YAML edit that drifts placement rules, facets, or slot schemas surfaces as a diff against these files — 3b/3c cannot silently drift either.
 - [DONE] `ParentMatcher` serde form switched to a single-key map (`{kind: x}` / `{facet: y}`) via hand-rolled `Serialize`/`Deserialize`; the prior `#[serde(tag = "by")]` did not round-trip through `serde_yml` for transparent-string inner types. Round-trip tests live alongside the type in `crates/spi/src/containment.rs`.
@@ -131,11 +131,11 @@ The forcing function for the SDK design: if the SDK can't cleanly describe the k
 
 First real behaviour kind end-to-end through the new dispatch seam.
 
-- [DONE] **`NodeBehavior` flipped to `&self`** — `crates/extensions-sdk/src/node.rs`. Trait methods take `&self`, not `&mut self`; the parallel-state antipattern at instance granularity is now a compile error. `Count` is a unit struct with no fields.
-- [DONE] **`NodeCtx` native surface** — `crates/extensions-sdk/src/ctx.rs`. Self-scoped only: `read_status(slot)` / `read_config(slot)` / `update_status(slot, value)` / `emit(port, msg)` / `resolve_settings(msg)`. Graph access goes through the `GraphAccess` trait (mockable); emit goes through `EmitSink`. **Cross-node `read_slot(path, slot)` was deliberately dropped** — nodes communicate by message via ports, not by peeking at peers' slots (the doc's draft surface had it; that contradicted NODE-SCOPE encapsulation, so the dispatch surface scopes to self). `schedule` is a stubbed `Err` until 3a-3.
+- [DONE] **`NodeBehavior` flipped to `&self`** — `crates/blocks-sdk/src/node.rs`. Trait methods take `&self`, not `&mut self`; the parallel-state antipattern at instance granularity is now a compile error. `Count` is a unit struct with no fields.
+- [DONE] **`NodeCtx` native surface** — `crates/blocks-sdk/src/ctx.rs`. Self-scoped only: `read_status(slot)` / `read_config(slot)` / `update_status(slot, value)` / `emit(port, msg)` / `resolve_settings(msg)`. Graph access goes through the `GraphAccess` trait (mockable); emit goes through `EmitSink`. **Cross-node `read_slot(path, slot)` was deliberately dropped** — nodes communicate by message via ports, not by peeking at peers' slots (the doc's draft surface had it; that contradicted NODE-SCOPE encapsulation, so the dispatch surface scopes to self). `schedule` is a stubbed `Err` until 3a-3.
 - [DONE] **`DynBehavior` / `TypedBehavior` adapter** — object-safe wrapper so the engine can hold `Arc<dyn DynBehavior>` per kind despite `NodeBehavior::Config` being an associated type.
-- [DONE] **`ResolvedSettings<T>`** — `crates/extensions-sdk/src/settings.rs`. Merge order: schema defaults < persisted node config < `msg_overrides` from `msg.metadata`. Deref-to-`T` so behaviours treat it as the bare struct.
-- [DONE] **`requires!` macro** — `crates/extensions-sdk/src/requires.rs`. Emits a `pub fn requires() -> Vec<Requirement>` (not `const`, because `SemverRange::parse` isn't const). First user: `domain_compute::requires!{ "spi.msg" => "1" }`.
+- [DONE] **`ResolvedSettings<T>`** — `crates/blocks-sdk/src/settings.rs`. Merge order: schema defaults < persisted node config < `msg_overrides` from `msg.metadata`. Deref-to-`T` so behaviours treat it as the bare struct.
+- [DONE] **`requires!` macro** — `crates/blocks-sdk/src/requires.rs`. Emits a `pub fn requires() -> Vec<Requirement>` (not `const`, because `SemverRange::parse` isn't const). First user: `domain_compute::requires!{ "spi.msg" => "1" }`.
 - [DONE] **`spi::KindManifest` + `SlotSchema` extended** — added `trigger: bool` on `SlotSchema`, `settings_schema` / `msg_overrides` / `TriggerPolicy` (default `OnAny`) on `KindManifest`. Manifest YAML parses with the new fields optional; existing engine/seed manifests round-trip unchanged.
 - [DONE] **`BehaviorRegistry` in `crates/engine`** — `crates/engine/src/behavior.rs`. Holds kind→`Arc<dyn DynBehavior>` plus per-`NodeId` config blobs, plus an internal `GraphAdapter` that implements both `GraphAccess` and `EmitSink` over `Arc<GraphStore>`. `emit(port, msg)` writes the message JSON to the source's output slot; the existing live-wire executor fans it out to linked targets — no separate dispatch path. Wired into `engine::Engine`'s worker loop alongside `LiveWireExecutor`; both fire on the same `SlotChanged` event. Filters: only `role: input` AND `trigger: true` slots dispatch — status/config writes don't re-enter the behaviour, which makes the slot-source regression even possible.
 - [DONE] **`crates/domain-compute`** — new crate. `Count` (unit struct, `behavior = "custom"`) + `CountConfig` + pure `apply_step`. Manifest at `crates/domain-compute/manifests/count.yaml` declares two trigger inputs, one output, one status slot, settings schema with defaults, `msg_overrides: {step, reset, initial}`, `trigger_policy: on_any`. Public surface: `register_kinds(&KindRegistry)` + `behavior() -> Arc<dyn DynBehavior>`; the agent composition root calls both. The crate depends on `graph` (for the registry handle) but **not** `engine` (so the layering rule holds).
@@ -147,7 +147,7 @@ First real behaviour kind end-to-end through the new dispatch seam.
 
 ### Stage 3a-3 — `NodeCtx::schedule` + `sys.logic.trigger`
 
-- [DONE] **`TimerHandle` + `TimerScheduler` trait + `NodeBehavior::on_timer`** in `crates/extensions-sdk/src/ctx.rs` and `node.rs`. `on_timer` has a default no-op so existing kinds (count) need no changes. Handle is `pub struct TimerHandle(pub u64)` — opaque, `Copy`, hashable. `NodeCtx::schedule(delay_ms) -> TimerHandle` and `NodeCtx::cancel(h)` delegate through the trait.
+- [DONE] **`TimerHandle` + `TimerScheduler` trait + `NodeBehavior::on_timer`** in `crates/blocks-sdk/src/ctx.rs` and `node.rs`. `on_timer` has a default no-op so existing kinds (count) need no changes. Handle is `pub struct TimerHandle(pub u64)` — opaque, `Copy`, hashable. `NodeCtx::schedule(delay_ms) -> TimerHandle` and `NodeCtx::cancel(h)` delegate through the trait.
 - [DONE] **`Scheduler` in `crates/engine/src/scheduler.rs`** — tokio-backed one-shot timers; each `schedule` spawns a task that sleeps then sends `TimerFired { node, handle }` over an `mpsc::UnboundedSender`. Cancel via `AbortHandle`. The mpsc breaks the Scheduler ↔ `BehaviorRegistry` cycle (same pattern as graph events). `BehaviorRegistry::new` now returns `(Self, mpsc::UnboundedReceiver<TimerFired>)`.
 - [DONE] **`BehaviorRegistry::dispatch_timer`** + worker-loop wiring — `Engine::start` takes both the `GraphEvent` and `TimerFired` receivers; `worker_loop` selects over events / control / timers and routes each to the right dispatcher.
 - [DONE] **`crates/domain-logic`** — new crate. `Trigger` (unit struct, `behavior = "custom"`) + `TriggerConfig` + `TriggerMode { Once, Extend, ManualReset }`. Manifest at `crates/domain-logic/manifests/trigger.yaml` matches NODE-SCOPE: two trigger inputs, one output, status slots `armed` + `pending_timer`, settings schema with mode / payloads / delay, `msg_overrides: {delay_ms→delay, trigger_payload→trigger, reset_payload→reset_value}`.
@@ -169,7 +169,7 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
   * `GET  /api/v1/events` (SSE)
   * `GET  /` (manual-test UI)
 - [DONE] **`AgentSink`** — composite `EventSink` fanning every graph event to both the engine mpsc (live-wire + behaviour dispatch) and a bounded `tokio::sync::broadcast` (SSE). Slow SSE consumers lag, never block the engine.
-- [DONE] **Capability manifest** at `/api/v1/capabilities` per VERSIONING § "Host-provided capability manifest". Returns platform version, REST API version, flow/node schema versions, and the host-provided `spi.*` + `data.sqlite` capability list. `runtime.wasmtime` and `runtime.extension_process` are deliberately absent — extensions that require them refuse to install today rather than failing at runtime. List is hand-maintained in `crates/transport-rest/src/capabilities.rs` with a comment pointing at `extensions-host::capability_registry` as the proper home once it lands.
+- [DONE] **Capability manifest** at `/api/v1/capabilities` per VERSIONING § "Host-provided capability manifest". Returns platform version, REST API version, flow/node schema versions, and the host-provided `spi.*` + `data.sqlite` capability list. `runtime.wasmtime` and `runtime.extension_process` are deliberately absent — blocks that require them refuse to install today rather than failing at runtime. List is hand-maintained in `crates/transport-rest/src/capabilities.rs` with a comment pointing at `blocks-host::capability_registry` as the proper home once it lands.
 - [DONE] **`GraphStore::snapshots()`** — list-all helper backing `GET /api/v1/nodes`.
 - [DONE] **Static UI** at `crates/transport-rest/static/index.html` — vanilla JS, no build step, ~200 lines. Lists nodes, writes slot values inline, streams events into a colour-coded log, displays the agent's `agent X · api vN · flow_schema=… node_schema=…` versions in the header.
 - [DONE] **Agent bootstrap** — `apps/agent/src/main.rs` registers `domain-compute` + `domain-logic` behaviours, binds `--http` (default `127.0.0.1:8080`), runs the engine and the HTTP surface concurrently, shuts both down on SIGTERM/SIGINT.
@@ -179,14 +179,14 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 - [DONE] **`POST /api/v1/seed`** `{preset: "count_chain" | "trigger_demo"}` — one-click preset that creates a folder subtree, seeds default configs, fires `on_init`, and wires the chain. Lands the first end-to-end browser demo: seed → write `in` → count emits → trigger arms in the same browser session.
 - [DONE] **SVG visual graph in the UI** — layered (depth by path-slash count), cubic-bezier links, click-to-select, per-node lifecycle dropdown + transition button, link-creation form, links list with unlink buttons, seed preset buttons in header. Still ~400 lines of vanilla JS; Studio proper lands in Stage 4.
 - [DEFERRED] **OpenAPI / `utoipa`** — the original lib.rs comment named utoipa as the eventual schema source. Slots into Stage 9 (Public API + versioning) when external SDKs start consuming this surface.
-- [DEFERRED] **Move capability list into `extensions-host::capability_registry`** — current location is acknowledged-stopgap, not architectural. Stage 3c lands the registry; this list moves at that point.
+- [DEFERRED] **Move capability list into `blocks-host::capability_registry`** — current location is acknowledged-stopgap, not architectural. Stage 3c lands the registry; this list moves at that point.
 
 ### Stage 3a-4 — Wire-shape contract fixtures (Rust side) [DONE]
 
 - [DONE] **Hand-authored fixture set at `/clients/contracts/fixtures/`** — the cross-language source of truth, per the existing `/clients/contracts/README.md`. Five `Msg` variants (`bare-payload`, `with-topic-and-source`, `with-parent`, `with-custom-fields`, `null-payload`) and eight `GraphEvent` variants (one per enum variant: `node_created` / `node_removed` / `node_renamed` / `slot_changed` / `lifecycle_transition` / `link_added` / `link_removed` / `link_broken`). Pre-existing stale fixtures (ISO-string `ts`, PascalCase `type`, non-UUID `_msgid`) were replaced to match the current Rust wire.
 - [DONE] **Round-trip tests** — `crates/spi/tests/contract_fixtures_msg.rs` for `Msg`, `crates/graph/tests/contract_fixtures_events.rs` for `GraphEvent`. Each reads every `*.json`, deserialises, re-serialises, and asserts structural equality (parse both sides as `serde_json::Value`, `assert_eq`). Field order is intentionally not part of the contract.
 - [DONE] **Variant-coverage guard** — `every_variant_has_a_fixture` fails if a new `GraphEvent` variant lands without a fixture, forcing the author to think about how it serialises.
-- [DEFERRED] **`@sys/extensions-sdk-ts` round-trip** — Stage 4. The TS schemas in `/clients/ts/src/schemas/` are currently stale (they matched the old fixtures) and will be regenerated / aligned when Stage 4 begins, using these fixtures as the target.
+- [DEFERRED] **`@sys/blocks-sdk-ts` round-trip** — Stage 4. The TS schemas in `/clients/ts/src/schemas/` are currently stale (they matched the old fixtures) and will be regenerated / aligned when Stage 4 begins, using these fixtures as the target.
 
 **Decisions locked (see `docs/NEXT.md` history):**
 - **Structural equality, not byte-level**: the contract is "same JSON value", not "same field order". Avoids forcing both sides to agree on a canonical order and keeps serde-struct-order changes non-breaking.
@@ -194,45 +194,45 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 
 ### Stage 3b — Wasm flavor
 
-- **Wasmtime runtime in `crates/extensions-host`** — loads `.wasm` modules, enforces fuel metering + memory caps, exposes host-function allowlist (`emit`, `read_slot`, `update_status`, `log`, `call_extension`, `schedule`)
-- **Wasm adapter feature in `extensions-sdk`** — same `NodeBehavior` trait, wasm32-unknown-unknown target, host-function imports bound via the SDK
-- **Wasm Provider trait** abstracted so a browser adapter (`web-sys`-backed) can land later without changes to plugin authors' code
+- **Wasmtime runtime in `crates/blocks-host`** — loads `.wasm` modules, enforces fuel metering + memory caps, exposes host-function allowlist (`emit`, `read_slot`, `update_status`, `log`, `call_extension`, `schedule`)
+- **Wasm adapter feature in `blocks-sdk`** — same `NodeBehavior` trait, wasm32-unknown-unknown target, host-function imports bound via the SDK
+- **Wasm Provider trait** abstracted so a browser adapter (`web-sys`-backed) can land later without changes to block authors' code
 - **Example: `sys.wasm.math_expr`** — a math-expression evaluator, taking expression in config + variables in `msg.payload`, returning the evaluated value
 - **End-to-end test** — wasm module compiled in CI, loaded at runtime, fuel-exhaustion and OOM traps produce structured `NodeError` instead of killing the agent
 
-### Stage 3c — Process plugin flavor
+### Stage 3c — Process block flavor
 
-- **Extension supervisor in `crates/extensions-host`** — spawn, health-check, restart with exponential backoff, cgroup memory limits, UDS socket setup
-- **gRPC implementation of `spi/proto/extension.proto`** — `describe` / `discover` / `subscribe` / `invoke` / `health` per the existing contract
-- **Process adapter feature in `extensions-sdk`** — `extensions_sdk::run_process_plugin()` one-liner in a plugin's `main.rs`; SDK multiplexes every registered kind behind it
+- **Block supervisor in `crates/blocks-host`** — spawn, health-check, restart with exponential backoff, cgroup memory limits, UDS socket setup
+- **gRPC implementation of `spi/proto/block.proto`** — `describe` / `discover` / `subscribe` / `invoke` / `health` per the existing contract
+- **Process adapter feature in `blocks-sdk`** — `extensions_sdk::run_process_plugin()` one-liner in a block's `main.rs`; SDK multiplexes every registered kind behind it
 - **Example: `com.example.pg.query`** — Postgres query node with parameterised SQL, timeout, structured error output
   - Backend binary shipped with manifest + capability declarations
   - `must_live_under: [com.example.pg.connection]` — proves the containment rules cross the process boundary
   - **UI (Module Federation bundle) is deferred to Stage 4** when Studio + MF land; the TS SDK's `defineExtension` entry point is already in place so the bundle can be authored without blocking
-- **End-to-end test** — agent spawns plugin, executes a query-flow end-to-end, kills the plugin mid-run and asserts the agent survives + restarts it
+- **End-to-end test** — agent spawns block, executes a query-flow end-to-end, kills the block mid-run and asserts the agent survives + restarts it
 
 ### Deferred to Stage 4
 
-- The `com.example.pg.query` MF UI bundle (schema-aware table picker + results viewer) — written against `@sys/extensions-sdk-ts` but only wired into the Studio once the Studio shell exists. Serves as Stage 4's "untrusted federated plugin" acceptance case.
+- The `com.example.pg.query` MF UI bundle (schema-aware table picker + results viewer) — written against `@sys/blocks-sdk-ts` but only wired into the Studio once the Studio shell exists. Serves as Stage 4's "untrusted federated block" acceptance case.
 - Browser Wasm provider (`web-sys`-backed) — the abstraction is in place in 3b, the implementation lands alongside the Studio build.
 
-**Proves:** one authoring API (the SDK) covers all three execution models; the Msg wire shape is machine-verified to match between Rust and TS; plugin authors write `NodeBehavior` and pick packaging via one Cargo feature; existing Stage 1–2 kinds port to the SDK cleanly. This is the biggest technical unknown — validate it early and hard.
+**Proves:** one authoring API (the SDK) covers all three execution models; the Msg wire shape is machine-verified to match between Rust and TS; block authors write `NodeBehavior` and pick packaging via one Cargo feature; existing Stage 1–2 kinds port to the SDK cleanly. This is the biggest technical unknown — validate it early and hard.
 
 ## Stage 4 — Studio shell + Module Federation
 
-**Goal:** Studio loads a UI plugin at runtime.
+**Goal:** Studio loads a UI block at runtime.
 
 - Tauri shell renders basic UI
 - React Flow canvas with the three node types from Stage 3
 - Hardcoded initial graph, "Run" button triggers engine via IPC
 - Module Federation wiring in Rsbuild — React declared as required shared singleton
-- **Two federated modules built by separate pipelines** (not just co-located): a trusted one loaded into the host realm, an untrusted one loaded into an iframe with postMessage bridge. Both contribute a property panel via `@sys/extensions-sdk-ts`'s `defineExtension` entry (shipped in Stage 3). Proves both the host-realm and iframe isolation paths before we build extensions on them.
-- **Wire in the deferred Stage 3c MF UI bundle for `com.example.pg.query`** — schema-aware table picker + results viewer, serves as the "untrusted federated plugin" acceptance case.
+- **Two federated modules built by separate pipelines** (not just co-located): a trusted one loaded into the host realm, an untrusted one loaded into an iframe with postMessage bridge. Both contribute a property panel via `@sys/blocks-sdk-ts`'s `defineExtension` entry (shipped in Stage 3). Proves both the host-realm and iframe isolation paths before we build blocks on them.
+- **Wire in the deferred Stage 3c MF UI bundle for `com.example.pg.query`** — schema-aware table picker + results viewer, serves as the "untrusted federated block" acceptance case.
 - Plain service registry over React Context (no InversifyJS); verify it's visible across the MF boundary in the trusted path, and correctly *not* visible across the iframe boundary
 - Schema-driven forms (`@rjsf/core`) reading `node.schema.json` — consumed via the `PropertyPanel` component shipped in Stage 3
 - **Browser Wasm provider** — `web-sys`-backed implementation of the Wasm Provider trait introduced in Stage 3b, so Wasm nodes can run in Studio previews
 
-**Proves:** Module Federation loads third-party UI into the host, *and* the iframe isolation path works for untrusted code. The TS SDK authored in Stage 3 is the same one federated plugins use — no hidden Studio-only surface. The other unknown.
+**Proves:** Module Federation loads third-party UI into the host, *and* the iframe isolation path works for untrusted code. The TS SDK authored in Stage 3 is the same one federated blocks use — no hidden Studio-only surface. The other unknown.
 
 ## Stage 5 — Persistence
 
@@ -278,7 +278,7 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 - [DONE] **Environment layer** (`from_env`) reading the documented subset: `AGENT_ROLE`, `AGENT_DB`, `AGENT_LOG`. Empty strings treated as unset; invalid role value returns `ConfigError::Invalid` rather than falling through
 - [DONE] **Clap derive CLI** in `apps/agent`: `--role`, `--config <PATH>`, `--db <PATH>`, `--log <DIRECTIVE>`. Every flag has a corresponding file field; operators pick their source. `agent --help` renders correctly, `--version` wired via Cargo metadata
 - [DONE] **Agent integration** \u{2014} the binary composes the three overlays in precedence order, uses the resolved config to pick the DB path and log filter, and logs the resolved role on startup. Smoke-tested: `agent --config foo.yaml` with `AGENT_DB` env set and `--db` flag on the CLI correctly hits CLI > env > file resolution
-- [DONE] **Compile-time feature flags already present** in `apps/agent/Cargo.toml` (`role-edge`, `role-cloud`, `role-standalone`). Stage 6a does not add role-gated code paths \u{2014} it establishes the runtime selector; later stages (Postgres driver, MCP server, native protocol extensions) compile in or out behind these features
+- [DONE] **Compile-time feature flags already present** in `apps/agent/Cargo.toml` (`role-edge`, `role-cloud`, `role-standalone`). Stage 6a does not add role-gated code paths \u{2014} it establishes the runtime selector; later stages (Postgres driver, MCP server, native protocol blocks) compile in or out behind these features
 - [DONE] 6 new config unit tests (precedence, defaults, cloud no-default-DB, YAML parse, unknown-field rejection, partial-YAML layering); 51 total across the workspace. `cargo fmt --check` + `cargo clippy --workspace --all-targets -- -D warnings` clean
 
 ### Stage 6b — deferred
@@ -334,25 +334,25 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 
 **Proves:** the API contract is real, generated, versioned, and consumed the same way by internal and external clients.
 
-## Stage 10 — Extension lifecycle
+## Stage 10 — Block lifecycle
 
-**Goal:** First real extension shipped end-to-end through the full pipeline.
+**Goal:** First real block shipped end-to-end through the full pipeline.
 
-- Extension manifest format finalized, including the **node-kind declarations** each extension contributes (kind IDs, facets, containment schemas, slot schemas) and the **required-capabilities block** (see [VERSIONING.md](../design/VERSIONING.md))
+- Block manifest format finalized, including the **node-kind declarations** each block contributes (kind IDs, facets, containment schemas, slot schemas) and the **required-capabilities block** (see [VERSIONING.md](../design/VERSIONING.md))
 - **Host capability manifest** exposed at `GET /api/v1/capabilities` and `yourapp capabilities` — enumerates `spi.*`, `runtime.*`, `feature.*`, `data.*` with versions
-- **Install-time compat match** — the agent refuses to install extensions whose required capabilities aren't provided, with structured errors naming each missing capability. `yourapp ext check <manifest>` is the dry-run command
+- **Install-time compat match** — the agent refuses to install blocks whose required capabilities aren't provided, with structured errors naming each missing capability. `yourapp ext check <manifest>` is the dry-run command
 - **Kind migrations** — kinds ship forward migrations; the graph service walks them on flow load; old-flow fixture suite runs on every release
-- Signing pipeline: extensions signed on publish, verified on install
-- Extension registry in the Control Plane
+- Signing pipeline: blocks signed on publish, verified on install
+- Block registry in the Control Plane
 - `yourapp ext publish` / `install` / `enable` / `disable` / `check` / `upgrade` commands
 - Capability-based permission system: manifest declares permissions and required capabilities; user approves on install
-- **Extension installation registers new kinds with the graph crate**; uninstall refuses if instances still exist (per `cascade: deny` semantics) unless forced
-- One real protocol extension — pick MQTT as the lowest-risk (pure Rust stack exists). Kinds: `com.example.mqtt`, `com.example.mqtt.topic`
-- Hot path: engine fetches extension binary on sync, Studio fetches UI bundle on flow open
+- **Block installation registers new kinds with the graph crate**; uninstall refuses if instances still exist (per `cascade: deny` semantics) unless forced
+- One real protocol block — pick MQTT as the lowest-risk (pure Rust stack exists). Kinds: `com.example.mqtt`, `com.example.mqtt.topic`
+- Hot path: engine fetches block binary on sync, Studio fetches UI bundle on flow open
 - Rollback: old version retained, one-command revert
 - **Deprecation plumbing** in place — `deprecated_since` / `removal_planned` honoured by the installer with warnings during the window
 
-**Proves:** the full extension shape works in production. Everything after this is adding more extensions.
+**Proves:** the full block shape works in production. Everything after this is adding more blocks.
 
 ## Stage 11 — CLI
 
@@ -367,9 +367,9 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 
 **Proves:** the CLI story. Also unlocks scripting for the team.
 
-## Stage 12 — BACnet extension (exemplar protocol integration)
+## Stage 12 — BACnet block (exemplar protocol integration)
 
-**Goal:** Ship a real, non-trivial protocol extension end-to-end. BACnet is a useful exemplar because it's messy — discovery, subscriptions, priority arrays, licensing — and if the extension model handles it cleanly, it handles most other integrations too. This stage is about proving the platform, not about being a BAS product.
+**Goal:** Ship a real, non-trivial protocol block end-to-end. BACnet is a useful exemplar because it's messy — discovery, subscriptions, priority arrays, licensing — and if the block model handles it cleanly, it handles most other integrations too. This stage is about proving the platform, not about being a BAS product.
 
 - Separate binary using a BACnet library (research options — this is a real dependency decision)
 - **Kinds contributed:** `sys.driver.bacnet` (isProtocol, isDriver, isContainer), `sys.driver.bacnet.device` (isDevice, bound under driver), `sys.driver.bacnet.point` (isPoint, isWritable, bound under device). Placement rules enforced by the graph service — points can't be created outside a device.
@@ -377,11 +377,11 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 - Point read/write via BACnet services, exposed as slot read/write on point nodes
 - Priority array support for safe-state behavior, mapped to per-slot safe-state policies
 - Subscription via change-of-value or polling; COV events become `SlotChanged` graph events
-- Extension's UI plugin contributes BACnet device/point pickers, generated from the kind + slot schemas
+- Block's UI block contributes BACnet device/point pickers, generated from the kind + slot schemas
 - **Commissioning mode** honored per RUNTIME.md — writes allowed to points explicitly designated as commissioning points; dry-run/simulation is a separate mode
 - Cascading delete verified: deleting a device removes its points and emits `LinkBroken` to any flows wired to those point slots
 
-**Proves:** the extension architecture handles a messy real-world protocol end-to-end through the node model. The "everything is a node" claim survives contact with reality. Other protocol integrations (Modbus, OPC-UA, MQTT bridges) follow the same shape; non-protocol integrations (REST APIs, databases, message queues, SaaS) are simpler versions of the same pattern.
+**Proves:** the block architecture handles a messy real-world protocol end-to-end through the node model. The "everything is a node" claim survives contact with reality. Other protocol integrations (Modbus, OPC-UA, MQTT bridges) follow the same shape; non-protocol integrations (REST APIs, databases, message queues, SaaS) are simpler versions of the same pattern.
 
 ## Stage 13 — Operations surface
 
@@ -442,9 +442,9 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 
 **Goal:** Things you only find by running under pressure.
 
-- Chaos testing: kill extensions, drop NATS tunnel, fill the disk, starve memory
+- Chaos testing: kill blocks, drop NATS tunnel, fill the disk, starve memory
 - Long-running soak on real ARM hardware under realistic load
-- Upgrade testing: v1 agent + v1 extension → v2 agent + v1 extension → v2 both
+- Upgrade testing: v1 agent + v1 block → v2 agent + v1 block → v2 both
 - Schema migration testing across flow format versions
 - Penetration test on the public API and the MCP server
 - Documentation audit: the docs match what the code actually does
@@ -456,7 +456,7 @@ A pull-forward from Stage 9's `transport-rest` work, scoped to *manual testing*.
 Deferred intentionally — all have stable seams so they add cleanly later:
 
 - Mobile (iOS/Android Tauri) — post-v1
-- Additional first-party extensions — each is its own mini-stage, same shape as BACnet; examples: Modbus, OPC-UA, MQTT bridges, HTTP/REST, SQL sources, common SaaS (Slack, email, webhooks)
+- Additional first-party blocks — each is its own mini-stage, same shape as BACnet; examples: Modbus, OPC-UA, MQTT bridges, HTTP/REST, SQL sources, common SaaS (Slack, email, webhooks)
 - Domain-specific semantic layers (e.g. BAS ontologies, ITSM schemas, IoT device models) — if/when pursued, expressed as node facets/tags rather than a parallel ontology. Not in v1.
 - Advanced fleet features (blue-green deploys, gradual rollouts, automated rollback policies) — v2
 

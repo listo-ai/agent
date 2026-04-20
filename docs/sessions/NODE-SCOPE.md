@@ -1,6 +1,6 @@
 # Node Flavors — Implementation Scope
 
-Scope for the three node-execution flavors (core, Wasm, process plugin) and the **shared SDK** that binds them together. The SDK is the load-bearing piece — if it drifts between core and plugins, or between Rust and TypeScript, the whole plugin ecosystem gets broken silently.
+Scope for the three node-execution flavors (core, Wasm, process block) and the **shared SDK** that binds them together. The SDK is the load-bearing piece — if it drifts between core and blocks, or between Rust and TypeScript, the whole block ecosystem gets broken silently.
 
 Authoritative references: [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.md), [NODE-AUTHORING.md](../design/NODE-AUTHORING.md), [CODE-LAYOUT.md](../design/CODE-LAYOUT.md), [VERSIONING.md](../design/VERSIONING.md). This doc is the concrete scope for implementation, not a replacement for those.
 
@@ -9,10 +9,10 @@ Authoritative references: [EVERYTHING-AS-NODE.md](../design/EVERYTHING-AS-NODE.m
 | Flavor | Where it runs | Crash scope | Packaging | Typical use |
 |---|---|---|---|---|
 | **Core native** | Inside the agent process, statically linked | Cannot crash the agent — panics convert to `NodeError` at the SDK boundary | `/crates/domain-*`, compiled into `apps/agent` | Small, hot-path, trusted compute + logic (count, trigger, switch, math) |
-| **Wasm** | Wasmtime sandbox inside the agent | Fuel/memory limits; trap = error outcome, sandbox survives | `.wasm` file loaded at runtime via Wasmtime | Sandboxed user compute, language-agnostic plugins, browser-side preview |
-| **Process plugin (gRPC)** | Separate OS process, supervised by the agent | cgroup memory limits; crash → restart with backoff; agent unaffected | Own binary; speaks `extension.proto` over UDS gRPC; optional MF UI | Heavy/I/O-bound extensions, language-diverse integrations (Rust/Go/Python), crash-prone dependencies, license segregation |
+| **Wasm** | Wasmtime sandbox inside the agent | Fuel/memory limits; trap = error outcome, sandbox survives | `.wasm` file loaded at runtime via Wasmtime | Sandboxed user compute, language-agnostic blocks, browser-side preview |
+| **Process block (gRPC)** | Separate OS process, supervised by the agent | cgroup memory limits; crash → restart with backoff; agent unaffected | Own binary; speaks `block.proto` over UDS gRPC; optional MF UI | Heavy/I/O-bound blocks, language-diverse integrations (Rust/Go/Python), crash-prone dependencies, license segregation |
 
-All three **share one authoring API**. An author who writes a `NodeBehavior` impl can, with a packaging change, move the same code between core native and process plugin. The Wasm variant uses the same trait with a wasm32 adapter.
+All three **share one authoring API**. An author who writes a `NodeBehavior` impl can, with a packaging change, move the same code between core native and process block. The Wasm variant uses the same trait with a wasm32 adapter.
 
 **The shared SDK is the only reason this works.** If you find yourself tempted to add a type or a helper that's "native-only" or "process-only," stop — move it to the shared SDK or prove it cannot be shared.
 
@@ -22,13 +22,13 @@ All three **share one authoring API**. An author who writes a `NodeBehavior` imp
 
 Two packages, one contract surface, used everywhere.
 
-### Rust — `extensions-sdk` (`/crates/extensions-sdk`)
+### Rust — `blocks-sdk` (`/crates/blocks-sdk`)
 
 One crate. Consumed unchanged by:
 
 - **Core native crates** (`/crates/domain-*`) — statically linked into `apps/agent`.
-- **Wasm crates** (plugin authors' own crates, compiled to `wasm32-unknown-unknown`) — via the SDK's Wasm adapter feature.
-- **Process-plugin binaries** (plugin authors' own crates, their own binary) — via the SDK's gRPC-server adapter feature.
+- **Wasm crates** (block authors' own crates, compiled to `wasm32-unknown-unknown`) — via the SDK's Wasm adapter feature.
+- **Process-block binaries** (block authors' own crates, their own binary) — via the SDK's gRPC-server adapter feature.
 
 Same `NodeBehavior` trait. Same `Msg` envelope. Same `Manifest` builder. Same `#[derive(NodeKind)]`. What differs is only the Cargo feature gate that swaps the adapter.
 
@@ -37,13 +37,13 @@ Contents (minimum):
 | Item | Source-of-truth home | What it is |
 |---|---|---|
 | `Msg`, `MessageId` | `spi::msg` (re-exported) | Node-RED-compatible envelope |
-| `NodeBehavior` trait | `extensions-sdk::node` | `on_init`, `on_message`, `on_config_change`, `on_shutdown` |
-| `NodeCtx` | `extensions-sdk::ctx` | Logger, `resolve_settings`, `emit`, `read_slot`, `update_status`, `schedule` |
-| `#[derive(NodeKind)]` | `extensions-sdk-macros` | Wires the manifest + settings-schema + trigger policy + msg-overrides from attributes |
+| `NodeBehavior` trait | `blocks-sdk::node` | `on_init`, `on_message`, `on_config_change`, `on_shutdown` |
+| `NodeCtx` | `blocks-sdk::ctx` | Logger, `resolve_settings`, `emit`, `read_slot`, `update_status`, `schedule` |
+| `#[derive(NodeKind)]` | `blocks-sdk-macros` | Wires the manifest + settings-schema + trigger policy + msg-overrides from attributes |
 | `Manifest` / `KindId` / facets / containment | `spi::manifest` (generated from `node.schema.json`) | Declarative kind description |
-| `Settings<T>` / `ResolvedSettings<T>` | `extensions-sdk::settings` | Merged config + msg overrides per NODE-AUTHORING.md |
-| `NodeError` | `extensions-sdk::error` | Structured errors — never panic across the SDK boundary |
-| Capability declarations | `spi::capabilities` (re-exported) | `requires!` macro for declaring what an extension needs |
+| `Settings<T>` / `ResolvedSettings<T>` | `blocks-sdk::settings` | Merged config + msg overrides per NODE-AUTHORING.md |
+| `NodeError` | `blocks-sdk::error` | Structured errors — never panic across the SDK boundary |
+| Capability declarations | `spi::capabilities` (re-exported) | `requires!` macro for declaring what an block needs |
 
 Cargo features on the SDK:
 
@@ -51,16 +51,16 @@ Cargo features on the SDK:
 |---|---|---|
 | `native` (default) | Direct in-process registration with the graph service | Core native nodes |
 | `wasm` | wasm32-specific glue: host-function imports for `emit`, `read_slot`, `update_status`, `log`, `schedule` | Wasm nodes |
-| `process` | `tonic`-based gRPC server implementing `extension.proto`, multiplexed over kinds registered in this binary | Process plugins |
+| `process` | `tonic`-based gRPC server implementing `block.proto`, multiplexed over kinds registered in this binary | Process blocks |
 
 Exactly one feature active per consumer. Mutually exclusive. CI enforces.
 
-### TypeScript — `@sys/extensions-sdk-ts` (`/sdks/sdk-ts`)
+### TypeScript — `@sys/blocks-sdk-ts` (`/sdks/sdk-ts`)
 
 One package. Consumed unchanged by:
 
 - **Built-in Studio kind UIs** — code shipped with the Studio that contributes property panels / widgets for core and first-party kinds.
-- **Federated plugin UI bundles** — code plugin authors ship as Module Federation remotes, loaded at runtime into the Studio (trusted: host realm; untrusted: iframe with `postMessage` bridge per UI.md).
+- **Federated block UI bundles** — code block authors ship as Module Federation remotes, loaded at runtime into the Studio (trusted: host realm; untrusted: iframe with `postMessage` bridge per UI.md).
 
 Contents (minimum):
 
@@ -68,21 +68,21 @@ Contents (minimum):
 |---|---|---|
 | `Msg` TypeScript types | generated from `spi::msg` | Mirrors the Rust envelope exactly — field names, optionality, serialization |
 | `NodeManifest` type | generated from `spi/schemas/node.schema.json` | Type-safe manifest inspection |
-| `PropertyPanel` component | `@sys/extensions-sdk-ts/forms` | `@rjsf/core` integration with multi-variant settings support |
-| `useSlotValue(path, slot)` | `@sys/extensions-sdk-ts/hooks` | React hook that subscribes to `graph.<tenant>.<path>.slot.<slot>.changed` via NATS-WS |
-| `useNode(path)` | `@sys/extensions-sdk-ts/hooks` | Metadata + lifecycle + all slots |
-| `Widget` registration API | `@sys/extensions-sdk-ts/widgets` | For contributing dashboard widgets |
-| `defineExtension` entry point | `@sys/extensions-sdk-ts/plugin` | Module Federation remote exposes — declares panels, widgets, views, commands |
-| Capability declaration helpers | mirrors Rust side | For the extension's manifest |
+| `PropertyPanel` component | `@sys/blocks-sdk-ts/forms` | `@rjsf/core` integration with multi-variant settings support |
+| `useSlotValue(path, slot)` | `@sys/blocks-sdk-ts/hooks` | React hook that subscribes to `graph.<tenant>.<path>.slot.<slot>.changed` via NATS-WS |
+| `useNode(path)` | `@sys/blocks-sdk-ts/hooks` | Metadata + lifecycle + all slots |
+| `Widget` registration API | `@sys/blocks-sdk-ts/widgets` | For contributing dashboard widgets |
+| `defineExtension` entry point | `@sys/blocks-sdk-ts/block` | Module Federation remote exposes — declares panels, widgets, views, commands |
+| Capability declaration helpers | mirrors Rust side | For the block's manifest |
 
 ### What makes it **the** SDK (not **a** SDK)
 
 Four rules. Violating any one turns "shared" into "drifting":
 
-1. **Nothing a plugin author references by name lives outside `spi` or the two SDK packages.** If you add a helper, it goes in the SDK, never in a transport crate or an app crate.
+1. **Nothing a block author references by name lives outside `spi` or the two SDK packages.** If you add a helper, it goes in the SDK, never in a transport crate or an app crate.
 2. **Generated code is generated once.** Protobuf → Rust via `tonic`/`prost`, Protobuf → TS via `@bufbuild/protoc-gen-es`. JSON Schema → Rust via `schemars`, JSON Schema → TS via `json-schema-to-typescript`. CI regenerates; no hand-maintained parallel definitions.
 3. **The Msg wire shape is frozen.** Rust and TS must round-trip identical JSON. A contract test (a fixture set of `Msg` values serialised by each side, parsed by the other) runs on every SDK PR.
-4. **Capabilities are declared via the SDK, never by editing raw YAML.** `requires!(spi::extension::v1_3, spi::msg::v1)` in Rust; the TS equivalent in the plugin's `defineExtension` call. The SDK handles manifest emission. This keeps VERSIONING.md's semver rules machine-enforceable.
+4. **Capabilities are declared via the SDK, never by editing raw YAML.** `requires!(spi::block::v1_3, spi::msg::v1)` in Rust; the TS equivalent in the block's `defineExtension` call. The SDK handles manifest emission. This keeps VERSIONING.md's semver rules machine-enforceable.
 
 ### Crate and package locations
 
@@ -90,9 +90,9 @@ Already present in [CODE-LAYOUT.md](../design/CODE-LAYOUT.md); calling them out:
 
 ```
 /crates/spi/                     # contract surface — protobuf, schemas, Msg, capabilities
-/crates/extensions-sdk/          # Rust author SDK — NodeBehavior, derive, adapters
-/crates/extensions-sdk-macros/   # proc-macros supporting the SDK (derive(NodeKind))
-/crates/extensions-host/         # runtime-side: loads and supervises Wasm + process plugins
+/crates/blocks-sdk/          # Rust author SDK — NodeBehavior, derive, adapters
+/crates/blocks-sdk-macros/   # proc-macros supporting the SDK (derive(NodeKind))
+/crates/blocks-host/         # runtime-side: loads and supervises Wasm + process blocks
 /sdks/sdk-ts/                    # TypeScript author SDK — types, hooks, PropertyPanel, widgets
 ```
 
@@ -262,7 +262,7 @@ Implementation uses `NodeCtx::schedule(Duration, || ctx.fire_internal(...))` —
 
 ## Flavor 2 — Wasm nodes
 
-Same `NodeBehavior` trait. Crate target is `wasm32-unknown-unknown` (or `wasm32-wasip1`). Built by the plugin author, loaded at runtime by the agent via Wasmtime (edge/cloud) or the browser's WebAssembly engine (Studio preview).
+Same `NodeBehavior` trait. Crate target is `wasm32-unknown-unknown` (or `wasm32-wasip1`). Built by the block author, loaded at runtime by the agent via Wasmtime (edge/cloud) or the browser's WebAssembly engine (Studio preview).
 
 ### Sandboxing and limits
 
@@ -338,22 +338,22 @@ impl NodeBehavior for MathExpr {
 crate-type = ["cdylib"]
 
 [dependencies]
-extensions-sdk = { workspace = true, default-features = false, features = ["wasm"] }
+blocks-sdk = { workspace = true, default-features = false, features = ["wasm"] }
 ```
 
-Output is a `.wasm` artefact shipped as part of the extension's install bundle (signed per VERSIONING.md). Author wrote the same `NodeBehavior` as a core author.
+Output is a `.wasm` artefact shipped as part of the block's install bundle (signed per VERSIONING.md). Author wrote the same `NodeBehavior` as a core author.
 
 ---
 
-## Flavor 3 — Process plugin nodes (gRPC over UDS)
+## Flavor 3 — Process block nodes (gRPC over UDS)
 
-Separate binary. Speaks `extension.proto` over a Unix domain socket. The agent's `extensions-host` crate supervises the process — spawn, health-check, restart with backoff, cgroup memory limit.
+Separate binary. Speaks `block.proto` over a Unix domain socket. The agent's `blocks-host` crate supervises the process — spawn, health-check, restart with backoff, cgroup memory limit.
 
 Crash isolation is the selling point: a protocol stack with a C dependency that occasionally segfaults, a Python ML inference binary, a Postgres connection pool — none of these should be able to take down the agent.
 
 ### Example — `com.example.pg.query` (Postgres query node, with Module Federation UI)
 
-A "run a parameterised SQL query" node. The plugin binary holds a connection pool; the node kind wraps one query. Adds a Module Federation UI bundle contributing a schema-aware property panel.
+A "run a parameterised SQL query" node. The block binary holds a connection pool; the node kind wraps one query. Adds a Module Federation UI bundle contributing a schema-aware property panel.
 
 #### Manifest
 
@@ -389,14 +389,14 @@ msg_overrides:
   timeout_ms: timeout_ms
 
 requires:
-  - id: spi.extension.proto
+  - id: spi.block.proto
     version: "^1"
   - id: spi.msg
     version: "^1"
   - id: runtime.extension_process
 ```
 
-#### Rust — process adapter (plugin binary)
+#### Rust — process adapter (block binary)
 
 ```rust
 use extensions_sdk::prelude::*;
@@ -447,7 +447,7 @@ impl NodeBehavior for PgQuery {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    extensions_sdk::run_process_plugin()   // serves extension.proto over UDS; multiplexes registered kinds
+    extensions_sdk::run_process_plugin()   // serves block.proto over UDS; multiplexes registered kinds
 }
 ```
 
@@ -457,7 +457,7 @@ The SDK's `run_process_plugin()` reads the UDS path from the env var set by the 
 
 ```ts
 // /ui/src/index.ts — federated module entry
-import { defineExtension, PropertyPanel } from '@sys/extensions-sdk-ts';
+import { defineExtension, PropertyPanel } from '@sys/blocks-sdk-ts';
 import { SchemaTablePicker } from './schema-table-picker';
 import { ResultsViewer } from './results-viewer';
 
@@ -487,19 +487,19 @@ export default defineExtension({
 });
 ```
 
-Built via Rsbuild with Module Federation config exposing `./Extension` as the remote. Shipped as part of the extension bundle. Host loads directly if signed + vetted; iframe-sandboxed if untrusted (per UI.md).
+Built via Rsbuild with Module Federation config exposing `./Block` as the remote. Shipped as part of the block bundle. Host loads directly if signed + vetted; iframe-sandboxed if untrusted (per UI.md).
 
 #### Packaging
 
 ```
-/extensions/com.example.pg.query/
+/blocks/com.example.pg.query/
   manifest.yaml                 # kinds, requires, contributions
   /process/
     Cargo.toml                  # features = ["process"]
     src/main.rs                 # run_process_plugin()
     target/release/pg_query     # compiled binary (multi-arch)
   /ui/
-    package.json                # depends on @sys/extensions-sdk-ts
+    package.json                # depends on @sys/blocks-sdk-ts
     rsbuild.config.ts
     src/index.ts
     dist/                       # built federated module
@@ -518,12 +518,12 @@ Quick decision table for authors:
 |---|---|
 | Simple compute, logic, routing. Trusted. Fast path. | **Core native** |
 | Author wants a language other than Rust. Needs sandboxing. | **Wasm** |
-| Heavy I/O, large dependency, crash-prone C library, separate license, long-running background work | **Process plugin** |
-| Protocol driver with its own thread pool, connection state, daemon behaviour | **Process plugin** |
+| Heavy I/O, large dependency, crash-prone C library, separate license, long-running background work | **Process block** |
+| Protocol driver with its own thread pool, connection state, daemon behaviour | **Process block** |
 | User-authored scripting inside a flow (one-off JS) | Not in this scope — QuickJS inside the `Function` core node (see EVERYTHING-AS-NODE.md) |
 | Needs to run in the browser (Studio preview) | **Wasm** (same module, browser adapter) |
 
-If the answer could be either core native or process plugin, the split is: **process plugin if there's any non-trivial reason for isolation** — crash risk, resource ceiling, separate upgrade cadence, license segregation. Otherwise core.
+If the answer could be either core native or process block, the split is: **process block if there's any non-trivial reason for isolation** — crash risk, resource ceiling, separate upgrade cadence, license segregation. Otherwise core.
 
 ---
 
@@ -533,25 +533,25 @@ Aligned with [STEPS.md](STEPS.md) Stage 3:
 
 | Deliverable | Proves |
 |---|---|
-| `extensions-sdk` with `NodeBehavior` + `#[derive(NodeKind)]` | Authoring API is real and single-source |
-| `extensions-sdk-ts` with `PropertyPanel`, hooks, MF entry point | Frontend side of the SDK exists and is used by at least one plugin |
+| `blocks-sdk` with `NodeBehavior` + `#[derive(NodeKind)]` | Authoring API is real and single-source |
+| `blocks-sdk-ts` with `PropertyPanel`, hooks, MF entry point | Frontend side of the SDK exists and is used by at least one block |
 | `sys.compute.count` + `sys.logic.trigger` (native) | Core flavor works end-to-end; count's two-input + `msg.reset` pattern validated |
 | `sys.wasm.math_expr` (Wasm) | Wasm flavor works; fuel + memory limits trigger correctly; host-function ABI is stable |
-| `com.example.pg.query` (process plugin + MF UI) | Process flavor + supervised subprocess + signed MF bundle + per-target UI isolation + capability-gated install |
+| `com.example.pg.query` (process block + MF UI) | Process flavor + supervised subprocess + signed MF bundle + per-target UI isolation + capability-gated install |
 | Contract test round-tripping `Msg` between Rust and TS fixtures | Shared SDK is not drifting; CI gate in place |
-| `yourapp ext check` dry-run that catches a missing capability | VERSIONING.md install-time match works against real plugins |
+| `yourapp ext check` dry-run that catches a missing capability | VERSIONING.md install-time match works against real blocks |
 
 ---
 
 ## Non-goals for this scope
 
-- Multi-node-per-kind packaging optimisations (one extension contributing 50 kinds) — the pattern supports it; UX polish comes later.
-- Hot-reload of native kinds — process plugins reload cleanly; native reload is a restart.
-- Cross-language SDKs beyond Wasm (Go/Python process-plugin SDKs) — proto-only for now. The process-plugin authoring loop works for any language that speaks gRPC; a first-class non-Rust SDK is its own scope.
+- Multi-node-per-kind packaging optimisations (one block contributing 50 kinds) — the pattern supports it; UX polish comes later.
+- Hot-reload of native kinds — process blocks reload cleanly; native reload is a restart.
+- Cross-language SDKs beyond Wasm (Go/Python process-block SDKs) — proto-only for now. The process-block authoring loop works for any language that speaks gRPC; a first-class non-Rust SDK is its own scope.
 - Kind-level migrations (schema evolution on a kind across versions) — spec'd in VERSIONING.md, landing in a later stage.
 
 ---
 
 ## One-line summary
 
-**Three node flavors (core native, Wasm, process plugin) sharing one Rust SDK (`extensions-sdk`) and one TypeScript SDK (`@sys/extensions-sdk-ts`); a `NodeBehavior` impl and a manifest YAML look identical across flavors; only the Cargo feature and packaging change; the SDK is the contract that keeps core and plugins from drifting, and it is the key deliverable of this scope.**
+**Three node flavors (core native, Wasm, process block) sharing one Rust SDK (`blocks-sdk`) and one TypeScript SDK (`@sys/blocks-sdk-ts`); a `NodeBehavior` impl and a manifest YAML look identical across flavors; only the Cargo feature and packaging change; the SDK is the contract that keeps core and blocks from drifting, and it is the key deliverable of this scope.**

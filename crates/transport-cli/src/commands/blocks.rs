@@ -1,4 +1,4 @@
-//! `agent plugins {list,get,enable,disable,reload}` — plugin operations.
+//! `agent blocks {list,get,enable,disable,reload}` — block operations.
 
 use agent_client::AgentClient;
 use anyhow::Result;
@@ -8,44 +8,44 @@ use crate::output::{self, OutputFormat};
 
 #[derive(Debug, Subcommand)]
 pub enum PluginsCmd {
-    /// List all loaded plugins.
+    /// List all loaded blocks.
     List,
-    /// Get details for a single plugin.
+    /// Get details for a single block.
     Get {
-        /// Plugin id (e.g. `acme-plugin`).
+        /// Block id (e.g. `acme-block`).
         id: String,
     },
-    /// Enable a plugin.
+    /// Enable a block.
     Enable {
-        /// Plugin id.
+        /// Block id.
         id: String,
     },
-    /// Disable a plugin.
+    /// Disable a block.
     Disable {
-        /// Plugin id.
+        /// Block id.
         id: String,
     },
-    /// Trigger a full plugin reload scan.
+    /// Trigger a full block reload scan.
     Reload,
-    /// Get the process-runtime state for one plugin.
+    /// Get the process-runtime state for one block.
     Runtime {
-        /// Plugin id.
+        /// Block id.
         id: String,
     },
-    /// Snapshot runtime state of every process plugin.
+    /// Snapshot runtime state of every process block.
     RuntimeAll,
 }
 
 impl PluginsCmd {
     pub fn command_name(&self) -> &'static str {
         match self {
-            Self::List => "plugins list",
-            Self::Get { .. } => "plugins get",
-            Self::Enable { .. } => "plugins enable",
-            Self::Disable { .. } => "plugins disable",
-            Self::Reload => "plugins reload",
-            Self::Runtime { .. } => "plugins runtime",
-            Self::RuntimeAll => "plugins runtime-all",
+            Self::List => "blocks list",
+            Self::Get { .. } => "blocks get",
+            Self::Enable { .. } => "blocks enable",
+            Self::Disable { .. } => "blocks disable",
+            Self::Reload => "blocks reload",
+            Self::Runtime { .. } => "blocks runtime",
+            Self::RuntimeAll => "blocks runtime-all",
         }
     }
 }
@@ -53,11 +53,11 @@ impl PluginsCmd {
 pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &PluginsCmd) -> Result<()> {
     match cmd {
         PluginsCmd::List => {
-            let plugins = client.plugins().list().await?;
+            let blocks = client.blocks().list().await?;
             output::ok_table(
                 fmt,
                 &["ID", "VERSION", "LIFECYCLE", "DISPLAY_NAME", "KINDS"],
-                &plugins,
+                &blocks,
                 |p| {
                     vec![
                         p.id.clone(),
@@ -70,27 +70,27 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &PluginsCmd) -> R
             )?;
         }
         PluginsCmd::Get { id } => {
-            let plugin = client.plugins().get(id).await?;
-            output::ok(fmt, &plugin)?;
+            let block = client.blocks().get(id).await?;
+            output::ok(fmt, &block)?;
         }
         PluginsCmd::Enable { id } => {
-            client.plugins().enable(id).await?;
+            client.blocks().enable(id).await?;
             output::ok_status(fmt, &format!("enabled {id}"))?;
         }
         PluginsCmd::Disable { id } => {
-            client.plugins().disable(id).await?;
+            client.blocks().disable(id).await?;
             output::ok_status(fmt, &format!("disabled {id}"))?;
         }
         PluginsCmd::Reload => {
-            client.plugins().reload().await?;
+            client.blocks().reload().await?;
             output::ok_status(fmt, "reload triggered")?;
         }
         PluginsCmd::Runtime { id } => {
-            let state = client.plugins().runtime(id).await?;
+            let state = client.blocks().runtime(id).await?;
             output::ok(fmt, &state)?;
         }
         PluginsCmd::RuntimeAll => {
-            let entries = client.plugins().runtime_all().await?;
+            let entries = client.blocks().runtime_all().await?;
             output::ok_table(fmt, &["ID", "STATUS", "DETAIL"], &entries, |e| {
                 vec![
                     e.id.clone(),

@@ -7,7 +7,7 @@
 //! between the original fixture and the re-serialised form. Field order
 //! is intentionally not part of the contract — see `NEXT.md`.
 //!
-//! Stage 4's `@sys/extensions-sdk-ts` runs the same fixtures through
+//! Stage 4's `@sys/blocks-sdk-ts` runs the same fixtures through
 //! its own parser; two round-trips against the same files is how
 //! "Rust SDK and TS SDK agree" stays machine-verified.
 

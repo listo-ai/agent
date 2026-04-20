@@ -2,7 +2,7 @@
 //!
 //! Live slot state (`SlotValue`, `SlotMap`) is graph-runtime concern and
 //! stays in the `graph` crate. Only the *shape* lives here, because
-//! extension authors declare it in their manifest and the SDK needs to
+//! block authors declare it in their manifest and the SDK needs to
 //! emit it without pulling in the runtime.
 
 use serde::{Deserialize, Serialize};

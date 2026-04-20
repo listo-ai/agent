@@ -1,4 +1,4 @@
-//! `plugin.yaml` schema.
+//! `block.yaml` schema.
 //!
 //! One manifest, forever — every later stage (Wasm, native, process,
 //! signing, kind migrations) adds fields here, never replaces the file.
@@ -11,37 +11,37 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use spi::capabilities::Requirement;
 
-/// Reverse-DNS plugin identifier (e.g. `com.acme.hello`).
+/// Reverse-DNS block identifier (e.g. `com.acme.hello`).
 ///
 /// Directory name is authoritative at load time; the manifest `id`
-/// must match or the plugin is `Failed`. A plugin id must contain at
+/// must match or the block is `Failed`. A block id must contain at
 /// least one dot and no path-hostile characters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct PluginId(String);
+pub struct BlockId(String);
 
-impl PluginId {
+impl BlockId {
     /// Validate and wrap. Enforces:
     /// - non-empty
     /// - at least one `.` (reverse-DNS shape)
     /// - each dotted segment is non-empty and made of `[a-z0-9-]`
-    pub fn parse(s: impl Into<String>) -> Result<Self, InvalidPluginId> {
+    pub fn parse(s: impl Into<String>) -> Result<Self, InvalidBlockId> {
         let s = s.into();
         if s.is_empty() {
-            return Err(InvalidPluginId::Empty);
+            return Err(InvalidBlockId::Empty);
         }
         if !s.contains('.') {
-            return Err(InvalidPluginId::NotReverseDns(s));
+            return Err(InvalidBlockId::NotReverseDns(s));
         }
         for seg in s.split('.') {
             if seg.is_empty() {
-                return Err(InvalidPluginId::EmptySegment(s.clone()));
+                return Err(InvalidBlockId::EmptySegment(s.clone()));
             }
             if !seg
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
             {
-                return Err(InvalidPluginId::BadSegment {
+                return Err(InvalidBlockId::BadSegment {
                     id: s.clone(),
                     segment: seg.to_string(),
                 });
@@ -55,38 +55,38 @@ impl PluginId {
     }
 
     /// True if `kind_id` is equal to or a dotted descendant of this
-    /// plugin id. Enforces the namespace-ownership rule documented in
+    /// block id. Enforces the namespace-ownership rule documented in
     /// PLUGINS.md § "Namespace ownership".
     pub fn owns_kind(&self, kind_id: &str) -> bool {
         kind_id == self.0 || kind_id.starts_with(&format!("{}.", self.0))
     }
 }
 
-impl fmt::Display for PluginId {
+impl fmt::Display for BlockId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum InvalidPluginId {
-    #[error("plugin id is empty")]
+pub enum InvalidBlockId {
+    #[error("block id is empty")]
     Empty,
-    #[error("plugin id `{0}` is not reverse-DNS (needs at least one `.`)")]
+    #[error("block id `{0}` is not reverse-DNS (needs at least one `.`)")]
     NotReverseDns(String),
-    #[error("plugin id `{0}` has an empty dotted segment")]
+    #[error("block id `{0}` has an empty dotted segment")]
     EmptySegment(String),
     #[error(
-        "plugin id `{id}` segment `{segment}` contains forbidden characters (allowed: `[a-z0-9-]`)"
+        "block id `{id}` segment `{segment}` contains forbidden characters (allowed: `[a-z0-9-]`)"
     )]
     BadSegment { id: String, segment: String },
 }
 
-/// `plugin.yaml` — the single source of truth a plugin directory ships.
+/// `block.yaml` — the single source of truth a block directory ships.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PluginManifest {
-    pub id: PluginId,
+pub struct BlockManifest {
+    pub id: BlockId,
     pub version: Version,
     #[serde(default)]
     pub display_name: Option<String>,
@@ -102,12 +102,12 @@ pub struct PluginManifest {
     pub requires: Vec<Requirement>,
 }
 
-/// Everything a plugin contributes to the host. Additive across every
+/// Everything a block contributes to the host. Additive across every
 /// stage — new kinds of contribution grow this struct.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Contributes {
-    /// Module-Federation UI bundle. Served under `/plugins/<id>/ui/`.
+    /// Module-Federation UI bundle. Served under `/blocks/<id>/ui/`.
     #[serde(default)]
     pub ui: Option<UiContribution>,
 
@@ -125,7 +125,7 @@ pub struct Contributes {
     #[serde(default)]
     pub wasm_modules: Vec<WasmContribution>,
 
-    /// Process-plugin binary — Stage 3c.
+    /// Process-block binary — Stage 3c.
     #[serde(default)]
     pub process_bin: Option<ProcessBinContribution>,
 }
@@ -133,7 +133,7 @@ pub struct Contributes {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiContribution {
-    /// Entry point relative to the plugin directory, e.g.
+    /// Entry point relative to the block directory, e.g.
     /// `ui/remoteEntry.js`.
     pub entry: String,
     #[serde(default)]
@@ -177,28 +177,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plugin_id_accepts_reverse_dns() {
-        assert!(PluginId::parse("com.acme.hello").is_ok());
-        assert!(PluginId::parse("io.nube.gateway").is_ok());
-        assert!(PluginId::parse("a.b").is_ok());
+    fn block_id_accepts_reverse_dns() {
+        assert!(BlockId::parse("com.acme.hello").is_ok());
+        assert!(BlockId::parse("io.nube.gateway").is_ok());
+        assert!(BlockId::parse("a.b").is_ok());
     }
 
     #[test]
-    fn plugin_id_rejects_flat_strings() {
-        assert!(PluginId::parse("hello").is_err());
-        assert!(PluginId::parse("").is_err());
+    fn block_id_rejects_flat_strings() {
+        assert!(BlockId::parse("hello").is_err());
+        assert!(BlockId::parse("").is_err());
     }
 
     #[test]
-    fn plugin_id_rejects_bad_chars() {
-        assert!(PluginId::parse("com.Acme.hello").is_err()); // uppercase
-        assert!(PluginId::parse("com.acme..hello").is_err()); // empty seg
-        assert!(PluginId::parse("com.acme.hello!").is_err()); // punctuation
+    fn block_id_rejects_bad_chars() {
+        assert!(BlockId::parse("com.Acme.hello").is_err()); // uppercase
+        assert!(BlockId::parse("com.acme..hello").is_err()); // empty seg
+        assert!(BlockId::parse("com.acme.hello!").is_err()); // punctuation
     }
 
     #[test]
     fn owns_kind_enforces_namespace() {
-        let p = PluginId::parse("com.acme.hello").unwrap();
+        let p = BlockId::parse("com.acme.hello").unwrap();
         assert!(p.owns_kind("com.acme.hello"));
         assert!(p.owns_kind("com.acme.hello.panel"));
         assert!(p.owns_kind("com.acme.hello.deeper.still"));
@@ -212,8 +212,8 @@ mod tests {
         let yaml = r#"
 id: com.acme.hello
 version: 0.1.0
-display_name: "Hello plugin"
-description: "Reference plugin"
+display_name: "Hello block"
+description: "Reference block"
 contributes:
   ui:
     entry: ui/remoteEntry.js
@@ -226,7 +226,7 @@ requires:
   - id: spi.msg
     version: "^1"
 "#;
-        let m: PluginManifest = serde_yml::from_str(yaml).unwrap();
+        let m: BlockManifest = serde_yml::from_str(yaml).unwrap();
         assert_eq!(m.id.as_str(), "com.acme.hello");
         assert_eq!(m.version, Version::new(0, 1, 0));
         let ui = m.contributes.ui.unwrap();
@@ -241,13 +241,13 @@ id: com.acme.hello
 version: 0.1.0
 totally_made_up: true
 "#;
-        let err = serde_yml::from_str::<PluginManifest>(yaml).unwrap_err();
+        let err = serde_yml::from_str::<BlockManifest>(yaml).unwrap_err();
         assert!(err.to_string().contains("totally_made_up"), "got: {err}");
     }
 
     #[test]
     fn missing_id_is_rejected() {
         let yaml = "version: 0.1.0\n";
-        assert!(serde_yml::from_str::<PluginManifest>(yaml).is_err());
+        assert!(serde_yml::from_str::<BlockManifest>(yaml).is_err());
     }
 }

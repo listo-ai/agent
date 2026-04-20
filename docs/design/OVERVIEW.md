@@ -10,12 +10,12 @@ One binary, one codebase. Role selected at startup via `--role` flag or config. 
 
 | Profile | Role | Host | Typical hardware | What runs | Database | NATS |
 |---|---|---|---|---|---|---|
-| **Cloud — multi-tenant SaaS** | `cloud` | Linux containers, Kubernetes or VMs | Horizontally scaled, 2–8 GB per pod | Control Plane API, fleet orchestrator, cloud-side engine, cloud-only extensions | Postgres (managed, HA) | NATS cluster with JetStream |
+| **Cloud — multi-tenant SaaS** | `cloud` | Linux containers, Kubernetes or VMs | Horizontally scaled, 2–8 GB per pod | Control Plane API, fleet orchestrator, cloud-side engine, cloud-only blocks | Postgres (managed, HA) | NATS cluster with JetStream |
 | **Cloud — single-tenant** | `cloud` | Linux VM, Docker, or bare metal | 1 VM, 2–4 GB RAM | Same as above, single replica | Postgres (single instance) | NATS single-node with JetStream |
-| **Edge — ARM gateway** | `edge` | Raspberry Pi, industrial gateway | aarch64, 512 MB RAM, 8+ GB storage | Engine, local extensions, NATS leaf, local SQLite | SQLite | NATS leaf (Core only; JetStream off) |
+| **Edge — ARM gateway** | `edge` | Raspberry Pi, industrial gateway | aarch64, 512 MB RAM, 8+ GB storage | Engine, local blocks, NATS leaf, local SQLite | SQLite | NATS leaf (Core only; JetStream off) |
 | **Edge — x86 gateway** | `edge` | Industrial PC, Intel NUC | x86_64, 1–4 GB RAM | Same as ARM edge; JetStream optional | SQLite | NATS leaf (JetStream opt-in) |
 | **Edge — legacy ARM** | `edge` | Older hardware | armv7, 256–512 MB RAM | Stripped features, no JetStream, reduced outbox | SQLite | NATS leaf (Core only) |
-| **Standalone appliance** | `standalone` | Single box on-prem | 2–4 GB RAM | Everything — Control Plane + engine + extensions | SQLite or embedded Postgres | NATS embedded single-node |
+| **Standalone appliance** | `standalone` | Single box on-prem | 2–4 GB RAM | Everything — Control Plane + engine + blocks | SQLite or embedded Postgres | NATS embedded single-node |
 | **Developer laptop** | `standalone` | macOS / Windows / Linux | Dev machine | Everything in one process | SQLite | NATS embedded |
 | **Studio — Windows desktop** | (client) | Windows 10/11 | Any modern PC | Tauri shell, local Studio UI | — | NATS WebSocket client |
 | **Studio — macOS desktop** | (client) | macOS 12+ | Intel + Apple Silicon | Tauri shell, local Studio UI | — | NATS WebSocket client |
@@ -38,7 +38,7 @@ One binary, one codebase. Role selected at startup via `--role` flag or config. 
 | Studio macOS ARM | `aarch64-apple-darwin` | Tauri desktop on Apple Silicon | macOS native |
 | Studio Linux | `x86_64-unknown-linux-gnu` | Tauri desktop | Native Linux |
 | Browser Studio | `wasm32-unknown-unknown` | Any Wasm crates needed in-browser | Any |
-| Wasm extensions | `wasm32-wasip1` or `wasm32-unknown-unknown` | Extension authors, not us | Any |
+| Wasm blocks | `wasm32-wasip1` or `wasm32-unknown-unknown` | Block authors, not us | Any |
 
 ## Distribution artifacts
 
@@ -63,11 +63,11 @@ One binary, one codebase. Role selected at startup via `--role` flag or config. 
 |---|---|---|---|---|---|---|
 | Control Plane API | ✓ | — | — | ✓ | — | — |
 | Flow engine | ✓ | ✓ | ✓ | ✓ | — | — |
-| Native Rust extensions | ✓ (cloud-side) | ✓ (edge-side) | ✓ (edge-side) | ✓ | — | — |
-| Wasm extensions | ✓ | ✓ | ✓ | ✓ | ✓ (preview only) | ✓ (preview only) |
-| Protocol extensions (BACnet, Modbus) | — | ✓ | ✓ | ✓ | — | — |
-| Cloud-API extensions (Salesforce, Slack) | ✓ | — | — | ✓ | — | — |
-| MQTT / HTTP extensions | ✓ | ✓ | ✓ | ✓ | — | — |
+| Native Rust blocks | ✓ (cloud-side) | ✓ (edge-side) | ✓ (edge-side) | ✓ | — | — |
+| Wasm blocks | ✓ | ✓ | ✓ | ✓ | ✓ (preview only) | ✓ (preview only) |
+| Protocol blocks (BACnet, Modbus) | — | ✓ | ✓ | ✓ | — | — |
+| Cloud-API blocks (Salesforce, Slack) | ✓ | — | — | ✓ | — | — |
+| MQTT / HTTP blocks | ✓ | ✓ | ✓ | ✓ | — | — |
 | NATS cluster (JetStream) | ✓ | — | — | embedded | — | — |
 | NATS leaf | — | ✓ | ✓ | n/a | — | — |
 | NATS client over WebSocket | — | — | — | — | ✓ | ✓ |
@@ -111,13 +111,13 @@ One library per concern. Don't introduce alternatives — if a crate is listed h
 | **Logging / tracing** | [`tracing`](https://crates.io/crates/tracing) + [`tracing-subscriber`](https://crates.io/crates/tracing-subscriber) | Structured spans and events everywhere. `tracing` in libs; subscriber initialised once in `apps/agent`. See [LOGGING.md](LOGGING.md). |
 | **Async utilities** | [`async-trait`](https://crates.io/crates/async-trait) + [`async-stream`](https://crates.io/crates/async-stream) + [`tokio-stream`](https://crates.io/crates/tokio-stream) + [`futures-util`](https://crates.io/crates/futures-util) | `async-trait` for object-safe async traits; `async-stream` / `tokio-stream` for `Stream` impls; `futures-util` for combinators. |
 | **UUIDs** | [`uuid`](https://crates.io/crates/uuid) | v4 random; serde feature always on. Node IDs, tenant IDs, correlation IDs. |
-| **Semver** | [`semver`](https://crates.io/crates/semver) | Extension capability manifests and kind versioning. See [VERSIONING.md](VERSIONING.md). |
-| **Proc-macro helpers** | [`syn`](https://crates.io/crates/syn) + [`quote`](https://crates.io/crates/quote) + [`proc-macro2`](https://crates.io/crates/proc-macro2) | Used only in `extensions-sdk-macros`. Do not add proc-macro crates elsewhere. |
+| **Semver** | [`semver`](https://crates.io/crates/semver) | Block capability manifests and kind versioning. See [VERSIONING.md](VERSIONING.md). |
+| **Proc-macro helpers** | [`syn`](https://crates.io/crates/syn) + [`quote`](https://crates.io/crates/quote) + [`proc-macro2`](https://crates.io/crates/proc-macro2) | Used only in `blocks-sdk-macros`. Do not add proc-macro crates elsewhere. |
 | **SQLite** | [`rusqlite`](https://crates.io/crates/rusqlite) (bundled feature) | Edge and standalone persistence. Bundled so the binary has zero system-lib dependencies. Only `data-sqlite` depends on it. |
 | **PostgreSQL** | [`sqlx`](https://crates.io/crates/sqlx) or [`sea-query`](https://crates.io/crates/sea-query) *(planned)* | Cloud persistence. Only `data-postgres` will depend on it — no SQL in domain crates, ever. |
 | **NATS** | [`async-nats`](https://crates.io/crates/async-nats) *(planned)* | JetStream for cloud; leaf-node for edge. Only `transport-nats` and `messaging` depend on it. |
 | **Zenoh** | [`zenoh`](https://crates.io/crates/zenoh) | Fleet transport for edge-to-edge and edge-to-cloud in constrained environments. Only `transport-fleet-zenoh`. |
-| **Wasm host** | [`wasmtime`](https://crates.io/crates/wasmtime) | Sandboxed Wasm extension execution. Only `extensions-host` depends on it. Component model + WASI. |
+| **Wasm host** | [`wasmtime`](https://crates.io/crates/wasmtime) | Sandboxed Wasm block execution. Only `blocks-host` depends on it. Component model + WASI. |
 | **Datetime / timezone** | [`jiff`](https://crates.io/crates/jiff) | UTC storage, IANA tz conversion, Rust 2024 idioms. No `chrono`/`time` — use `jiff` for all time math. |
 | **Locale / formatting** | [`icu_locale`](https://crates.io/crates/icu_locale) + [`icu_datetime`](https://crates.io/crates/icu_datetime) + [`icu_decimal`](https://crates.io/crates/icu_decimal) (ICU4X) | BCP-47 locale parsing, locale-aware date/number/currency formatting on the presentation edge. |
 | **Unit conversion** | [`uom`](https://crates.io/crates/uom) | Type-safe SI units; compile-time dimensional analysis. Used inside `UnitRegistry` — never hand-write conversion factors. |

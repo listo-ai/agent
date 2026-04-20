@@ -2,21 +2,21 @@
 
 How edge agents and the Cloud / Control Plane talk to each other — and how Studio reaches an edge agent through the cloud without the edge having to open an inbound port.
 
-This is the **fleet** layer: cross-agent messaging, request/reply into remote agents, cloud-originated commands, telemetry fan-in. The local REST surface ([PLUGINS.md](PLUGINS.md), [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md), [RUNTIME.md](RUNTIME.md)) is a separate thing — it's HTTP into a single agent process. Fleet transport is agent ↔ agent over a persistent message fabric.
+This is the **fleet** layer: cross-agent messaging, request/reply into remote agents, cloud-originated commands, telemetry fan-in. The local REST surface ([BLOCKS.md](BLOCKS.md), [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md), [RUNTIME.md](RUNTIME.md)) is a separate thing — it's HTTP into a single agent process. Fleet transport is agent ↔ agent over a persistent message fabric.
 
 Companion docs:
 - [OVERVIEW.md](OVERVIEW.md) — deployment profiles that decide whether fleet transport is on and in which direction.
 - [VERSIONING.md](VERSIONING.md) — capabilities map to fleet-transport flavours (`fleet.nats.v1`, `fleet.zenoh.v1`).
-- [PLUGINS.md](PLUGINS.md) — plugins use the same capability matcher but *do not* provide the transport.
+- [BLOCKS.md](BLOCKS.md) — blocks use the same capability matcher but *do not* provide the transport.
 - [AUTH.md](AUTH.md) — tenant partitioning on subjects / key expressions.
 
 ---
 
 ## The one rule
 
-**Fleet transport is core, not a plugin.** It's compiled in, selected by config at startup, exposed through a trait in `spi`. Multiple backends coexist in the codebase gated by Cargo features. The runtime on/off is a config value (`fleet: null` → standalone mode with no cloud), not a plugin load.
+**Fleet transport is core, not a block.** It's compiled in, selected by config at startup, exposed through a trait in `spi`. Multiple backends coexist in the codebase gated by Cargo features. The runtime on/off is a config value (`fleet: null` → standalone mode with no cloud), not a block load.
 
-Why: every subsystem that talks to cloud (audit stream, command receiver, telemetry pump, graph event mirror) depends on fleet transport being *present*, not *maybe-loaded*. Making it a plugin pushes "what if it's not here?" handling into every caller and contradicts [EVERYTHING-AS-NODE.md § "The agent itself is a node too — no parallel state"](EVERYTHING-AS-NODE.md) — the same parallel-system antipattern applied to a cross-cutting concern.
+Why: every subsystem that talks to cloud (audit stream, command receiver, telemetry pump, graph event mirror) depends on fleet transport being *present*, not *maybe-loaded*. Making it a block pushes "what if it's not here?" handling into every caller and contradicts [EVERYTHING-AS-NODE.md § "The agent itself is a node too — no parallel state"](EVERYTHING-AS-NODE.md) — the same parallel-system antipattern applied to a cross-cutting concern.
 
 ## What fleet transport IS
 
@@ -32,9 +32,9 @@ Why: every subsystem that talks to cloud (audit stream, command receiver, teleme
 ## What it IS NOT
 
 - Not the local REST surface (HTTP routes in `transport-rest` — single-agent, same-host).
-- Not the plugin-UI delivery channel (`/plugins/:id/*` ServeDir — local HTTP).
-- Not the bulk-transfer layer for large artefacts. Plugin bundles, firmware, config zips → signed HTTPS URLs published as short control messages over fleet transport, downloaded out-of-band. See § "Bulk transfer" below.
-- Not a plugin API surface. Plugins depend on `fleet.<backend>.v1` as a *capability*, never as something they provide.
+- Not the block-UI delivery channel (`/blocks/:id/*` ServeDir — local HTTP).
+- Not the bulk-transfer layer for large artefacts. Block bundles, firmware, config zips → signed HTTPS URLs published as short control messages over fleet transport, downloaded out-of-band. See § "Bulk transfer" below.
+- Not a block API surface. Blocks depend on `fleet.<backend>.v1` as a *capability*, never as something they provide.
 
 ## The trait
 
@@ -156,12 +156,12 @@ fleet.<tenant>.<agent-id>.<kind>.<...>
 | `api.v1.*` | Request/reply matching the local REST surface. Studio (via cloud) → edge. | `fleet.sys.edge-42.api.v1.nodes.list` |
 | `event.graph.*` | Edge → cloud: slot changes, lifecycle transitions, link events. Mirrors the local SSE stream. | `fleet.sys.edge-42.event.graph.slot.temp.changed` |
 | `event.agent.*` | Agent lifecycle, health, version. | `fleet.sys.edge-42.event.agent.health.memory_mb` |
-| `cmd.*` | Cloud → edge: install plugin, pause engine, restart, reload config. | `fleet.sys.edge-42.cmd.plugin.install` |
+| `cmd.*` | Cloud → edge: install block, pause engine, restart, reload config. | `fleet.sys.edge-42.cmd.block.install` |
 | `log.*` | Edge → cloud: audit + operational logs. | `fleet.sys.edge-42.log.audit` |
 
 **Wildcard subscriptions** — a Studio view subscribed to `fleet.sys.*.event.agent.health.*` sees every edge's health in the tenant without per-agent config.
 
-**Dot-escape** rule from [PLUGINS.md § "Path-segment encoding"](PLUGINS.md) applies: any graph path segment containing `.` is encoded with `_` when it enters a subject token. `/agent/plugins/com.acme.hello` → subject segment `com_acme_hello`.
+**Dot-escape** rule from [BLOCKS.md § "Path-segment encoding"](BLOCKS.md) applies: any graph path segment containing `.` is encoded with `_` when it enters a subject token. `/agent/blocks/com.acme.hello` → subject segment `com_acme_hello`.
 
 ## Studio's transport abstraction
 
@@ -310,13 +310,13 @@ Consequence: the "send Slack on cloud disconnect" flow is the same shape as ever
 
 ## Bulk transfer
 
-Fleet transport is for **control messages**, not blobs. Plugin bundles, firmware, config zips:
+Fleet transport is for **control messages**, not blobs. Block bundles, firmware, config zips:
 
 1. Cloud uploads the artefact to an object store (S3 / MinIO / R2 / image-baked).
 2. Cloud signs a time-limited URL.
-3. Cloud publishes a control message over fleet: `fleet.<tenant>.<agent-id>.cmd.plugin.install` with `{id, url, sha256, expires_at}`.
+3. Cloud publishes a control message over fleet: `fleet.<tenant>.<agent-id>.cmd.block.install` with `{id, url, sha256, expires_at}`.
 4. Edge downloads via HTTPS directly, verifies SHA256, installs.
-5. Edge publishes result: `fleet.<tenant>.<agent-id>.event.plugin.installed` with `{id, version, status}`.
+5. Edge publishes result: `fleet.<tenant>.<agent-id>.event.block.installed` with `{id, version, status}`.
 
 Why not push bytes through the bus: resumable range requests, parallel fan-out via CDN, operators already know how to debug HTTP + S3, storage cost per GB is much lower than on-bus durable stores. Rule of thumb — if the payload exceeds `smallest_edge_ram / 10`, publish a URL, don't push bytes.
 
@@ -346,7 +346,7 @@ Credential rotation, revocation, and audit all live in the existing Zitadel + au
 | Not in v1 | Why |
 |---|---|
 | Peer-to-peer direct edge ↔ edge | NAT traversal complexity for a rare need. Cloud mediates. If we ever need it, libp2p fits the mental model better than another broker. |
-| Fleet-contributed capabilities | Plugins can't provide `fleet.*` — same reasoning as "plugins don't provide transports". Capabilities flow core → plugins. |
+| Fleet-contributed capabilities | Blocks can't provide `fleet.*` — same reasoning as "blocks don't provide transports". Capabilities flow core → blocks. |
 | Multi-backend per agent | One backend active at a time. Simplification: config chooses; reconfiguring switches. |
 | Hot-swap backend at runtime | Rare need; restart is fine. |
 | Custom auth providers on the fleet fabric itself | Stick with each backend's native auth (NATS accounts, Zenoh ACLs, MQTT usernames). |
@@ -386,16 +386,16 @@ Each row is additive; the trait signature never changes.
 
 ## Decisions locked
 
-1. **Fleet transport is compile-time-plus-config, never a plugin.**
+1. **Fleet transport is compile-time-plus-config, never a block.**
 2. **Single trait (`spi::FleetTransport`)**; multiple backend crates gated by Cargo features.
 3. **Canonical subject namespace** is `fleet.<tenant>.<agent-id>.<kind>.<...>`, enforced regardless of backend wire format.
-4. **Dot-escape rule from PLUGINS.md applies** to every segment that becomes a subject token.
+4. **Dot-escape rule from BLOCKS.md applies** to every segment that becomes a subject token.
 5. **Connection state is a graph node** (`sys.agent.fleet`) — no parallel status struct.
 6. **Bulk transfer doesn't go on the bus.** Control message + signed URL + out-of-band HTTPS fetch.
 7. **`fleet: null` is a first-class configuration**, not a degraded mode — standalone agents don't pretend they have cloud.
-8. **Plugins consume `fleet.<backend>.v1` capabilities, never provide them.**
+8. **Blocks consume `fleet.<backend>.v1` capabilities, never provide them.**
 9. **Scope is dispatch-time routing, never persisted graph state.** `Scope::Local` vs `Scope::Remote { tenant, agent_id }` chooses the transport; the set of known remotes lives as `sys.fleet.remote-agent` nodes, not as a separate inventory.
 
 ## One-line summary
 
-**Fleet transport is a compile-time-selected, runtime-toggleable core subsystem — one trait in `spi`, one crate per backend (Zenoh shipped embedded first, NATS next), a canonical `fleet.<tenant>.<agent-id>.<kind>.<…>` subject namespace, connection state represented as a graph node, bulk artefacts moved via signed HTTPS URLs out of band — giving one wire protocol for cloud-originated commands, cross-agent events, and Studio-to-edge request/reply without edges opening inbound ports or plugins owning load-bearing infrastructure.**
+**Fleet transport is a compile-time-selected, runtime-toggleable core subsystem — one trait in `spi`, one crate per backend (Zenoh shipped embedded first, NATS next), a canonical `fleet.<tenant>.<agent-id>.<kind>.<…>` subject namespace, connection state represented as a graph node, bulk artefacts moved via signed HTTPS URLs out of band — giving one wire protocol for cloud-originated commands, cross-agent events, and Studio-to-edge request/reply without edges opening inbound ports or blocks owning load-bearing infrastructure.**

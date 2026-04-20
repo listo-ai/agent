@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use extensions_sdk::{DynBehavior, EmitSink, GraphAccess, NodeCtx, TimerHandle, TimerScheduler};
+use blocks_sdk::{DynBehavior, EmitSink, GraphAccess, NodeCtx, TimerHandle, TimerScheduler};
 use graph::{GraphEvent, GraphStore};
 use serde_json::Value as JsonValue;
 use spi::{KindId, KindManifest, Msg, NodeId, NodePath, SlotRole};
@@ -303,15 +303,15 @@ impl GraphAccess for GraphAdapter {
         &self,
         path: &NodePath,
         slot: &str,
-    ) -> Result<JsonValue, extensions_sdk::NodeError> {
+    ) -> Result<JsonValue, blocks_sdk::NodeError> {
         let snap = self.graph.get(path).ok_or_else(|| {
-            extensions_sdk::NodeError::runtime(format!("node `{path}` not found"))
+            blocks_sdk::NodeError::runtime(format!("node `{path}` not found"))
         })?;
         snap.slot_values
             .into_iter()
             .find(|(n, _)| n == slot)
             .map(|(_, sv)| sv.value)
-            .ok_or_else(|| extensions_sdk::NodeError::UnknownSlot(slot.to_string()))
+            .ok_or_else(|| blocks_sdk::NodeError::UnknownSlot(slot.to_string()))
     }
 
     fn write_slot(
@@ -319,28 +319,28 @@ impl GraphAccess for GraphAdapter {
         path: &NodePath,
         slot: &str,
         value: JsonValue,
-    ) -> Result<(), extensions_sdk::NodeError> {
+    ) -> Result<(), blocks_sdk::NodeError> {
         self.graph
             .write_slot(path, slot, value)
             .map(|_| ())
-            .map_err(|e| extensions_sdk::NodeError::runtime(e.to_string()))
+            .map_err(|e| blocks_sdk::NodeError::runtime(e.to_string()))
     }
 }
 
 impl EmitSink for GraphAdapter {
-    fn emit(&self, source: NodeId, port: &str, msg: Msg) -> Result<(), extensions_sdk::NodeError> {
+    fn emit(&self, source: NodeId, port: &str, msg: Msg) -> Result<(), blocks_sdk::NodeError> {
         let path = self
             .graph
             .get_by_id(source)
             .map(|s| s.path)
             .ok_or_else(|| {
-                extensions_sdk::NodeError::runtime(format!("emit: source node {source} missing"))
+                blocks_sdk::NodeError::runtime(format!("emit: source node {source} missing"))
             })?;
         let value = serde_json::to_value(&msg)
-            .map_err(|e| extensions_sdk::NodeError::runtime(e.to_string()))?;
+            .map_err(|e| blocks_sdk::NodeError::runtime(e.to_string()))?;
         self.graph
             .write_slot(&path, port, value)
             .map(|_| ())
-            .map_err(|e| extensions_sdk::NodeError::runtime(e.to_string()))
+            .map_err(|e| blocks_sdk::NodeError::runtime(e.to_string()))
     }
 }

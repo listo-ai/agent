@@ -24,11 +24,11 @@ make run
 ```
 
 Starts one edge agent on **http://localhost:8080** using `dev/edge.yaml` and
-`dev/edge.db`. Plugins are loaded from `dev/edge-plugins/`.
+`dev/edge.db`. Blocks are loaded from `dev/edge-blocks/`.
 
 This is the default. Use it for:
 - Flow authoring and execution
-- Plugin development
+- Block development
 - REST API testing
 - Anything that doesn't require a cloud agent
 
@@ -81,7 +81,7 @@ make studio-edge  # Studio      → http://localhost:3002
 make dev-reset
 ```
 
-Removes `dev/cloud.db`, `dev/edge.db`, and all staged plugins. Both agents
+Removes `dev/cloud.db`, `dev/edge.db`, and all staged blocks. Both agents
 re-seed fresh graphs on next boot. Only needed when the schema has changed
 or you want a completely clean slate.
 
@@ -89,13 +89,13 @@ or you want a completely clean slate.
 
 ## Common tasks
 
-### Stage a plugin
+### Stage a block
 
 ```bash
-cp -r plugins/com.acme.hello dev/edge-plugins/
-curl -X POST http://localhost:8080/api/v1/plugins/reload   # make run
-curl -X POST http://localhost:8082/api/v1/plugins/reload   # make dev (edge)
-curl -X POST http://localhost:8081/api/v1/plugins/reload   # make dev (cloud)
+cp -r blocks/com.acme.hello dev/edge-blocks/
+curl -X POST http://localhost:8080/api/v1/blocks/reload   # make run
+curl -X POST http://localhost:8082/api/v1/blocks/reload   # make dev (edge)
+curl -X POST http://localhost:8081/api/v1/blocks/reload   # make dev (cloud)
 ```
 
 ### Inspect the graph
@@ -114,7 +114,7 @@ curl http://localhost:8080/api/v1/nodes/<id>/slots
 | `overmind not found` | Install it (see above) or use the four manual targets |
 | Port already in use | `pkill -f "target/debug/agent"` then retry |
 | 404 on `/api/v1/nodes` | Wait ~2 s for boot seed; check logs for `graph seeded` |
-| Plugin not appearing | `curl -X POST http://localhost:808x/api/v1/plugins/reload` |
+| Block not appearing | `curl -X POST http://localhost:808x/api/v1/blocks/reload` |
 | Stale binary | `cargo build --bin agent` then restart |
 
 ---
@@ -122,7 +122,7 @@ curl http://localhost:8080/api/v1/nodes/<id>/slots
 ## What this environment covers
 
 - Edge-to-cloud agent communication (fleet transport, subject namespacing)
-- Plugin lifecycle on both roles
+- Block lifecycle on both roles
 - Flow authoring and execution against locally running protocols
 - REST API surface on both agents
 - Studio UI differences between cloud and edge views
@@ -138,7 +138,7 @@ It does **not** cover:
 
 | Doc | What it covers |
 |-----|----------------|
-| [dev/README.md](../../dev/README.md) | Port map, layout, per-agent plugin staging |
+| [dev/README.md](../../dev/README.md) | Port map, layout, per-agent block staging |
 | [docs/design/NEW-SESSION.md](../design/NEW-SESSION.md) | Project rules and doc index for AI coding sessions |
 | [docs/design/TESTS.md](../design/TESTS.md) | Unit/integration test categories, CI gates |
 | [Makefile](../../Makefile) | All available `make` targets |

@@ -192,7 +192,7 @@ Flaky tests are worse than no tests — they train people to ignore failures. De
 | Random ids (UUIDs) | Test harness supplies a seeded RNG or a counter-based id generator. Real UUIDs used only at the very top of integration tests where non-determinism is acceptable. |
 | Filesystem | Use `tempfile` crate; clean up on drop. No fixed paths. |
 | Network | Don't hit real networks from tests. Use `wiremock` (Rust) or an in-process HTTP server. |
-| Process spawn | Use a fake for the extension supervisor in unit tests; real spawn only in targeted integration tests marked `#[ignore]` unless `--all-targets` + `--include-ignored`. |
+| Process spawn | Use a fake for the block supervisor in unit tests; real spawn only in targeted integration tests marked `#[ignore]` unless `--all-targets` + `--include-ignored`. |
 | Async task ordering | Single-threaded `#[tokio::test]` by default. Multi-threaded only when the test's whole point is concurrency. |
 | Map iteration order | Use `BTreeMap` in assertions, or sort before compare. |
 

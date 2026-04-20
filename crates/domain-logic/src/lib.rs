@@ -3,11 +3,11 @@
 //!
 //! Stage 3a-3 ships [`Trigger`], the `sys.logic.trigger` node — the
 //! first behaviour kind to use the SDK's timer surface
-//! ([`extensions_sdk::TimerScheduler`] + `NodeBehavior::on_timer`).
+//! ([`blocks_sdk::TimerScheduler`] + `NodeBehavior::on_timer`).
 
 use std::sync::Arc;
 
-use extensions_sdk::prelude::*;
+use blocks_sdk::prelude::*;
 
 pub mod heartbeat;
 pub mod trigger;
@@ -15,7 +15,7 @@ pub mod trigger;
 pub use heartbeat::{Heartbeat, HeartbeatConfig};
 pub use trigger::{Trigger, TriggerConfig, TriggerMode};
 
-extensions_sdk::requires! {
+blocks_sdk::requires! {
     "spi.msg" => "1",
 }
 

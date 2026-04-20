@@ -1,20 +1,20 @@
 import { registerRemotes, loadRemote } from "@module-federation/enhanced/runtime";
-import type { ExtensionManifest } from "./types";
+import type { BlockManifest } from "./types";
 import { registerExtensionContributions } from "./registry";
-import { useExtensionsStore } from "@/store/extensions";
+import { useBlocksStore } from "@/store/blocks";
 
-// Extension loader — uses @module-federation/enhanced's runtime API.
+// Block loader — uses @module-federation/enhanced's runtime API.
 //
 // Trust tiers (from UI.md):
 //   first-party / signed-vetted  → registerRemotes + loadRemote into host realm
 //   untrusted                    → iframe + postMessage bridge (Milestone 6+)
 
-export async function fetchManifest(url: string): Promise<ExtensionManifest> {
+export async function fetchManifest(url: string): Promise<BlockManifest> {
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to fetch manifest from ${url}: ${res.status} ${res.statusText}`);
   }
-  return res.json() as Promise<ExtensionManifest>;
+  return res.json() as Promise<BlockManifest>;
 }
 
 interface LoadedModule {
@@ -24,12 +24,12 @@ interface LoadedModule {
 
 // Trusted path — MF runtime API. `remoteEntry` points at the remote's
 // mf-manifest.json (or remoteEntry.js for classic MF).
-async function loadTrustedExtension(manifest: ExtensionManifest): Promise<LoadedModule> {
+async function loadTrustedExtension(manifest: BlockManifest): Promise<LoadedModule> {
   if (!manifest.remoteEntry) {
-    throw new Error(`Extension "${manifest.id}" has no remoteEntry URL`);
+    throw new Error(`Block "${manifest.id}" has no remoteEntry URL`);
   }
   if (!manifest.remoteName) {
-    throw new Error(`Extension "${manifest.id}" has no remoteName (MF container name)`);
+    throw new Error(`Block "${manifest.id}" has no remoteName (MF container name)`);
   }
 
   registerRemotes([{ name: manifest.remoteName, entry: manifest.remoteEntry }]);
@@ -42,15 +42,15 @@ async function loadTrustedExtension(manifest: ExtensionManifest): Promise<Loaded
   return mod;
 }
 
-export async function loadExtension(manifest: ExtensionManifest): Promise<LoadedModule | null> {
-  const { registerManifest, setStatus } = useExtensionsStore.getState();
+export async function loadBlock(manifest: BlockManifest): Promise<LoadedModule | null> {
+  const { registerManifest, setStatus } = useBlocksStore.getState();
 
   registerManifest(manifest);
   setStatus(manifest.id, "loading");
 
   try {
     if (manifest.trust === "untrusted") {
-      console.warn(`[extensions] Untrusted extension "${manifest.id}" skipped — iframe sandbox not yet implemented`);
+      console.warn(`[blocks] Untrusted block "${manifest.id}" skipped — iframe sandbox not yet implemented`);
       setStatus(manifest.id, "idle");
       return null;
     }
@@ -61,17 +61,17 @@ export async function loadExtension(manifest: ExtensionManifest): Promise<Loaded
     return mod;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[extensions] Failed to load "${manifest.id}":`, message);
+    console.error(`[blocks] Failed to load "${manifest.id}":`, message);
     setStatus(manifest.id, "error", message);
     return null;
   }
 }
 
-export async function loadExtensions(manifestUrls: string[]): Promise<void> {
+export async function loadBlocks(manifestUrls: string[]): Promise<void> {
   await Promise.allSettled(
     manifestUrls.map(async (url) => {
       const manifest = await fetchManifest(url);
-      await loadExtension(manifest);
+      await loadBlock(manifest);
     }),
   );
 }

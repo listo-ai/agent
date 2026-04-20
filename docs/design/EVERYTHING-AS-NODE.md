@@ -4,7 +4,7 @@ This is the core design commitment of the platform. It changes the shape of the 
 
 ## The unified-graph model
 
-The insight: **everything in the system is a node in a single unified tree.** Devices and data points from an extension, user accounts, installed extensions themselves, alarms, schedules, API clients, message queues, database connections, the system's own health metrics — all the same kind of thing, all in one graph.
+The insight: **everything in the system is a node in a single unified tree.** Devices and data points from an block, user accounts, installed blocks themselves, alarms, schedules, API clients, message queues, database connections, the system's own health metrics — all the same kind of thing, all in one graph.
 
 This pattern shows up in mature integration platforms of all kinds (Tridium Niagara popularised it for building automation; similar shapes appear in Home Assistant, game-engine scene graphs, and object-model desktop environments). We're not copying any one of them; we're adopting the underlying idea because it's right for any platform whose job is to integrate many kinds of things.
 
@@ -12,13 +12,13 @@ Concretely, in one graph:
 
 - An imported device is a node
 - A user account is a node
-- An installed extension is a node
+- An installed block is a node
 - An alarm condition is a node
 - A schedule is a node
 - A history log is a node
 - The agent's own health metrics are nodes
 
-Because everything is a node, **anything can react to anything**. A flow subscribing to "extension X crashed" works the same way as a flow subscribing to "temperature sensor exceeded threshold." A user getting added is a node-level event. An outbound webhook going stale can trigger a notification flow. There's no special-case code for "system events" vs "data events" — they're the same thing.
+Because everything is a node, **anything can react to anything**. A flow subscribing to "block X crashed" works the same way as a flow subscribing to "temperature sensor exceeded threshold." A user getting added is a node-level event. An outbound webhook going stale can trigger a notification flow. There's no special-case code for "system events" vs "data events" — they're the same thing.
 
 This is powerful. It's also the single biggest architectural commitment in the platform.
 
@@ -42,7 +42,7 @@ Every entity in the system — no exceptions — implements the same base interf
 |---|---|
 | A stable ID | Referenceable from anywhere |
 | A path in the tree | `station/devices/floor3/ahu-5/zone-temp` |
-| A kind / type | `Device`, `User`, `Extension`, `AlarmCondition`, `Schedule` |
+| A kind / type | `Device`, `User`, `Block`, `AlarmCondition`, `Schedule` |
 | Slots (typed properties) | Subscribable, writable or read-only, each with its own type |
 | A lifecycle | Created → Active → Disabled → Removed, with events for each transition |
 | An event stream | Anything can subscribe to "this node changed" / "this slot's value changed" |
@@ -54,17 +54,17 @@ The node is a trait/interface in Rust. Specific kinds (`DeviceNode`, `UserNode`,
 
 ### The good (this is why it's powerful)
 
-**Unified observability.** A flow that watches for "any node going into fault state" catches a crashed extension, an offline device, a failed scheduled task — all with the same pattern.
+**Unified observability.** A flow that watches for "any node going into fault state" catches a crashed block, an offline device, a failed scheduled task — all with the same pattern.
 
 **Composability.** "When a user logs in, if it's outside business hours, send a Slack message and log an audit event" is a flow. "When a webhook fires, look up the record in the database, enrich it, publish to a queue" is a flow. "When temperature exceeds setpoint, open the valve" is a flow. Same primitives, same editor.
 
-**Extensibility for free.** A plugin that adds a new entity type — say, a "Weather Forecast" node — is immediately queryable, subscribable, and usable in flows. No new APIs to design per entity.
+**Extensibility for free.** A block that adds a new entity type — say, a "Weather Forecast" node — is immediately queryable, subscribable, and usable in flows. No new APIs to design per entity.
 
 **Uniform permissioning.** RBAC is applied to nodes and slots. Want to restrict who can see which users? Same mechanism as restricting who can see which devices.
 
-**Uniform audit.** Every node change flows through the same audit pipeline. User created, extension installed, device updated, flow edited — one event stream, one query surface.
+**Uniform audit.** Every node change flows through the same audit pipeline. User created, block installed, device updated, flow edited — one event stream, one query surface.
 
-**Uniform UI.** The property panel for any node is generated from its slot schema. Built-in nodes and extension-contributed nodes render the same way.
+**Uniform UI.** The property panel for any node is generated from its slot schema. Built-in nodes and block-contributed nodes render the same way.
 
 ### The real (what this costs)
 
@@ -88,7 +88,7 @@ Most of the previous stack stays. The core runtime model shifts.
 - Zitadel for identity
 - NATS for messaging backbone
 - SeaORM + SQLite/Postgres for persistence
-- Three-layer extensions
+- Three-layer blocks
 - Everything in the UI stack
 - Docker/deployment story
 - CLI, MCP, OpenAPI
@@ -98,7 +98,7 @@ Most of the previous stack stays. The core runtime model shifts.
 **There's now a Graph Service at the core of every agent.** It owns the node tree. Every other subsystem interacts with it:
 
 - The engine executes flows; flow nodes read/write slots on graph nodes
-- Extensions register their own node kinds; extension processes are themselves represented as nodes
+- Blocks register their own node kinds; block processes are themselves represented as nodes
 - The API exposes CRUD over the graph
 - NATS publishes node events; anything can subscribe
 - Zitadel identities are mirrored as `UserNode`s in the graph
@@ -154,12 +154,12 @@ pub enum NodeKind {
     Flow, FlowNode,
 
     // Platform
-    Extension, ExtensionProcess, Driver,
+    Block, ExtensionProcess, Driver,
 
     // System
     Agent, HealthCheck, Metric,
 
-    // Extensibility — extensions register their own
+    // Extensibility — blocks register their own
     Custom(CustomKindId),
 }
 ```
@@ -168,14 +168,14 @@ pub enum NodeKind {
 
 ## Kind identifiers — reverse-DNS namespacing
 
-Node kinds are dotted identifiers, not an enum. The enum above is only a *category sketch*; the real type system is a string-keyed registry of kinds contributed by first-party modules and extensions.
+Node kinds are dotted identifiers, not an enum. The enum above is only a *category sketch*; the real type system is a string-keyed registry of kinds contributed by first-party modules and blocks.
 
 | Namespace | Owner | Examples |
 |---|---|---|
 | `sys.*` | Platform (first-party) | `sys.core.folder`, `sys.auth.user`, `sys.compute.math.add` |
 | `sys.driver.*` | Platform protocol drivers | `sys.driver.bacnet`, `sys.driver.modbus`, `sys.driver.mqtt` |
 | `sys.driver.<proto>.*` | Children of a driver | `sys.driver.bacnet.device`, `sys.driver.bacnet.point` |
-| `com.<vendor>.*` | Third-party extensions | `com.acme.weather.forecast` |
+| `com.<vendor>.*` | Third-party blocks | `com.acme.weather.forecast` |
 
 The kind ID is a **type**. The node's path in the tree is a **location**. Two different things — a `sys.driver.bacnet.point` kind might appear at thousands of paths.
 
@@ -251,7 +251,7 @@ The containment schema creates two distinct classes of nodes the user sees in th
 | **Bound** | Non-empty `must_live_under`; the node's existence is meaningful only under a specific parent | BACnet device (under bacnet driver), BACnet point (under bacnet device), Zitadel role (under auth realm) | Palette shows bound nodes contextually — only when the user is inside a valid parent |
 | **Free** | Empty `must_live_under`; placeable anywhere | Math/logic compute nodes, timers, function nodes, folders, flows | Always available in the palette |
 
-This resolves the "where can I drop this?" UX question with a declarative rule rather than a hard-coded menu. When the user adds a new plugin, its kinds show up in the right places automatically because the kinds declare their own placement.
+This resolves the "where can I drop this?" UX question with a declarative rule rather than a hard-coded menu. When the user adds a new block, its kinds show up in the right places automatically because the kinds declare their own placement.
 
 ## Placement enforcement — one code path
 
@@ -262,9 +262,9 @@ The graph service validates every mutation against the containment schema. Singl
 | `create_child(parent, kind, name)` | `kind ∈ parent.kind.may_contain` AND `parent.kind ∈ kind.must_live_under` (if non-empty) AND cardinality permits |
 | `move_node(node, new_parent)` | Same checks against `new_parent` |
 | `delete_node(node)` | Cascade policy applied; see below |
-| Bulk import / sync from extension | Same checks, same code |
+| Bulk import / sync from block | Same checks, same code |
 
-A single enforcement path means CRUD, CLI bulk operations, extension-driven sync, and flow-authored mutations all respect the same rules. No bypasses.
+A single enforcement path means CRUD, CLI bulk operations, block-driven sync, and flow-authored mutations all respect the same rules. No bypasses.
 
 ## Cascading delete
 
@@ -341,7 +341,7 @@ struct Msg {
     topic:     Option<String>,               // routing/grouping — same as Node-RED's msg.topic
     id:        MessageId,                    // always present (no underscore-prefix hack)
     parent_id: Option<MessageId>,            // provenance across fan-out/fan-in
-    metadata:  BTreeMap<String, JsonValue>,  // user-extension fields — scoped, not arbitrary root keys
+    metadata:  BTreeMap<String, JsonValue>,  // user-block fields — scoped, not arbitrary root keys
     timestamp: Timestamp,
     source:    NodePath,                     // which node emitted this message
 }
@@ -375,8 +375,8 @@ What survives unchanged:
 
 What differs:
 
-- Nodes registered through the extension system are Rust/Wasm/process-bound with **declared typed slots** — richer than Node-RED's "any msg in, any msg out." Typed ports give you palette-time validation, better UI affordances, and runtime type checks.
-- The extension model is more structured (manifests, JSON Schema settings, lifecycle) — more upfront ceremony, more payoff in reliability.
+- Nodes registered through the block system are Rust/Wasm/process-bound with **declared typed slots** — richer than Node-RED's "any msg in, any msg out." Typed ports give you palette-time validation, better UI affordances, and runtime type checks.
+- The block model is more structured (manifests, JSON Schema settings, lifecycle) — more upfront ceremony, more payoff in reliability.
 - Node-RED flows can be imported where they use compatible node patterns; anything leaning on mutable-shared-msg semantics needs a small rewrite.
 
 Function nodes remain the untyped-JS escape hatch for incremental porting. Nothing forces a user to adopt the typed-slot model for logic they've already written in Node-RED JS.
@@ -406,7 +406,7 @@ GET    /api/v1/nodes/{path}/settings-schema/{variant}     # a specific variant b
 
 ## Settings schemas — single and multi-variant
 
-Every node kind declares a **settings schema** describing its `config`-role slots. The schema is JSON Schema — same format extensions already use for `node.schema.json`. Studio renders forms from it via `@rjsf/core`; the backend validates submitted config against it; OpenAPI picks it up automatically.
+Every node kind declares a **settings schema** describing its `config`-role slots. The schema is JSON Schema — same format blocks already use for `node.schema.json`. Studio renders forms from it via `@rjsf/core`; the backend validates submitted config against it; OpenAPI picks it up automatically.
 
 ### Single schema — the simple case
 
@@ -547,7 +547,7 @@ Wildcards let flows subscribe to:
 - A specific slot across all devices: `graph.sys.devices.*.slot.health.changed`
 - All lifecycle transitions fleet-wide: `graph.sys.>.lifecycle.>`
 
-This is the substrate that makes "send an email when a plugin crashes" work as a flow.
+This is the substrate that makes "send an email when a block crashes" work as a flow.
 
 ## The "everything triggers a flow" examples
 
@@ -555,14 +555,14 @@ With this model, real-world scenarios become trivial flows:
 
 | Scenario | As a flow |
 |---|---|
-| Email when an extension crashes | Subscribe to `graph.*.extensions.*.lifecycle.>`; filter for `→ Fault`; call email node |
+| Email when an block crashes | Subscribe to `graph.*.blocks.*.lifecycle.>`; filter for `→ Fault`; call email node |
 | Alert when a user is granted admin | Subscribe to `graph.*.users.*.slot.roles.changed`; filter for `admin` added; notify security |
-| Auto-restart a failed integration | Subscribe to extension lifecycle; on fault, call `extension.restart` |
+| Auto-restart a failed integration | Subscribe to block lifecycle; on fault, call `block.restart` |
 | Escalate unacknowledged alarms | Subscribe to alarm nodes; check acknowledgment state; escalate after N minutes |
 | Log every config change | Subscribe to `graph.*.>.slot.*.changed` where slot is in a configured allowlist |
 | Shutdown on memory pressure | Subscribe to `graph.agent.health.slot.memory.changed`; if > threshold, stop noncritical flows |
-| Post to Slack on every new user signup | Subscribe to user-node creation; call Slack extension |
-| Sync a database table to an external API on change | Subscribe to row-node slot changes; call HTTP extension |
+| Post to Slack on every new user signup | Subscribe to user-node creation; call Slack block |
+| Sync a database table to an external API on change | Subscribe to row-node slot changes; call HTTP block |
 
 None of these require new APIs. They're all flows using the same primitives.
 
@@ -570,7 +570,7 @@ None of these require new APIs. They're all flows using the same primitives.
 
 A flow node type like "Read Slot" takes a path/slot and subscribes. "Write Slot" commits a value. "Watch Lifecycle" emits when a node transitions. The flow engine becomes the *consumer* of graph events — it doesn't duplicate them.
 
-This is the bit that makes the whole thing click. Flows are programs that operate on the graph. The graph is the world. Extensions add new parts of the world. It's turtles all the way up.
+This is the bit that makes the whole thing click. Flows are programs that operate on the graph. The graph is the world. Blocks add new parts of the world. It's turtles all the way up.
 
 ## Persistence
 
@@ -598,11 +598,11 @@ Be honest about the edge cases:
 
 **Multi-tenancy.** The tree is per-tenant. `graph.<tenant>.<path>` is the real address. Cross-tenant anything is forbidden at the graph layer, not bolted on.
 
-**Extension-owned nodes.** An extension's nodes must behave correctly if the extension crashes. Solution: when an extension goes into Fault state, its nodes transition to a `Stale` lifecycle — readable but marked untrusted — and flows subscribed to those nodes see the transition immediately.
+**Block-owned nodes.** An block's nodes must behave correctly if the block crashes. Solution: when an block goes into Fault state, its nodes transition to a `Stale` lifecycle — readable but marked untrusted — and flows subscribed to those nodes see the transition immediately.
 
 ## The agent itself is a node too — no parallel state
 
-The rule applies to the platform's own subsystems, not just user-visible entities. If the engine, the extension supervisor, the health monitor, or any other agent subsystem owns runtime state *outside* the graph, it has become a parallel system — and every flow that wants to react to it has to learn a second API. That's the failure mode the whole model exists to prevent.
+The rule applies to the platform's own subsystems, not just user-visible entities. If the engine, the block supervisor, the health monitor, or any other agent subsystem owns runtime state *outside* the graph, it has become a parallel system — and every flow that wants to react to it has to learn a second API. That's the failure mode the whole model exists to prevent.
 
 Concretely, the agent contributes these kinds on boot:
 
@@ -611,9 +611,9 @@ Concretely, the agent contributes these kinds on boot:
 | `sys.agent.self` | One per running agent — root of agent-owned subtree. `isSystem`, `isContainer`, `cardinality_per_parent: ExactlyOne` under its station. | `agent_id`, `version`, `role`, `boot_ts` (all `status`) |
 | `sys.agent.engine` | The flow engine's state. Under `sys.agent.self`. | `state` (`status`, string: `Starting`/`Running`/`Paused`/`Stopping`/`Stopped`), `last_transition_ts`, `flows_running`, `flows_paused` |
 | `sys.agent.health` | Process + host metrics. | `memory_mb`, `cpu_pct`, `fd_count`, `disk_free_mb` — all `status`, throttled per the high-frequency-telemetry rule above |
-| `sys.agent.supervisor` | Extension-process supervisor state, one child per supervised extension. | `extension_id`, `state`, `pid`, `restart_count` |
+| `sys.agent.supervisor` | Block-process supervisor state, one child per supervised block. | `extension_id`, `state`, `pid`, `restart_count` |
 
-**The engine does not own its state in a private struct.** The engine owns **execution** (the async worker, the scheduler, the extension supervisor, the safe-state walker). State representation lives in the graph:
+**The engine does not own its state in a private struct.** The engine owns **execution** (the async worker, the scheduler, the block supervisor, the safe-state walker). State representation lives in the graph:
 
 - `Engine::transition(new)` writes to the `sys.agent.engine.state` slot via `GraphStore::write_slot`. The `SlotChanged` event *is* the notification.
 - Private `EngineState` fields, where they exist in the code, are derived reads from the graph, not a parallel cache.
@@ -626,7 +626,7 @@ Why it matters:
 - RBAC on engine state is the same mechanism as RBAC on devices. No special case.
 - The audit log captures engine lifecycle transitions through the same stream as any other slot write.
 
-**Litmus test when adding a subsystem.** If you introduce a new long-running component (health monitor, rate limiter, plugin loader, metrics collector), ask: *where does its state live?* If the answer is a struct with a `Mutex<...>` that nobody outside the subsystem can observe, you're building a parallel system. Promote the state to a kind with status-role slots and make the subsystem an execution-only concern over graph state.
+**Litmus test when adding a subsystem.** If you introduce a new long-running component (health monitor, rate limiter, block loader, metrics collector), ask: *where does its state live?* If the answer is a struct with a `Mutex<...>` that nobody outside the subsystem can observe, you're building a parallel system. Promote the state to a kind with status-role slots and make the subsystem an execution-only concern over graph state.
 
 ## What this means for the coding stages
 
@@ -639,21 +639,21 @@ Updated stage order:
 | 0 | Foundations (contracts, repo, CI) |
 | **1** | **Graph service** — node trait, tree structure, event bus, slot system, basic CRUD, persistence |
 | **2** | Engine on top of the graph — crossflow flows read/write slots |
-| 3 | The three node flavors (native/Wasm/extension) become node kinds |
+| 3 | The three node flavors (native/Wasm/block) become node kinds |
 | 4 | Persistence — formal schema, migrations |
 | 5 | Deployment profiles |
 | 6 | Messaging — NATS as the transport for graph events |
 | 7 | Auth — users are nodes, roles are nodes |
 | 8 | Public API over the graph |
-| 9 | Extension lifecycle — extensions are nodes |
+| 9 | Block lifecycle — blocks are nodes |
 | 10 | CLI, MCP, everything else |
 
 ## Engineering rule
 
-> **Everything is a node. This is the core design commitment. Any new entity type in the system — whether a user, a device, a schedule, an alarm, a plugin, a health check, a metric, the agent's own engine state, or something we haven't thought of yet — is a node in the graph. It has an ID, a path, typed slots, a lifecycle, an event stream, a facet set, and a containment schema. Do not add entities outside this model. The rule applies to the platform's own internals too: if a subsystem owns state in a private struct that nobody outside can observe, you've built a parallel system. If you find yourself tempted to create a top-level concept that isn't a node, stop and ask why.**
+> **Everything is a node. This is the core design commitment. Any new entity type in the system — whether a user, a device, a schedule, an alarm, a block, a health check, a metric, the agent's own engine state, or something we haven't thought of yet — is a node in the graph. It has an ID, a path, typed slots, a lifecycle, an event stream, a facet set, and a containment schema. Do not add entities outside this model. The rule applies to the platform's own internals too: if a subsystem owns state in a private struct that nobody outside can observe, you've built a parallel system. If you find yourself tempted to create a top-level concept that isn't a node, stop and ask why.**
 
 This rule is reflected in [CODE-LAYOUT.md](CODE-LAYOUT.md): the `graph` crate is the core, and every domain crate is in effect a node-kind registration with associated business rules.
 
 ## One-line summary
 
-**Everything is a node in one unified tree — users, devices, extensions, alarms, flows, health metrics — with reverse-DNS kind IDs, facet flags for cross-cutting classification, declarative containment rules distinguishing bound nodes (like a BACnet point, which only exists under its device) from free nodes (like a math-add that can live anywhere), cascading delete with explicit link-breakage semantics, and flow documents as just another kind of container node — giving uniform events, permissions, audit, UI, and extensibility across the whole platform.**
+**Everything is a node in one unified tree — users, devices, blocks, alarms, flows, health metrics — with reverse-DNS kind IDs, facet flags for cross-cutting classification, declarative containment rules distinguishing bound nodes (like a BACnet point, which only exists under its device) from free nodes (like a math-add that can live anywhere), cascading delete with explicit link-breakage semantics, and flow documents as just another kind of container node — giving uniform events, permissions, audit, UI, and extensibility across the whole platform.**

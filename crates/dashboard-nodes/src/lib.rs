@@ -10,7 +10,7 @@
 //! (binding resolver, render tree, subscription derivation) lives in
 //! `dashboard-runtime` and `dashboard-transport`.
 
-use extensions_sdk::NodeKind;
+use blocks_sdk::NodeKind;
 
 #[derive(NodeKind)]
 #[node(kind = "ui.nav", manifest = "manifests/nav.yaml", behavior = "none")]

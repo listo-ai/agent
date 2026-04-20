@@ -60,11 +60,11 @@ export type FleetRequestFn = (
  * POST /api/v1/config         →  <prefix>.api.v1.config.set
  * POST /api/v1/lifecycle      →  <prefix>.api.v1.lifecycle.transition
  * POST /api/v1/seed           →  <prefix>.api.v1.seed.apply
- * GET  /api/v1/plugins        →  <prefix>.api.v1.plugins.list
- * GET  /api/v1/plugins/:id    →  <prefix>.api.v1.plugin.get
- * POST /api/v1/plugins/:id/enable   →  <prefix>.api.v1.plugin.enable
- * POST /api/v1/plugins/:id/disable  →  <prefix>.api.v1.plugin.disable
- * POST /api/v1/plugins/reload →  <prefix>.api.v1.plugins.reload
+ * GET  /api/v1/blocks        →  <prefix>.api.v1.blocks.list
+ * GET  /api/v1/blocks/:id    →  <prefix>.api.v1.block.get
+ * POST /api/v1/blocks/:id/enable   →  <prefix>.api.v1.block.enable
+ * POST /api/v1/blocks/:id/disable  →  <prefix>.api.v1.block.disable
+ * POST /api/v1/blocks/reload →  <prefix>.api.v1.blocks.reload
  * GET  /api/v1/kinds          →  <prefix>.api.v1.kinds.list
  * GET  /api/v1/links          →  <prefix>.api.v1.links.list
  * POST /api/v1/links          →  <prefix>.api.v1.links.create
@@ -98,8 +98,8 @@ export function pathToSubject(
     "POST /api/v1/config":                 "api.v1.config.set",
     "POST /api/v1/lifecycle":              "api.v1.lifecycle.transition",
     "POST /api/v1/seed":                   "api.v1.seed.apply",
-    "GET /api/v1/plugins":                 "api.v1.plugins.list",
-    "POST /api/v1/plugins/reload":         "api.v1.plugins.reload",
+    "GET /api/v1/blocks":                 "api.v1.blocks.list",
+    "POST /api/v1/blocks/reload":         "api.v1.blocks.reload",
     "GET /api/v1/kinds":                   "api.v1.kinds.list",
     "GET /api/v1/links":                   "api.v1.links.list",
     "POST /api/v1/links":                  "api.v1.links.create",
@@ -109,12 +109,12 @@ export function pathToSubject(
     "GET /api/v1/capabilities":            "api.v1.capabilities",
   };
 
-  // Dynamic routes: plugin get/enable/disable, link delete.
-  // e.g. GET /api/v1/plugins/com_acme_hello → api.v1.plugin.get
+  // Dynamic routes: block get/enable/disable, link delete.
+  // e.g. GET /api/v1/blocks/com_acme_hello → api.v1.block.get
   const dynamic: Array<[RegExp, string, string]> = [
-    [/^\/api\/v\d+\/plugins\/[^/]+\/enable$/, "POST",   "api.v1.plugin.enable"],
-    [/^\/api\/v\d+\/plugins\/[^/]+\/disable$/, "POST",  "api.v1.plugin.disable"],
-    [/^\/api\/v\d+\/plugins\/[^/]+$/, "GET",            "api.v1.plugin.get"],
+    [/^\/api\/v\d+\/blocks\/[^/]+\/enable$/, "POST",   "api.v1.block.enable"],
+    [/^\/api\/v\d+\/blocks\/[^/]+\/disable$/, "POST",  "api.v1.block.disable"],
+    [/^\/api\/v\d+\/blocks\/[^/]+$/, "GET",            "api.v1.block.get"],
     [/^\/api\/v\d+\/links\/[^/]+$/, "DELETE",           "api.v1.link.remove"],
     [/^\/api\/v\d+\/kinds/, "GET",                      "api.v1.kinds.list"],
   ];

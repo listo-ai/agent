@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use auth::{DevNullProvider, StaticTokenProvider};
 use clap::{Parser, Subcommand};
 use config::{
-    default_db_path, default_plugins_dir, from_env, from_file, AgentConfig, AgentConfigOverlay,
+    default_db_path, default_blocks_dir, from_env, from_file, AgentConfig, AgentConfigOverlay,
     AuthConfig, DatabaseOverlay, Defaults, FleetConfig, FleetOverlay, LogOverlay, PluginsOverlay,
     Role, ZenohFleetOverlay,
 };
@@ -32,7 +32,7 @@ use data_tsdb::sqlite::SqliteTelemetryRepo;
 use domain_history::{HistoryConfig, HistoryConfigSettings, Historizer};
 use domain_flows::FlowService;
 use engine::{kinds as engine_kinds, Engine};
-use extensions_host::{HostPolicy, PluginHost, PluginRegistry};
+use blocks_host::{HostPolicy, BlockHost, BlockRegistry};
 use graph::{seed, GraphStore, KindRegistry};
 use spi::{AuthProvider, FleetTransport, KindId, TenantId};
 use tokio::signal::unix::{signal, SignalKind};
@@ -78,7 +78,7 @@ enum Command {
         /// Plugins directory (scanned at startup). Role default applies
         /// if unset; pass `.` for in-tree dev.
         #[arg(long, value_name = "PATH")]
-        plugins_dir: Option<PathBuf>,
+        blocks_dir: Option<PathBuf>,
 
         /// HTTP bind address for the REST + manual-test UI.
         #[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8080")]
@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
             config,
             db,
             log,
-            plugins_dir,
+            blocks_dir,
             http,
             fleet_zenoh,
             fleet_zenoh_listen,
@@ -193,7 +193,7 @@ async fn main() -> Result<()> {
                 config.clone(),
                 db.clone(),
                 log.clone(),
-                plugins_dir.clone(),
+                blocks_dir.clone(),
                 *http,
                 fleet_overlay,
             )
@@ -211,11 +211,11 @@ async fn run_daemon(
     config_path: Option<PathBuf>,
     db: Option<PathBuf>,
     log: Option<String>,
-    plugins_dir: Option<PathBuf>,
+    blocks_dir: Option<PathBuf>,
     http: SocketAddr,
     fleet: Option<FleetOverlay>,
 ) -> Result<()> {
-    let cfg = resolve_config(role, config_path, db, log, plugins_dir, fleet)?;
+    let cfg = resolve_config(role, config_path, db, log, blocks_dir, fleet)?;
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -227,29 +227,29 @@ async fn run_daemon(
     info!(
         role = %cfg.role,
         db = ?cfg.database.path.as_deref(),
-        plugins_dir = %cfg.plugins.dir.display(),
+        blocks_dir = %cfg.blocks.dir.display(),
         flow_schema = spi::FLOW_SCHEMA_VERSION,
         node_schema = spi::NODE_SCHEMA_VERSION,
         "agent starting",
     );
 
-    let (engine, graph, events, ring, plugins) = bootstrap(&cfg).await?;
+    let (engine, graph, events, ring, blocks) = bootstrap(&cfg).await?;
     engine.start().await?;
     info!(state = ?engine.state(), "engine running");
 
-    // Start the process-plugin host. Sockets go under
-    // <plugins_dir>/.sockets/ so they share the plugins dir's
-    // writability guarantees without colliding with plugin contents.
-    let socket_dir = cfg.plugins.dir.join(".sockets");
-    let plugin_host = match PluginHost::start(plugins.clone(), socket_dir, HostPolicy::default())
+    // Start the process-block host. Sockets go under
+    // <blocks_dir>/.sockets/ so they share the blocks dir's
+    // writability guarantees without colliding with block contents.
+    let socket_dir = cfg.blocks.dir.join(".sockets");
+    let plugin_host = match BlockHost::start(blocks.clone(), socket_dir, HostPolicy::default())
         .await
     {
         Ok(h) => {
-            info!("process-plugin host started");
+            info!("process-block host started");
             Some(h)
         }
         Err(e) => {
-            tracing::warn!(error = %e, "process-plugin host unavailable — process plugins will not run");
+            tracing::warn!(error = %e, "process-block host unavailable — process blocks will not run");
             None
         }
     };
@@ -259,7 +259,7 @@ async fn run_daemon(
         engine.behaviors().clone(),
         events,
         ring,
-        plugins,
+        blocks,
     );
     if let Some(ref h) = plugin_host {
         app_state = app_state.with_plugin_host(h.clone());
@@ -518,7 +518,7 @@ async fn run_daemon(
 
     server.abort();
     if let Some(host) = plugin_host {
-        info!("shutting down process plugins");
+        info!("shutting down process blocks");
         host.shutdown().await;
     }
     engine.shutdown().await?;
@@ -531,14 +531,14 @@ fn resolve_config(
     config_path: Option<PathBuf>,
     db: Option<PathBuf>,
     log: Option<String>,
-    plugins_dir: Option<PathBuf>,
+    blocks_dir: Option<PathBuf>,
     fleet: Option<FleetOverlay>,
 ) -> Result<AgentConfig> {
     let cli_layer = AgentConfigOverlay {
         role,
         database: db.map(|p| DatabaseOverlay { path: Some(p) }),
         log: log.map(|f| LogOverlay { filter: Some(f) }),
-        plugins: plugins_dir.map(|d| PluginsOverlay { dir: Some(d) }),
+        blocks: blocks_dir.map(|d| PluginsOverlay { dir: Some(d) }),
         fleet,
         auth: None,
     };
@@ -554,7 +554,7 @@ fn resolve_config(
         .merge_over(file_layer)
         .resolve(Defaults {
             db_path: &default_db_path,
-            plugins_dir: &default_plugins_dir,
+            blocks_dir: &default_blocks_dir,
         }))
 }
 
@@ -565,7 +565,7 @@ async fn bootstrap(
     Arc<GraphStore>,
     tokio::sync::broadcast::Sender<transport_rest::SequencedEvent>,
     transport_rest::EventRing,
-    PluginRegistry,
+    BlockRegistry,
 )> {
     let (sink, events_rx, bcast, ring) = transport_rest::agent_sink();
 
@@ -575,16 +575,16 @@ async fn bootstrap(
     domain_compute::register_kinds(&kinds);
     domain_logic::register_kinds(&kinds);
     domain_history::register_kinds(&kinds);
-    domain_extensions::register_kinds(&kinds);
+    domain_blocks::register_kinds(&kinds);
     domain_fleet::register_kinds(&kinds);
     dashboard_nodes::register_kinds(&kinds);
 
-    // Scan plugins *before* opening the graph so plugin-contributed
+    // Scan blocks *before* opening the graph so block-contributed
     // kinds are in the registry the graph later validates against.
     let host_caps = transport_rest::host_capabilities().capabilities;
-    let plugins = PluginRegistry::scan(&cfg.plugins.dir, &host_caps, &kinds)
-        .context("scanning plugins dir")?;
-    for p in plugins.list() {
+    let blocks = BlockRegistry::scan(&cfg.blocks.dir, &host_caps, &kinds)
+        .context("scanning blocks dir")?;
+    for p in blocks.list() {
         info!(
             id = %p.id,
             version = %p.version,
@@ -592,7 +592,7 @@ async fn bootstrap(
             has_ui = p.has_ui,
             kinds = ?p.kinds,
             errors = ?p.load_errors,
-            "plugin discovered"
+            "block discovered"
         );
     }
 
@@ -610,7 +610,7 @@ async fn bootstrap(
     if graph.is_empty() {
         graph.create_root(KindId::new("sys.core.station"))?;
     }
-    seed_plugin_nodes(&graph, &plugins)?;
+    seed_plugin_nodes(&graph, &blocks)?;
     if !cfg.role.runs_engine() {
         tracing::debug!(role = %cfg.role, "role does not run the engine; keeping graph idle");
     }
@@ -618,38 +618,38 @@ async fn bootstrap(
     engine
         .behaviors()
         .register(
-            <domain_compute::Count as extensions_sdk::NodeKind>::kind_id(),
+            <domain_compute::Count as blocks_sdk::NodeKind>::kind_id(),
             domain_compute::behavior(),
         )
         .context("registering count behaviour")?;
     engine
         .behaviors()
         .register(
-            <domain_logic::Trigger as extensions_sdk::NodeKind>::kind_id(),
+            <domain_logic::Trigger as blocks_sdk::NodeKind>::kind_id(),
             domain_logic::behavior(),
         )
         .context("registering trigger behaviour")?;
     engine
         .behaviors()
         .register(
-            <domain_logic::Heartbeat as extensions_sdk::NodeKind>::kind_id(),
+            <domain_logic::Heartbeat as blocks_sdk::NodeKind>::kind_id(),
             domain_logic::heartbeat_behavior(),
         )
         .context("registering heartbeat behaviour")?;
 
-    Ok((engine, graph, bcast, ring, plugins))
+    Ok((engine, graph, bcast, ring, blocks))
 }
 
-/// Reflect every loaded plugin as an `sys.agent.plugin` node under
-/// `/agent/plugins/`. Per `docs/design/EVERYTHING-AS-NODE.md` § "The
-/// agent itself is a node too" — plugin state lives in the graph, not
+/// Reflect every loaded block as an `sys.agent.block` node under
+/// `/agent/blocks/`. Per `docs/design/EVERYTHING-AS-NODE.md` § "The
+/// agent itself is a node too" — block state lives in the graph, not
 /// in a parallel registry, so Studio subscribes via the same event
 /// bus as every other slot change.
-fn seed_plugin_nodes(graph: &GraphStore, plugins: &PluginRegistry) -> Result<()> {
+fn seed_plugin_nodes(graph: &GraphStore, blocks: &BlockRegistry) -> Result<()> {
     use std::str::FromStr;
 
     let folder = KindId::new("sys.core.folder");
-    let plugin_kind = KindId::new("sys.agent.plugin");
+    let plugin_kind = KindId::new("sys.agent.block");
     let root = spi::NodePath::root();
 
     let agent_path = spi::NodePath::from_str("/agent").expect("literal path");
@@ -658,23 +658,23 @@ fn seed_plugin_nodes(graph: &GraphStore, plugins: &PluginRegistry) -> Result<()>
             .create_child(&root, folder.clone(), "agent")
             .context("creating /agent folder")?;
     }
-    let plugins_path = spi::NodePath::from_str("/agent/plugins").expect("literal path");
+    let plugins_path = spi::NodePath::from_str("/agent/blocks").expect("literal path");
     if graph.get(&plugins_path).is_none() {
         graph
-            .create_child(&agent_path, folder, "plugins")
-            .context("creating /agent/plugins folder")?;
+            .create_child(&agent_path, folder, "blocks")
+            .context("creating /agent/blocks folder")?;
     }
 
-    for p in plugins.list() {
+    for p in blocks.list() {
         let node_path = plugins_path.child(p.id.as_str());
         if graph.get(&node_path).is_none() {
             graph
                 .create_child(&plugins_path, plugin_kind.clone(), p.id.as_str())
-                .with_context(|| format!("creating plugin node {}", p.id))?;
+                .with_context(|| format!("creating block node {}", p.id))?;
         }
         // Reflect current state onto the node's slots. Each write goes
         // through the same sink as every other mutation, so SSE
-        // subscribers see plugin lifecycle changes natively.
+        // subscribers see block lifecycle changes natively.
         graph.write_slot(
             &node_path,
             "lifecycle",
@@ -696,8 +696,8 @@ fn seed_plugin_nodes(graph: &GraphStore, plugins: &PluginRegistry) -> Result<()>
             "enabled",
             serde_json::Value::Bool(!matches!(
                 p.lifecycle,
-                extensions_host::PluginLifecycle::Disabled
-                    | extensions_host::PluginLifecycle::Failed
+                blocks_host::PluginLifecycle::Disabled
+                    | blocks_host::PluginLifecycle::Failed
             )),
         )?;
     }

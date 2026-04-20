@@ -4,7 +4,7 @@
 
 ## What "generic" means here
 
-**Any OLTP resource type — flows, devices, users, extensions, audit events, tenants, points — exposes the same query surface via the same mechanism, with zero per-resource custom parser/translator/endpoint code.**
+**Any OLTP resource type — flows, devices, users, blocks, audit events, tenants, points — exposes the same query surface via the same mechanism, with zero per-resource custom parser/translator/endpoint code.**
 
 **Time-series / telemetry is NOT on this path.** Telemetry lives in a dedicated TSDB (see README.md messaging backbone) and has its own query shape: time range + aggregation + downsample + group-by-tag. The generic RSQL framework here is for relational resources. Cramming time-series queries into RSQL would produce a slow, wrong answer to a different question.
 
@@ -12,7 +12,7 @@ Adding a new resource type = declaring its queryable schema. That's it. No new c
 
 ## The generic query pipeline
 
-One pipeline, used by every REST endpoint, every internal service, every extension:
+One pipeline, used by every REST endpoint, every internal service, every block:
 
 ```
 Request string  →  Parser  →  AST  →  Validator  →  Translator  →  Query  →  Response
@@ -191,7 +191,7 @@ A new crate, `/packages/query/`, owned by the framework:
     openapi.rs      # utoipa schema generator
 ```
 
-Used by the Control Plane, the Edge Agent API, the CLI, the SDKs, extensions — one implementation, everywhere.
+Used by the Control Plane, the Edge Agent API, the CLI, the SDKs, blocks — one implementation, everywhere.
 
 ## Stack addition
 

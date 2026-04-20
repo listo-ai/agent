@@ -3,8 +3,8 @@ import type { PluginLifecycle, PluginSummary } from "@sys/agent-client";
 import { RefreshCw, Eye, EyeOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { usePlugins, usePluginMutations } from "@/hooks/usePlugins";
-import { usePluginMount } from "@/hooks/usePluginMount";
+import { useBlocks, usePluginMutations } from "@/hooks/useBlocks";
+import { useBlockMount } from "@/hooks/useBlockMount";
 import {
   Badge,
   Button,
@@ -19,10 +19,10 @@ import {
 // Page component — connects hooks to presentational layer
 // ---------------------------------------------------------------------------
 
-export function PluginsPage() {
-  const { data, isLoading, isError, error } = usePlugins();
+export function BlocksPage() {
+  const { data, isLoading, isError, error } = useBlocks();
   const { enable, disable, reload } = usePluginMutations();
-  const mount = usePluginMount();
+  const mount = useBlockMount();
 
   const singletonOk =
     mount.remoteReact !== undefined && mount.remoteReact === hostReactVersion;
@@ -32,7 +32,7 @@ export function PluginsPage() {
       <header className="flex items-center gap-3">
         <h1 className="text-base font-semibold">Plugins</h1>
         <span className="text-xs text-muted-foreground">
-          Discovered by the agent from its plugins directory.
+          Discovered by the agent from its blocks directory.
         </span>
         <Button
           variant="outline"
@@ -40,7 +40,7 @@ export function PluginsPage() {
           onClick={() => reload.mutate()}
           disabled={reload.isPending}
           className="ml-auto"
-          title="POST /api/v1/plugins/reload"
+          title="POST /api/v1/blocks/reload"
         >
           <RefreshCw size={12} className={cn(reload.isPending && "animate-spin")} />
           {reload.isPending ? "Rescanning…" : "Rescan"}
@@ -51,14 +51,14 @@ export function PluginsPage() {
 
       {isError && (
         <p className="text-sm text-destructive">
-          {(error as Error)?.message ?? "failed to load plugins"}
+          {(error as Error)?.message ?? "failed to load blocks"}
         </p>
       )}
 
       {data && data.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No plugins found. Drop a plugin directory under the agent's{" "}
-          <code>--plugins-dir</code> and click Rescan.
+          No blocks found. Drop a block directory under the agent's{" "}
+          <code>--blocks-dir</code> and click Rescan.
         </p>
       )}
 
@@ -67,7 +67,7 @@ export function PluginsPage() {
           {data.map((p) => (
             <PluginRow
               key={p.id}
-              plugin={p}
+              block={p}
               onEnable={() => enable.mutate(p.id)}
               onDisable={() => disable.mutate(p.id)}
               onMount={() => mount.mount(p.id)}
@@ -81,7 +81,7 @@ export function PluginsPage() {
         </ul>
       )}
 
-      {/* Plugin UI mount section */}
+      {/* Block UI mount section */}
       {(mount.Panel || mount.error || mount.loading) && (
         <PluginPreview
           Panel={mount.Panel}
@@ -130,7 +130,7 @@ function PluginPreview({
   return (
     <Card className="mt-4">
       <CardHeader className="flex-row items-center gap-3">
-        <CardTitle className="text-sm">Plugin preview</CardTitle>
+        <CardTitle className="text-sm">Block preview</CardTitle>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span>
             host React: <code>{hostReactVersion}</code>
@@ -152,7 +152,7 @@ function PluginPreview({
       </CardHeader>
       <CardContent>
         {loading && (
-          <p className="text-sm text-muted-foreground">Loading plugin bundle…</p>
+          <p className="text-sm text-muted-foreground">Loading block bundle…</p>
         )}
         {error && <p className="text-sm text-destructive">{error}</p>}
         {Panel && <Panel />}
@@ -162,7 +162,7 @@ function PluginPreview({
 }
 
 interface PluginRowProps {
-  plugin: PluginSummary;
+  block: PluginSummary;
   onEnable: () => void;
   onDisable: () => void;
   onMount: () => void;
@@ -171,16 +171,16 @@ interface PluginRowProps {
 }
 
 function PluginRow({
-  plugin,
+  block,
   onEnable,
   onDisable,
   onMount,
   mutating,
   mountLoading,
 }: PluginRowProps) {
-  const disabled = plugin.lifecycle === "disabled";
-  const failed = plugin.lifecycle === "failed";
-  const canMount = plugin.has_ui && plugin.lifecycle === "enabled";
+  const disabled = block.lifecycle === "disabled";
+  const failed = block.lifecycle === "failed";
+  const canMount = block.has_ui && block.lifecycle === "enabled";
 
   return (
     <li>
@@ -188,29 +188,29 @@ function PluginRow({
         <CardContent className="px-4 py-0">
           <div className="flex items-center gap-3">
             <div className="flex flex-col">
-              <span className="text-sm font-medium">{plugin.display_name ?? plugin.id}</span>
+              <span className="text-sm font-medium">{block.display_name ?? block.id}</span>
               <span className="text-xs text-muted-foreground">
-                {plugin.id} · v{plugin.version}
-                {plugin.has_ui && (
+                {block.id} · v{block.version}
+                {block.has_ui && (
                   <>
                     {" · "}
                     <span className="text-muted-foreground">
-                      UI: <code>{plugin.ui_entry}</code>
+                      UI: <code>{block.ui_entry}</code>
                     </span>
                   </>
                 )}
-                {plugin.kinds.length > 0 && (
+                {block.kinds.length > 0 && (
                   <>
                     {" · "}
                     <span className="text-muted-foreground">
-                      {plugin.kinds.length} kind{plugin.kinds.length === 1 ? "" : "s"}
+                      {block.kinds.length} kind{block.kinds.length === 1 ? "" : "s"}
                     </span>
                   </>
                 )}
               </span>
             </div>
 
-            <PluginLifecycleBadge lifecycle={plugin.lifecycle} />
+            <PluginLifecycleBadge lifecycle={block.lifecycle} />
 
             <div className="ml-auto flex items-center gap-2">
               {canMount && (
@@ -219,7 +219,7 @@ function PluginRow({
                   size="xs"
                   onClick={onMount}
                   disabled={mountLoading}
-                  title="Load and mount this plugin's UI panel"
+                  title="Load and mount this block's UI panel"
                 >
                   <Eye size={12} />
                   View
@@ -232,7 +232,7 @@ function PluginRow({
                 disabled={mutating || failed}
                 title={
                   failed
-                    ? "Plugin failed to load — fix the manifest and rescan"
+                    ? "Block failed to load — fix the manifest and rescan"
                     : undefined
                 }
               >
@@ -241,13 +241,13 @@ function PluginRow({
             </div>
           </div>
 
-          {plugin.description && (
-            <p className="mt-2 text-xs text-muted-foreground">{plugin.description}</p>
+          {block.description && (
+            <p className="mt-2 text-xs text-muted-foreground">{block.description}</p>
           )}
 
-          {plugin.load_errors.length > 0 && (
+          {block.load_errors.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1">
-              {plugin.load_errors.map((err, i) => (
+              {block.load_errors.map((err, i) => (
                 <li key={i} className="text-xs text-destructive">
                   {err}
                 </li>

@@ -15,7 +15,7 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    // QueryProvider wraps everything so auth + extension hooks can use useQuery.
+    // QueryProvider wraps everything so auth + block hooks can use useQuery.
     <ThemeProvider>
     <QueryProvider>
       {/* TooltipProvider enables Radix tooltips globally. */}

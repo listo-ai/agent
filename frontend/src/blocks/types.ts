@@ -1,4 +1,4 @@
-// Extension manifest types — mirrors the manifest.json shape described in UI.md.
+// Block manifest types — mirrors the manifest.json shape described in UI.md.
 // These are the types the Studio uses; they are not generated from a schema yet.
 
 export type TrustTier = "first-party" | "signed-vetted" | "untrusted";
@@ -38,14 +38,14 @@ export interface ExtensionContributions {
   widgets?:  ExtensionWidgetContribution[];
 }
 
-export interface ExtensionManifest {
+export interface BlockManifest {
   /** Unique dot-namespaced id, e.g. "sys.bacnet". */
   id: string;
   name: string;
   version: string;
   /** Trust tier determines load strategy (direct MF vs iframe sandbox). */
   trust: TrustTier;
-  /** URL to the Module Federation remote entry (mf-manifest.json), for trusted extensions. */
+  /** URL to the Module Federation remote entry (mf-manifest.json), for trusted blocks. */
   remoteEntry?: string;
   /** MF container name, e.g. "plugin_hello". Must match the remote's ModuleFederationPlugin `name`. */
   remoteName?: string;

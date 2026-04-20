@@ -1,8 +1,8 @@
-id: sys.agent.plugin
-display_name: Plugin
-# `isContainer` lets plugin nodes live under `sys.core.folder` / station
+id: sys.agent.block
+display_name: Block
+# `isContainer` lets block nodes live under `sys.core.folder` / station
 # without amending those manifests, and accommodates the Stage 3b/3c
-# evolution (plugins holding `.process` / `.wasm` / `.native` children).
+# evolution (blocks holding `.process` / `.wasm` / `.native` children).
 facets:
   - isSystem
   - isContainer

@@ -412,9 +412,9 @@ fn default_schema_version() -> u32 {
     1
 }
 
-// ---- plugins --------------------------------------------------------------
+// ---- blocks --------------------------------------------------------------
 
-/// Plugin lifecycle state — `snake_case` on the wire.
+/// Block lifecycle state — `snake_case` on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginLifecycle {
@@ -438,10 +438,10 @@ impl std::fmt::Display for PluginLifecycle {
     }
 }
 
-/// Summary of a loaded plugin — mirrors `extensions_host::LoadedPluginSummary`.
+/// Summary of a loaded block — mirrors `blocks_host::LoadedPluginSummary`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PluginSummary {
-    /// Plugin identifier (transparent string).
+    /// Block identifier (transparent string).
     pub id: String,
     pub version: String,
     pub lifecycle: PluginLifecycle,
@@ -458,15 +458,15 @@ pub struct PluginSummary {
     pub load_errors: Vec<String>,
 }
 
-/// Response from plugin enable / disable / reload actions.
+/// Response from block enable / disable / reload actions.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PluginActionResponse {
     pub id: String,
     pub lifecycle: PluginLifecycle,
 }
 
-/// Runtime state of a process plugin — mirrors
-/// `extensions_host::PluginRuntimeState`. Internally tagged on
+/// Runtime state of a process block — mirrors
+/// `blocks_host::PluginRuntimeState`. Internally tagged on
 /// `status` (server-side `#[serde(tag = "status", rename_all =
 /// "snake_case")]`).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -494,7 +494,7 @@ pub enum PluginRuntimeState {
     Stopped,
 }
 
-/// One entry of `GET /api/v1/plugins/runtime`. The `state` is
+/// One entry of `GET /api/v1/blocks/runtime`. The `state` is
 /// flattened into the object so the wire shape is
 /// `{"id":"…","status":"ready"}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]

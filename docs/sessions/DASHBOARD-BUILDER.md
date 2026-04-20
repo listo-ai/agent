@@ -1,6 +1,6 @@
 # Dashboard Builder — Scope
 
-A visual surface for authoring `ui.page` nodes without hand-writing JSON. Power users get a Monaco-based JSON/YAML editor with live preview. Non-devs *may* get a template picker + form generator — contingent on a specific Stage 0 test result (see below). Plugin-authored `KindManifest.views` editing is deferred to the last stage, intentionally.
+A visual surface for authoring `ui.page` nodes without hand-writing JSON. Power users get a Monaco-based JSON/YAML editor with live preview. Non-devs *may* get a template picker + form generator — contingent on a specific Stage 0 test result (see below). Block-authored `KindManifest.views` editing is deferred to the last stage, intentionally.
 
 **Not a canvas.** A free-form pan-zoom builder is explicitly out of v1 (Stage 4). Nobody on the team has committed to shipping it. Read the canvas stage as "if we decide it was needed, here's the starting design — otherwise v1 is the final shape." Stop pretending "we'll add it later" without a date. If you need a canvas, don't use this project in 2026.
 
@@ -24,7 +24,7 @@ Authoritative references:
 
 **Stage 3–5 target user: the Stage 1 user, plus undo/redo and optional canvas affordances.** Same person; expanded surface.
 
-**Stage 6 target user: plugin authors.** Deferred indefinitely — the existing YAML-manifest path works, and the three other authoring modes (CLI/LLM, plugin YAML, hand-written JSON) cover the plugin-view case without new UX.
+**Stage 6 target user: block authors.** Deferred indefinitely — the existing YAML-manifest path works, and the three other authoring modes (CLI/LLM, block YAML, hand-written JSON) cover the block-view case without new UX.
 
 If this project ever acquires an external customer whose need reshapes the above, revisit. Until then, honest about what's being built and for whom.
 
@@ -37,7 +37,7 @@ SDUI supports three authoring modes today. The builder is a fourth — for the p
 | Mode | Artifact | Who | When |
 |---|---|---|---|
 | CLI / AI | `agent nodes create … ui.page` + `agent slots write … layout '<json>'` | LLM sessions, scripts, power users | Shipped (S1+) — see [testing/DASHBOARD.md](../testing/DASHBOARD.md) |
-| YAML in plugin manifests | `views:` entry on a `KindManifest` | Plugin authors shipping "every instance of kind X has a default view" | Shipped (S5) |
+| YAML in block manifests | `views:` entry on a `KindManifest` | Block authors shipping "every instance of kind X has a default view" | Shipped (S5) |
 | Hand-written JSON | direct `agent slots write …/layout` | humans in any editor | Shipped |
 | **Builder (this doc)** | same `ui.page.layout` slot | power users | v1 (Stages 1–4) |
 
@@ -87,7 +87,7 @@ The builder lives in the frontend and talks to the agent exclusively through the
 | `client.nodeSlots.revisions(id, slot, params)` | `GET /api/v1/nodes/:id/slots/:slot/revisions` | History panel |
 | `client.nodeSlots.at(id, slot, revId)` | `GET /api/v1/nodes/:id/slots/:slot/at/:revId` | Materialised value at a revision |
 
-**Stage 4 + Stage 5:** no new client methods. Canvas uses Stage 1's methods. Plugin-view editing is deferred.
+**Stage 4 + Stage 5:** no new client methods. Canvas uses Stage 1's methods. Block-view editing is deferred.
 
 **Rule:** no builder code hits `fetch` directly. Every network call goes through a typed method on `AgentClient`. If the method doesn't exist, add it to the client first, per NEW-API.md's five-touchpoint rule (Rust handler + Rust client + CLI command + CommandMeta + TS client + fixtures). No shortcuts — especially not in the builder, which is the first consumer that will make "just this one" exceptions tempting.
 
@@ -108,8 +108,8 @@ The builder lives in the frontend and talks to the agent exclusively through the
 - **Real-time collaborative editing.** One editor at a time.
 - **Silent concurrent-write resolution.** If a CLI write lands while the builder is open, the conflict banner is **non-dismissable** and forces a reload with the current tree before the user can keep editing. See "OCC invariant" below.
 - **Runtime state authoring** (widget inbox contents, cached values). We version authored state only.
-- **A template authoring UI.** Any templates that ship (Stage 2) are maintained by this team as static JSON in-repo. Plugin-author-contributed templates are a v2 question.
-- **Plugin-view editing in v1.** Stage 5 exists in the doc as a record; no work planned until a concrete need emerges.
+- **A template authoring UI.** Any templates that ship (Stage 2) are maintained by this team as static JSON in-repo. Block-author-contributed templates are a v2 question.
+- **Block-view editing in v1.** Stage 5 exists in the doc as a record; no work planned until a concrete need emerges.
 - **Replacing the CLI authoring path.** `agent ui` stays the AI-first surface. Builder is a parallel affordance.
 
 ---
@@ -214,7 +214,7 @@ Do not start Stage 1 until `dry_run` emits position-bearing binding errors. Mona
 
 **Goal:** a power user can paste or author a layout, see errors inline, see the result ticking live.
 
-**This stage is the whole v1 bet for power users.** Everything after Stage 1 is either UX polish (Stage 2, provisional), history plumbing (Stage 3), speculative (Stage 4 canvas), or deferred (Stage 5 plugin views). If Stage 1 doesn't feel right, nothing after it matters.
+**This stage is the whole v1 bet for power users.** Everything after Stage 1 is either UX polish (Stage 2, provisional), history plumbing (Stage 3), speculative (Stage 4 canvas), or deferred (Stage 5 block views). If Stage 1 doesn't feel right, nothing after it matters.
 
 **Prerequisites (blocking):**
 
@@ -299,7 +299,7 @@ Stage 2 proper:
 
 **Open problem (resolution already exists; this stage consumes it):** `ui.page` nodes are graph nodes, not flows. The shipped `flow_revisions` table is flow-specific. But `node_setting_revisions` already exists in migration v4 ([`crates/data-sqlite/src/migrations.rs:128`](../../crates/data-sqlite/src/migrations.rs)) and is the right home for `ui.page.layout` history. Phase 2 of UNDO-REDO ([`UNDO-REDO.md:66-79`](../design/UNDO-REDO.md)) is pending — `NodeSettingRevisionRepo` + `NodeSettingsService` have not been implemented yet.
 
-**Resolution: Stage 3 rides Phase 2 of UNDO-REDO.** Extend the pending `NodeSettingsService` to cover arbitrary versioned slots (generalise the domain type — `NodeSlotRevisionService` or similar; the table name stays). Dashboard history becomes the first concrete user; plugin node-settings history ships alongside.
+**Resolution: Stage 3 rides Phase 2 of UNDO-REDO.** Extend the pending `NodeSettingsService` to cover arbitrary versioned slots (generalise the domain type — `NodeSlotRevisionService` or similar; the table name stays). Dashboard history becomes the first concrete user; block node-settings history ships alongside.
 
 Dependencies:
 
@@ -334,12 +334,12 @@ Design doc happens when — and only when — we have evidence it's needed.
 
 ## Stage 5 — `KindManifest.views` editing (deferred indefinitely)
 
-Plugin authors edit kind-default views today via YAML manifest + agent reload. That works. The three existing authoring modes (CLI/LLM, plugin YAML, hand-written JSON) cover plugin-view authoring without any new UX. Until a concrete need emerges — a specific plugin author stuck on a specific workflow that can't be solved by improving YAML affordances — do not build this.
+Block authors edit kind-default views today via YAML manifest + agent reload. That works. The three existing authoring modes (CLI/LLM, block YAML, hand-written JSON) cover block-view authoring without any new UX. Until a concrete need emerges — a specific block author stuck on a specific workflow that can't be solved by improving YAML affordances — do not build this.
 
 If a need *does* emerge, these are the knobs:
 
-- **A. Runtime-only edits, with an explicit "Export view YAML" button** that dumps to clipboard + file. Plugin author commits manually. Agent restart reverts to YAML. Uses a non-dismissable "edits are runtime-only — export before closing" banner to make the limitation visible.
-- **B. Refuse runtime edits.** Builder opens plugin-shipped views read-only. Consistent with how `settings_schema` works.
+- **A. Runtime-only edits, with an explicit "Export view YAML" button** that dumps to clipboard + file. Block author commits manually. Agent restart reverts to YAML. Uses a non-dismissable "edits are runtime-only — export before closing" banner to make the limitation visible.
+- **B. Refuse runtime edits.** Builder opens block-shipped views read-only. Consistent with how `settings_schema` works.
 - **C. File-system round-trip.** Builder writes back to the original YAML path. Requires agent write access; breaks containerised deploys.
 
 Option A is the only one that doesn't make the builder structurally incapable of touching the platform's primary authoring artifact, provided the "unsaved — export" banner is non-dismissable (same shape as the OCC conflict banner in Stage 1). Option B is a failed product for anything but consumption; don't default to it "because it's simpler."
@@ -357,7 +357,7 @@ Dashboards are `ui.page` nodes with a `layout` slot. The builder edits through t
 
 No new tables.
 
-Pages created by the builder and pages hand-authored by the CLI are indistinguishable — same slot, same shape. Pages defined in plugin YAML are read-only in the builder; any "fork to edit" affordance is deferred along with Stage 5.
+Pages created by the builder and pages hand-authored by the CLI are indistinguishable — same slot, same shape. Pages defined in block YAML are read-only in the builder; any "fork to edit" affordance is deferred along with Stage 5.
 
 ---
 
@@ -402,7 +402,7 @@ Pages created by the builder and pages hand-authored by the CLI are indistinguis
 - **Stage 2 is probationary.** Ships only if the Stage 0.3 existence gate proves LLM+Monaco can't handle the seeds. Even if it ships, seed templates are chosen from the failures — not all five by default.
 - **Stage 3 rides Phase 2 of UNDO-REDO.** `NodeSlotRevisionService` generalises over `node_setting_revisions`. All writes route through it, CLI included.
 - **Stage 4 canvas is speculative.** No ship commitment. If the bet is wrong, v1 is the final shape — no silent deferral.
-- **Stage 5 plugin-view editing is deferred indefinitely.** Left in the doc as a placeholder.
+- **Stage 5 block-view editing is deferred indefinitely.** Left in the doc as a placeholder.
 
 Prove the idea first. Fix the two substrate gaps. Ship Stage 1 for the power user. Let Stage 0.3 decide whether Stage 2 happens. The rest falls out.
 

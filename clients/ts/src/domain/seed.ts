@@ -5,7 +5,7 @@ import { SeedResultSchema } from "../schemas/seed.js";
  * `POST /api/v1/seed` `{preset}` — instantiates a pre-wired flow shape
  * in the graph. Not a public API — these presets exist for manual
  * testing and the count-chain example; production graphs come from
- * flow documents (Stage 2b) or extension installs (Stage 10).
+ * flow documents (Stage 2b) or block installs (Stage 10).
  */
 
 export type SeedPreset = "count_chain" | "trigger_demo";

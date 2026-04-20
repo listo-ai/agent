@@ -311,7 +311,7 @@ pub enum Component {
     Dangling { id: String },
 
     // ---- escape hatch ---------------------------------------------
-    /// Opaque custom component rendered by a plugin-registered
+    /// Opaque custom component rendered by a block-registered
     /// client-side renderer. The server emits `props` verbatim; the
     /// React app looks up `renderer_id` in its component registry and
     /// delegates. Falls back to a neutral stub when the renderer is
