@@ -93,13 +93,10 @@ studio-edge: build-client ## Start Studio pointed at the edge agent (http://loca
 
 .PHONY: kill
 kill: ## Kill any running agent processes
-	@pkill -f "target/debug/$(BIN)" 2>/dev/null && echo "agent stopped" || echo "no agent running"
-	@pkill -f "target/release/$(BIN)" 2>/dev/null || true
-
-.PHONY: clean
-clean: kill ## Kill running agents and wipe all build artifacts (cargo clean)
-	$(CARGO) clean
-	@echo "target/ wiped."
+	@pids=$$(pgrep -f "/target/debug/$(BIN)" 2>/dev/null); \
+	  if [ -n "$$pids" ]; then kill $$pids && echo "debug agent stopped"; else echo "no debug agent running"; fi
+	@pids=$$(pgrep -f "/target/release/$(BIN)" 2>/dev/null); \
+	  if [ -n "$$pids" ]; then kill $$pids && echo "release agent stopped"; fi
 
 .PHONY: dev-reset
 dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)
@@ -189,5 +186,6 @@ ci: lint test test-doc frontend-build ## Full CI pass: lint + tests + doc-tests 
 
 # ── clean ─────────────────────────────────────────────────────────────────────
 .PHONY: clean
-clean: ## Remove build artefacts
+clean: kill ## Kill running agents and remove all build artefacts
 	$(CARGO) clean
+	@echo "target/ wiped."

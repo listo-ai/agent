@@ -471,43 +471,39 @@ export function SlotHistoryConfigPanel({
   const existingPolicy: SlotPolicy | undefined =
     configQuery.data?.slots?.[slot];
 
-  // Fetch the parent node once so we know (a) what kind it is —
-  // drives the schema-based path suggestions below — and (b) the
-  // live value of the target slot, which serves as a fallback for
-  // kinds whose output slot declares no detailed schema.
-  const parentNodeQuery = useQuery({
-    queryKey: ["historyConfigParentNode", nodePath],
-    queryFn: async () => agent.data!.nodes.getNode(nodePath),
-    enabled: agent.data !== undefined,
-    staleTime: 10_000,
-  });
-
-  // Load the kind registry. Cached across the whole app; the query
-  // key is static so every Configure panel shares one fetch.
-  const kindsQuery = useQuery({
-    queryKey: ["kinds"],
-    queryFn: async () => agent.data!.kinds.list(),
+  // Fetch this node's declared slot schemas directly.
+  // `GET /api/v1/node/schema?path=…` lets the Paths editor suggest
+  // concrete sub-paths (e.g. `payload.count → number`) without
+  // requiring a runtime emit first.
+  const nodeSchemaQuery = useQuery({
+    queryKey: ["nodeSchema", nodePath],
+    queryFn: async () => agent.data!.nodes.getNodeSchema(nodePath),
     enabled: agent.data !== undefined,
     staleTime: 60_000,
   });
 
+  // Live-value fallback — used when the kind declares no strict schema
+  // (function / Wasm blocks emitting dynamic shapes).
+  const slotValueQuery = useQuery({
+    queryKey: ["historyConfigSlotValue", nodePath, slot],
+    queryFn: async (): Promise<unknown> => {
+      const node = await agent.data!.nodes.getNode(nodePath);
+      const s = node.slots?.find?.((x: { name: string }) => x.name === slot);
+      return s?.value ?? null;
+    },
+    enabled: agent.data !== undefined,
+    staleTime: 10_000,
+  });
+
   const pathSuggestions: HistoryPath[] = (() => {
-    // Prefer the manifest's `value_schema` — it's authoritative and
+    // Prefer the manifest's `value_schema` — authoritative and
     // available even before the slot has emitted.
-    const kindId = parentNodeQuery.data?.kind;
-    const kind = kindId
-      ? kindsQuery.data?.find((k) => k.id === kindId)
-      : undefined;
-    const slotDef = kind?.slots?.find((s) => s.name === slot);
+    const slotDef = nodeSchemaQuery.data?.slots.find((s) => s.name === slot);
     const fromSchema = slotDef ? pathsFromSchema(slotDef.value_schema) : [];
     if (fromSchema.length > 0) return fromSchema;
 
-    // Fallback: probe the live value for kinds that don't declare a
-    // strict schema (function / wasm blocks emitting dynamic shapes).
-    const slotValue = parentNodeQuery.data?.slots?.find(
-      (x: { name: string }) => x.name === slot,
-    )?.value;
-    return slotValue != null ? pathsFromValue(slotValue) : [];
+    // Fallback: probe the live value.
+    return slotValueQuery.data != null ? pathsFromValue(slotValueQuery.data) : [];
   })();
 
   // ── 2. Local form state ───────────────────────────────────────────────────
