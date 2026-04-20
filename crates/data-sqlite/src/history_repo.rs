@@ -7,7 +7,7 @@
 use std::sync::Mutex;
 
 use data_repos::{HistoryQuery, HistoryRecord, HistoryRepo, HistorySlotKind, RepoError};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, TransactionBehavior};
 use uuid::Uuid;
 
 use crate::connection::{open, Location};
@@ -54,7 +54,7 @@ impl HistoryRepo for SqliteHistoryRepo {
             return Ok(());
         }
         self.with_conn(|conn| {
-            let tx = conn.transaction()?;
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
             {
                 use std::collections::HashMap;
                 let mut groups: HashMap<(String, String), Vec<&HistoryRecord>> = HashMap::new();

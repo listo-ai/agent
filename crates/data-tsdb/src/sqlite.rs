@@ -13,7 +13,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, TransactionBehavior};
 use uuid::Uuid;
 
 use crate::{ScalarQuery, ScalarRecord, TelemetryRepo, TsdbError};
@@ -79,7 +79,7 @@ impl TelemetryRepo for SqliteTelemetryRepo {
             return Ok(());
         }
         self.with_conn(|conn| {
-            let tx = conn.transaction()?;
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
             {
                 // Group records by (node_id, slot_name) so cap enforcement is
                 // O(distinct slots) rather than O(records). Within each group,

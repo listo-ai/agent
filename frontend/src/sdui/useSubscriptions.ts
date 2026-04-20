@@ -22,7 +22,7 @@
  *   (future component) we fall back to invalidating its prefix so the
  *   server remains the source of truth.
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { agentPromise } from "@/lib/agent";
 import type {
@@ -44,45 +44,69 @@ export function useSubscriptions(
 ): void {
   const qc = useQueryClient();
 
+  // The stream must be opened once and kept open while this consumer
+  // is mounted. Earlier revisions keyed the effect on queryKey +
+  // subscriptions content, which meant every edit (debouncedText
+  // changes) or page-state change tore down the EventSource mid-tick
+  // — and the cleanup never actually called `sub.close()`, so stale
+  // connections leaked until the iterator happened to observe the
+  // `cancelled` flag on its *next* event. Refs decouple the stream
+  // lifecycle from render-driven inputs.
+  const queryKeyRef = useRef(queryKey);
+  const subjectsRef = useRef<Map<string, string[]>>(new Map());
+
+  queryKeyRef.current = queryKey;
+
   useEffect(() => {
     const plans = subscriptions ?? [];
-    if (plans.length === 0) return;
-
-    // One subject can fan out to multiple widgets — e.g. a chart and
-    // a table both watching the same node's slot. Earlier this was a
-    // `Map<string, string>` and `Map.set` silently overwrote, so only
-    // the last-enumerated plan's widget got patched.
-    const subjectToWidgets = new Map<string, string[]>();
+    const next = new Map<string, string[]>();
     for (const p of plans) {
       for (const s of p.subjects) {
-        const existing = subjectToWidgets.get(s);
+        const existing = next.get(s);
         if (existing) {
           if (!existing.includes(p.widget_id)) existing.push(p.widget_id);
         } else {
-          subjectToWidgets.set(s, [p.widget_id]);
+          next.set(s, [p.widget_id]);
         }
       }
     }
+    subjectsRef.current = next;
+    if (
+      typeof window !== "undefined" &&
+      window.localStorage?.getItem("sdui_debug") === "1"
+    ) {
+      console.debug("[sdui] subscription plan updated", {
+        plans,
+        subjects: [...next.entries()],
+      });
+    }
+  }, [JSON.stringify(subscriptions)]);
+
+  useEffect(() => {
     const debug =
       typeof window !== "undefined" &&
       window.localStorage?.getItem("sdui_debug") === "1";
-    if (debug) {
-      console.debug("[sdui] subscriptions mounted", {
-        plans,
-        subjects: [...subjectToWidgets.entries()],
-      });
-    }
 
     let cancelled = false;
+    let sub: Awaited<ReturnType<typeof openStream>> | undefined;
+
+    async function openStream() {
+      const agent = await agentPromise;
+      return agent.events.subscribe();
+    }
 
     (async () => {
-      const agent = await agentPromise;
-      const sub = agent.events.subscribe();
+      sub = await openStream();
+      if (cancelled) {
+        sub.close();
+        return;
+      }
+      if (debug) console.debug("[sdui] subscriptions mounted");
       for await (const event of sub) {
         if (cancelled) break;
         if (event.event !== "slot_changed") continue;
         const subject = `node.${event.id}.slot.${event.slot}`;
-        const widgets = subjectToWidgets.get(subject);
+        const widgets = subjectsRef.current.get(subject);
         if (!widgets || widgets.length === 0) {
           if (debug) console.debug("[sdui] event ignored (no plan)", subject);
           continue;
@@ -91,17 +115,10 @@ export function useSubscriptions(
 
         for (const widget of widgets) {
           if (UUID_RE.test(widget)) {
-            // Tree-binding plan — `{{$target.<slot>}}` was substituted at
-            // resolve time, so the tree itself must re-resolve.
-            qc.invalidateQueries({ queryKey });
+            qc.invalidateQueries({ queryKey: queryKeyRef.current });
             continue;
           }
 
-          // Component-scoped plans: try to patch the cache in place.
-          // If no matching cached query was found (e.g. widget not
-          // mounted yet, or a future component type we don't patch
-          // yet), fall back to invalidating the prefix so the
-          // component refetches on its own schedule.
           const patched =
             applyToTables(qc, widget, event) ||
             applyToCharts(qc, widget, event) ||
@@ -117,9 +134,9 @@ export function useSubscriptions(
 
     return () => {
       cancelled = true;
+      sub?.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(queryKey), JSON.stringify(subscriptions)]);
+  }, [qc]);
 }
 
 function applyToTables(

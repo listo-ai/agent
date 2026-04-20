@@ -4,6 +4,14 @@
 export { Badge, badgeVariants } from "./badge";
 export { Button, buttonVariants } from "./button";
 export {
+  ChartContainer,
+  ChartStyle,
+  ChartTooltip,
+  ChartTooltipContent,
+  useChart,
+  type ChartConfig,
+} from "./chart";
+export {
   Card,
   CardAction,
   CardContent,
