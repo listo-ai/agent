@@ -65,12 +65,10 @@ launch "$BIN run --config dev/cloud.yaml --http 127.0.0.1:8081" \
 launch "$BIN run --config dev/edge.yaml --http 127.0.0.1:8082" \
        "edge:8082" "$C_EDGE"
 
-launch "PUBLIC_AGENT_URL=http://localhost:8081 \
-        pnpm --filter @sys/studio dev --port 3001" \
+launch "PUBLIC_AGENT_URL=http://localhost:8081 pnpm --filter @sys/studio dev --port 3001" \
        "studio:3001" "$C_SC"
 
-launch "PUBLIC_AGENT_URL=http://localhost:8082 \
-        pnpm --filter @sys/studio dev --port 3002" \
+launch "PUBLIC_AGENT_URL=http://localhost:8082 pnpm --filter @sys/studio dev --port 3002" \
        "studio:3002" "$C_SE"
 
 echo "  cloud agent  → http://localhost:8081"

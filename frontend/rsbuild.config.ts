@@ -54,6 +54,17 @@ export default defineConfig(({ envMode }) => {
       distPath: { root: isTauri ? "dist-tauri" : "dist-web" },
     },
 
+    source: {
+      // Explicitly forward PUBLIC_AGENT_URL from the shell environment so
+      // `make dev` (dev/run.sh) can point each Studio at a different agent.
+      // Falls back to the default standalone bind address.
+      define: {
+        "import.meta.env.PUBLIC_AGENT_URL": JSON.stringify(
+          process.env.PUBLIC_AGENT_URL ?? "http://localhost:8080"
+        ),
+      },
+    },
+
     html: {
       template: "./index.html",
     },

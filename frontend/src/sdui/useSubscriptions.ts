@@ -62,10 +62,12 @@ export function useSubscriptions(
           // whole tree must re-resolve.
           qc.invalidateQueries({ queryKey });
         } else {
-          // Table plan — invalidate just that table's rows. The key
-          // is a prefix match; React Query invalidates every query
-          // whose key starts with this array.
+          // Authored component plan — invalidate every per-widget
+          // query whose prefix starts with the component id. Today
+          // that's `sdui-table` and `sdui-chart`; new data widgets
+          // follow the same `["sdui-<kind>", widget, …]` convention.
           qc.invalidateQueries({ queryKey: ["sdui-table", widget] });
+          qc.invalidateQueries({ queryKey: ["sdui-chart", widget] });
         }
       }
     })();

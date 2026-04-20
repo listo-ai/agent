@@ -15,9 +15,13 @@
  */
 import { AgentClient } from "@sys/agent-client";
 
-const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env;
-
-export const AGENT_BASE_URL = env["PUBLIC_AGENT_URL"] ?? "http://localhost:8080";
+// PUBLIC_AGENT_URL is injected at build time by rsbuild (source.define in
+// rsbuild.config.ts reads process.env.PUBLIC_AGENT_URL). Direct property
+// access is required — dynamic/cast access defeats static substitution.
+export const AGENT_BASE_URL =
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore — rsbuild injects this at build time
+  (import.meta.env.PUBLIC_AGENT_URL as string | undefined) ?? "http://localhost:8080";
 
 export const agentPromise: Promise<AgentClient> = AgentClient.connect({
   baseUrl: AGENT_BASE_URL,

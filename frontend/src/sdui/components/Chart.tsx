@@ -1,24 +1,31 @@
 /**
  * `chart` component — inline SVG time-series viewer.
  *
- * The server fills `series` with `[ts_ms, value]` points and an
- * optional `range` covering the visible window. Drag-to-zoom writes
- * `{from, to}` into the page-state key the server told us to use
- * (defaults to `"chart_range"`); the round-trip to `/ui/resolve` then
- * returns denser data for the focused window. No client-side
- * aggregation — the server owns density.
+ * Data source:
+ * - If the author hard-codes `series`, render those points verbatim
+ *   (useful for tests and snapshots).
+ * - Otherwise fetch scalar telemetry for `source.{node_id, slot}` via
+ *   the REST telemetry endpoint and map records into a single series.
+ *   The useSubscriptions hook re-invalidates this query whenever the
+ *   resolver-emitted plan says the slot ticked, so it stays live.
  *
- * Deliberately no dependency: the SDUI renderer's size budget keeps
- * first-class vocabulary light. Swap for recharts / uplot when a
- * concrete UC needs tooltips, axes, or multiple series.
+ * Drag-to-zoom writes `{from, to}` into the page-state key the server
+ * told us to use (defaults to `"chart_range"`); the round-trip to
+ * `/ui/resolve` then re-emits series with the focused window (once
+ * server-side population ships) — until then the range is used to
+ * clamp the client-side fetch window.
  */
 import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { agentPromise } from "@/lib/agent";
 import type { ChartNode, ChartSeries } from "../types";
 import { useSdui } from "../context";
 
 const PAD = 4;
 const W = 600;
 const H = 160;
+const DEFAULT_WINDOW_MS = 60 * 60 * 1000; // last hour
+const DEFAULT_LIMIT = 500;
 
 export function ChartComponent({ node }: { node: ChartNode }) {
   const { setPageState } = useSdui();
@@ -27,11 +34,21 @@ export function ChartComponent({ node }: { node: ChartNode }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragTo, setDragTo] = useState<number | null>(null);
 
-  const bounds = computeBounds(node.series, node.range);
+  const authoredSeries = node.series ?? [];
+  const hasAuthored = authoredSeries.some((s) => s.points.length > 0);
+
+  const fetched = useChartFetch(node, hasAuthored);
+  const series = hasAuthored ? authoredSeries : fetched.series;
+
+  const bounds = computeBounds(series, node.range);
   if (!bounds) {
     return (
       <div className="rounded border border-dashed border-muted-foreground/30 px-3 py-6 text-center text-xs text-muted-foreground">
-        No data in the visible window.
+        {fetched.isLoading
+          ? "Loading…"
+          : fetched.isError
+          ? "Failed to load telemetry."
+          : "No data in the visible window."}
       </div>
     );
   }
@@ -67,11 +84,10 @@ export function ChartComponent({ node }: { node: ChartNode }) {
         setDragTo(null);
       }}
       onDoubleClick={() => {
-        // Clear zoom → resolve returns the default window.
         setPageState({ [stateKey]: null });
       }}
     >
-      {node.series.map((s, i) => (
+      {series.map((s, i) => (
         <SeriesPath key={s.label + i} series={s} bounds={bounds} idx={i} />
       ))}
       {dragFrom !== null && dragTo !== null ? (
@@ -79,6 +95,87 @@ export function ChartComponent({ node }: { node: ChartNode }) {
       ) : null}
     </svg>
   );
+}
+
+function useChartFetch(
+  node: ChartNode,
+  hasAuthored: boolean,
+): { series: ChartSeries[]; isLoading: boolean; isError: boolean } {
+  const { node_id, slot } = node.source;
+  const range = node.range;
+  const widgetId = node.id ?? `${node_id}.${slot}`;
+  const from = range?.from;
+  const to = range?.to;
+
+  const query = useQuery({
+    queryKey: ["sdui-chart", widgetId, node_id, slot, from ?? null, to ?? null],
+    enabled: !hasAuthored && !!node_id && !!slot,
+    staleTime: 5_000,
+    queryFn: async (): Promise<ChartSeries[]> => {
+      const client = await agentPromise;
+      // node_id → path via the list endpoint. Telemetry + history
+      // endpoints are both path-keyed.
+      const resp = await client.nodes.getNodesPage({
+        filter: `id=="${node_id}"`,
+        size: 1,
+      });
+      const path = resp.data[0]?.path;
+      if (!path) return [{ label: slot, points: [] }];
+      const effectiveTo = to ?? Date.now();
+      const effectiveFrom = from ?? effectiveTo - DEFAULT_WINDOW_MS;
+      const opts = {
+        from: effectiveFrom,
+        to: effectiveTo,
+        limit: DEFAULT_LIMIT,
+      };
+
+      // Bool/Number slots land in telemetry. Json slots (e.g. an
+      // envelope `{_ts, payload}` emitted by the flow engine) land
+      // in history — probe both so the chart doesn't force the
+      // author to know the storage routing.
+      const [telemetry, history] = await Promise.all([
+        client.history.listTelemetry(path, slot, opts).catch(() => []),
+        client.history.listHistory(path, slot, opts).catch(() => []),
+      ]);
+
+      const points: [number, number][] = [];
+      for (const r of telemetry) {
+        const v = coerceNumber(r.value);
+        if (v !== null) points.push([r.ts_ms, v]);
+      }
+      if (points.length === 0) {
+        for (const r of history) {
+          const v = coerceNumber(extractPayload(r.value));
+          if (v !== null) points.push([r.ts_ms, v]);
+        }
+      }
+      return [{ label: slot, points }];
+    },
+  });
+
+  return {
+    series: query.data ?? [],
+    isLoading: query.isLoading,
+    isError: query.isError,
+  };
+}
+
+function coerceNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (v === true) return 1;
+  if (v === false) return 0;
+  return null;
+}
+
+/**
+ * Flow-engine msg envelopes carry the real value at `.payload`. If the
+ * slot value is a bare scalar, pass it through unchanged.
+ */
+function extractPayload(v: unknown): unknown {
+  if (v && typeof v === "object" && !Array.isArray(v) && "payload" in v) {
+    return (v as { payload: unknown }).payload;
+  }
+  return v;
 }
 
 type Bounds = { tMin: number; tMax: number; vMin: number; vMax: number };
