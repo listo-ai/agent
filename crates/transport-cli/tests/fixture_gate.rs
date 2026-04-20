@@ -169,12 +169,15 @@ fn load_fixture(rel: &str) -> Value {
 }
 
 /// Normalise a JSON value for comparison:
-/// - UUID-shaped string → "00000000-0000-0000-0000-000000000000"
+/// - UUID-shaped string (hyphenated or simple) → zeros in the same shape
 /// - Other strings → unchanged
 /// - Arrays / objects → recurse
 fn normalise(v: Value) -> Value {
     match v {
-        Value::String(s) if is_uuid(&s) => {
+        Value::String(s) if is_simple_uuid(&s) => {
+            Value::String("00000000000000000000000000000000".into())
+        }
+        Value::String(s) if is_hyphenated_uuid(&s) => {
             Value::String("00000000-0000-0000-0000-000000000000".into())
         }
         Value::Array(arr) => Value::Array(arr.into_iter().map(normalise).collect()),
@@ -185,8 +188,14 @@ fn normalise(v: Value) -> Value {
     }
 }
 
-fn is_uuid(s: &str) -> bool {
-    // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+fn is_simple_uuid(s: &str) -> bool {
+    // 32 hex chars, no separators — the wire format NodeId/LinkId now emit.
+    s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn is_hyphenated_uuid(s: &str) -> bool {
+    // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx — tolerated on input, e.g.
+    // when a fixture stores a hand-written hyphenated form.
     if s.len() != 36 {
         return false;
     }
@@ -561,7 +570,7 @@ async fn server_with_ui_fixtures() -> (
 async fn ui_nav_ok() {
     let (addr, _srv, nav, _) = server_with_ui_fixtures().await;
     let c = client(addr);
-    let tree = c.ui().nav(&nav.0.to_string()).await.unwrap();
+    let tree = c.ui().nav(&nav.to_string()).await.unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&tree).unwrap());
     let fixture = load_fixture("ui-nav/ok.json");
     assert_shape_match(&actual, &fixture, "$");
@@ -585,7 +594,7 @@ async fn ui_resolve_ok() {
     let (addr, _srv, _, page) = server_with_ui_fixtures().await;
     let c = client(addr);
     let req = agent_client::types::UiResolveRequest {
-        page_ref: page.0.to_string(),
+        page_ref: page.to_string(),
         stack: Vec::new(),
         page_state: serde_json::json!({}),
         dry_run: false,
@@ -604,7 +613,7 @@ async fn ui_resolve_dry_run() {
     let (addr, _srv, _, page) = server_with_ui_fixtures().await;
     let c = client(addr);
     let req = agent_client::types::UiResolveRequest {
-        page_ref: page.0.to_string(),
+        page_ref: page.to_string(),
         stack: Vec::new(),
         page_state: serde_json::json!({}),
         dry_run: true,
@@ -694,7 +703,7 @@ async fn ui_resolve_substitutes_vars_in_table_query() {
     let c = client(addr);
 
     let req = agent_client::types::UiResolveRequest {
-        page_ref: page.0.to_string(),
+        page_ref: page.to_string(),
         stack: Vec::new(),
         page_state: serde_json::json!({}),
         dry_run: false,
@@ -723,7 +732,7 @@ async fn ui_resolve_dry_run_binding_errors() {
     let (addr, _srv, page) = server_with_ui_binding_error_fixture().await;
     let c = client(addr);
     let req = agent_client::types::UiResolveRequest {
-        page_ref: page.0.to_string(),
+        page_ref: page.to_string(),
         stack: Vec::new(),
         page_state: serde_json::json!({}),
         dry_run: true,
@@ -768,7 +777,7 @@ async fn server_with_heartbeat_kind() -> (SocketAddr, tokio::task::JoinHandle<()
 async fn ui_render_ok() {
     let (addr, _srv, hb) = server_with_heartbeat_kind().await;
     let c = client(addr);
-    let resp = c.ui().render(&hb.0.to_string(), None).await.unwrap();
+    let resp = c.ui().render(&hb.to_string(), None).await.unwrap();
     let actual = parse_json_output(&serde_json::to_string_pretty(&resp).unwrap());
     let fixture = load_fixture("ui-render/ok.json");
     assert_shape_match(&actual, &fixture, "$");

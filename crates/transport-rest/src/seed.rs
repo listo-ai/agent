@@ -99,7 +99,7 @@ pub(crate) fn apply(state: &AppState, preset: Preset) -> Result<SeedResult, ApiE
         let src = SlotRef::new(node_ids[0], "out");
         let tgt = SlotRef::new(node_ids[1], "in");
         let link_id = graph.add_link(src, tgt).map_err(ApiError::from_graph)?;
-        links.push(link_id.0.to_string());
+        links.push(link_id.to_string());
     }
 
     Ok(SeedResult {
@@ -169,7 +169,7 @@ fn apply_ui_demo(state: &AppState) -> Result<SeedResult, ApiError> {
         .write_slot(
             &nav_path,
             "frame_ref",
-            json!({ "id": page_id.0.to_string() }),
+            json!({ "id": page_id.to_string() }),
         )
         .map_err(|e| ApiError::bad_request(format!("nav frame_ref: {e}")))?;
     nodes.push(SeededNode {

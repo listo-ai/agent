@@ -199,7 +199,7 @@ mod tests {
             None => s.with_slot(FRAME_ALIAS_SLOT, JsonValue::Null),
         };
         s = match target {
-            Some(t) => s.with_slot(FRAME_REF_SLOT, json!({ "id": t.0.to_string() })),
+            Some(t) => s.with_slot(FRAME_REF_SLOT, json!({ "id": t.to_string() })),
             None => s.with_slot(FRAME_REF_SLOT, JsonValue::Null),
         };
         s
@@ -282,7 +282,7 @@ mod tests {
         let n1 = NodeId::new();
         let t1 = NodeId::new();
         let mut snap = NodeSnapshot::new(n1, "ui.page");
-        snap = snap.with_slot(FRAME_REF_SLOT, json!({ "id": t1.0.to_string() }));
+        snap = snap.with_slot(FRAME_REF_SLOT, json!({ "id": t1.to_string() }));
         let reader = InMemoryReader::new().with(snap);
         let err = ContextStack::build(&reader, &[n1], 16).unwrap_err();
         assert!(matches!(err, StackError::NotNavKind { .. }));

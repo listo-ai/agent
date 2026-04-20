@@ -7,13 +7,22 @@
 use std::fmt;
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
 /// Stable, opaque node identifier. Referenceable from anywhere in the
 /// system (flows, links, audit, NATS subjects).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+///
+/// **Wire format is the un-hyphenated 32-char hex form** (uuid's
+/// `simple()` representation). This is the one canonical string
+/// shape across the whole stack — stored in the DB as-is, emitted
+/// by `/api/v1/nodes`, carried in SSE `slot_changed` events,
+/// addressed in subscription subjects, referenced from layout
+/// bindings. `Display`, `Serialize`, and `to_string()` all return
+/// the same thing. Deserialisation tolerates hyphenated input (for
+/// paste-robustness and compatibility with externally-sourced
+/// UUIDs) but immediately normalises.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub Uuid);
 
 impl NodeId {
@@ -30,7 +39,34 @@ impl Default for NodeId {
 
 impl fmt::Display for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The single source of truth for NodeId string form. Anyone
+        // going through Display, serde, `format!("{id}")`, or
+        // `to_string()` gets the same 32-char un-hyphenated output.
         write!(f, "{}", self.0.simple())
+    }
+}
+
+impl Serialize for NodeId {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        // Never let serde fall through to Uuid's default (hyphenated)
+        // serialiser. Route everything through the canonical form.
+        s.collect_str(&self.0.simple())
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeId {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        // `Uuid::parse_str` accepts both hyphenated and simple forms,
+        // so we can ingest either but always round-trip to simple.
+        let raw = <std::borrow::Cow<'_, str>>::deserialize(d)?;
+        Uuid::parse_str(&raw).map(NodeId).map_err(serde::de::Error::custom)
+    }
+}
+
+impl FromStr for NodeId {
+    type Err = uuid::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Uuid::parse_str(s).map(NodeId)
     }
 }
 

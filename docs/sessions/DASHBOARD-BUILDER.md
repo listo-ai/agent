@@ -451,11 +451,39 @@ All deferred as originally specified. Stage 0.3 existence gate has not been run;
 
 Open issue tracker. Each entry: **ID**, **symptom**, **what's been tried**, **where to look next**.
 
-### #1 — Live cell updates not visually propagating after SSE patch (PARTIALLY FIXED — verify)
+### #1 — Live cell updates not visually propagating after SSE patch (STILL BROKEN — two root causes fixed, symptom persists)
 
-**Update 2026-04-20:** found a likely root cause that none of the original A–E hypotheses cover. `Chart.id` and `Table.id` are `Option<String>` in [crates/ui-ir/src/component.rs:128,166](../../crates/ui-ir/src/component.rs#L128). The plan emitters in [crates/dashboard-transport/src/render.rs](../../crates/dashboard-transport/src/render.rs) bail when `id` is empty (`unwrap_or("") + !id.is_empty()` guard), so any layout authored without explicit ids on subscribed widgets produced **zero** subscription plan entries — the SSE handler at `useSubscriptions.ts:64` would silently `continue` on every event because `subjectToWidget.get(subject)` returned `undefined`. The original debug recipe logged from inside the patch functions, so a missing plan looked identical to "events aren't firing."
+**Update 2026-04-20 (first round):** found a likely root cause that none of the original A–E hypotheses cover. `Chart.id` and `Table.id` are `Option<String>` in [crates/ui-ir/src/component.rs:128,166](../../crates/ui-ir/src/component.rs#L128). The plan emitters in [crates/dashboard-transport/src/render.rs](../../crates/dashboard-transport/src/render.rs) bail when `id` is empty (`unwrap_or("") + !id.is_empty()` guard), so any layout authored without explicit ids on subscribed widgets produced **zero** subscription plan entries — the SSE handler at `useSubscriptions.ts:64` would silently `continue` on every event because `subjectToWidget.get(subject)` returned `undefined`. The original debug recipe logged from inside the patch functions, so a missing plan looked identical to "events aren't firing."
 
-**Fix landed.** New `assign_synthetic_ids` pass on the resolve handler walks the layout JSON and injects deterministic ids (`auto:chart:0`, `auto:table:0`, …) on chart/table/sparkline/timeline that omitted `id`. Same pass runs for the `/ui/render` `ui.page` fast-path. Both the rendered tree the client receives and the subscription plan now carry the same id, so the patch path's `setQueriesData({queryKey: ["sdui-table", widget]})` actually matches. Tests in `render.rs::synthetic_id_tests`.
+**First-round fix.** New `assign_synthetic_ids` pass on the resolve handler walks the layout JSON and injects deterministic ids (`auto:chart:0`, `auto:table:0`, …) on chart/table/sparkline/timeline that omitted `id`. Same pass runs for the `/ui/render` `ui.page` fast-path. Both the rendered tree the client receives and the subscription plan now carry the same id, so the patch path's `setQueriesData({queryKey: ["sdui-table", widget]})` actually matches. Tests in `render.rs::synthetic_id_tests`.
+
+**Second-round fix (same session, different root cause, same symptom).** Even with synthetic ids in place, live updates still dropped on the floor for users who authored explicit `id`s. The culprit was a **NodeId string-format split** across the dashboard stack:
+
+- `NodeId` is `NodeId(pub Uuid)` with `#[serde(transparent)]`. Default serde therefore emits the hyphenated form (Uuid's own Display).
+- `NodeId::Display` however used `self.0.simple()` → **un-hyphenated** (32-char hex).
+- The subscription-plan emitters in `render.rs::emit_query_subjects`, `table.rs`, and `reader.rs` all stringified ids via `snap.id.0.to_string()` (i.e. through the Uuid's default Display) → hyphenated subjects like `node.3b661138-40c1-....slot.count`.
+- SSE events were emitted with NodeId::Display (un-hyphenated) → `node.3b66113840c14d4dac568d86cbaea56c.slot.count`.
+- Chart/kpi plans derive subjects from the `source.node_id` string the author wrote in the layout (un-hyphenated, since that's what `/api/v1/nodes` returns). They matched.
+- Table plans went through the `emit_query_subjects` path with `.0.to_string()`. They did not.
+
+Result: table updates were silently dropped every tick; chart/kpi updates worked whenever the author remembered to use the un-hyphenated form. Users with mixed layouts got partial live behaviour, which is maximally confusing.
+
+**Canonical form: un-hyphenated, always.** `NodeId` and `LinkId` now have custom `Serialize`/`Deserialize` impls that always emit `simple()` and accept both forms on input. `Display` already did the right thing. Every `.0.to_string()` call site in dashboard-transport + transport-rest + dashboard-runtime + tests has been swept to `.to_string()` so there is exactly one string shape in the wire and the logs. Fixture-gate's UUID-normaliser recognises both 32-char and 36-char shapes for backward compatibility with any pinned fixtures.
+
+**Status: still not ticking live per user report.** Both fixes shipped and pass unit/fixture tests. The user reloaded after the NodeId normalisation change and reports the widgets still do not update in real time. Something else is still wrong — the two causes above are real bugs that needed fixing independently, but neither is the complete story. Open hypotheses:
+
+- **Hyp F — SSE stream isn't actually being consumed in the builder preview.** `useSubscriptions` is mounted inside `LivePreview`, which has a `queryKey` that includes `debouncedText + pageState`. Every edit (and the compose-panel apply) blows away the effect, cancels the SSE iterator, and re-subscribes. Between cancel and re-subscribe the reader loses position. In read-only `/ui/:id` the queryKey is stable — which is why live ticks work there and not in the builder (Hypothesis D from first round, still unverified).
+- **Hyp G — `applyToTables`'s `setQueriesData({queryKey: [...]})` is matching the query but React Query v5 doesn't renotify observers when the functional updater returns structurally-equal-but-new-reference data.** Try a forced `invalidateQueries({queryKey, exact: false})` after the `setQueriesData` to see if the observer fires then.
+- **Hyp H — the event stream never arrives.** Open devtools Network → filter `events` → confirm the `/api/v1/events` SSE connection is open and lines are flowing. If lines stop, the bug is earlier (SSE client), not in the subscription router.
+- **Hyp I — flow-engine envelope shape.** `slot_changed` events carry `value: {_msgid, _ts, payload}`. The chart's `applyToCharts` extracts `.payload` before appending, but the table's `applyToTables` sets `slots[slot] = event.value` directly (the envelope). Column field `slots.count.payload` would read through — but authors using `slots.count` see the envelope object and get `[object Object]`. Not a missed-tick bug, but cosmetic confusion on top.
+
+**Next-session first step:** open the page, set `localStorage.setItem("sdui_debug", "1")`, reload, watch devtools console. Three outcomes:
+
+1. No `[sdui] subscriptions mounted` log ever → Hyp F (builder instability tearing the subscriber down).
+2. Mounts fire but `[sdui] event matched` never does → Hyp H (SSE isn't delivering) or a subject-format mismatch we haven't found yet (curl `/api/v1/events` to confirm event shape).
+3. `event matched` fires on every tick AND `touched=true` → Hyp G (React Query observer notification).
+
+Leave the NodeId normalisation + synthetic-id fixes in place — both were real bugs regardless of this third one, and reverting them would mask the real cause.
 
 **Diagnostic also added.** `useSubscriptions.ts` now logs subscription mounts and per-event match/miss when `localStorage.sdui_debug === "1"`. Set that and reload to see exactly which subjects the plan covers and whether incoming events match.
 

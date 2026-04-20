@@ -408,7 +408,7 @@ impl LinkDto {
             .get_by_id(link.target.node)
             .map(|n| n.path.to_string());
         Self {
-            id: link.id.0.to_string(),
+            id: link.id.to_string(),
             source: EndpointDto {
                 node_id: link.source.node.to_string(),
                 path: source_path,
@@ -485,7 +485,7 @@ async fn create_link(
         .add_link(source, target)
         .map_err(ApiError::from_graph)?;
     Ok(Json(CreatedLinkResp {
-        id: id.0.to_string(),
+        id: id.to_string(),
     }))
 }
 

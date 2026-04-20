@@ -230,7 +230,7 @@ impl<'a, R: NodeReader + ?Sized> EvalContext<'a, R> {
 }
 
 fn frame_to_ref(f: &Frame) -> JsonValue {
-    serde_json::json!({ "id": f.node_ref.0.to_string() })
+    serde_json::json!({ "id": f.node_ref.to_string() })
 }
 
 fn read_slot<R: NodeReader + ?Sized>(
@@ -455,7 +455,7 @@ mod tests {
         let reader = InMemoryReader::new().with(
             NodeSnapshot::new(n1, "ui.nav")
                 .with_slot("frame_alias", json!("target"))
-                .with_slot("frame_ref", json!({ "id": t1.0.to_string() })),
+                .with_slot("frame_ref", json!({ "id": t1.to_string() })),
         );
         let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
         let empty_user: HashMap<String, JsonValue> = HashMap::new();
@@ -464,7 +464,7 @@ mod tests {
         let v = b
             .evaluate(&ctx(&reader, &stack, NodeId::new(), &empty_user, &page))
             .unwrap();
-        assert_eq!(v, json!({ "id": t1.0.to_string() }));
+        assert_eq!(v, json!({ "id": t1.to_string() }));
     }
 
     #[test]
@@ -475,7 +475,7 @@ mod tests {
             .with(
                 NodeSnapshot::new(n1, "ui.nav")
                     .with_slot("frame_alias", json!("target"))
-                    .with_slot("frame_ref", json!({ "id": t1.0.to_string() })),
+                    .with_slot("frame_ref", json!({ "id": t1.to_string() })),
             )
             .with(NodeSnapshot::new(t1, "sys.whatever").with_slot("name", json!("Site A")));
         let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
@@ -497,11 +497,11 @@ mod tests {
             .with(
                 NodeSnapshot::new(n1, "ui.nav")
                     .with_slot("frame_alias", json!("t"))
-                    .with_slot("frame_ref", json!({ "id": site.0.to_string() })),
+                    .with_slot("frame_ref", json!({ "id": site.to_string() })),
             )
             .with(
                 NodeSnapshot::new(site, "sys.site")
-                    .with_slot("owner", json!({ "id": owner.0.to_string() })),
+                    .with_slot("owner", json!({ "id": owner.to_string() })),
             )
             .with(NodeSnapshot::new(owner, "sys.person").with_slot("name", json!("Ada")));
         let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
@@ -575,11 +575,11 @@ mod tests {
             .with(
                 NodeSnapshot::new(n1, "ui.nav")
                     .with_slot("frame_alias", json!("t"))
-                    .with_slot("frame_ref", json!({ "id": site.0.to_string() })),
+                    .with_slot("frame_ref", json!({ "id": site.to_string() })),
             )
             .with(
                 NodeSnapshot::new(site, "sys.site")
-                    .with_slot("owner", json!({ "id": owner.0.to_string() })),
+                    .with_slot("owner", json!({ "id": owner.to_string() })),
             )
             .with(NodeSnapshot::new(owner, "sys.person").with_slot("name", json!("Ada")));
         let stack = ContextStack::build(&reader, &[n1], 16).unwrap();
