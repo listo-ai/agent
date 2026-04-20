@@ -10,3 +10,12 @@ export function cn(...inputs: ClassValue[]): string {
 export function compactUuid(uuid: string): string {
   return uuid.replaceAll("-", "");
 }
+
+/** Extracts a human-readable message from any thrown value. */
+export function formatError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
+}

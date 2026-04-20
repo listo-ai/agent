@@ -1,4 +1,6 @@
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Tag } from "lucide-react";
+import { DynamicIcon } from "@/lib/icon-picker";
 import {
   addEdge,
   Background,
@@ -55,6 +57,8 @@ interface FlowCanvasProps {
   onAddChildNode?: (nodePath: string) => void;
   /** Open the history panel for this node. */
   onOpenHistory?: (nodePath: string) => void;
+  /** Open the tags & appearance dialog for this node. */
+  onTagsAndAppearance?: (nodePath: string) => void;
 }
 
 export function FlowCanvas(props: FlowCanvasProps) {
@@ -85,6 +89,7 @@ function FlowCanvasInner({
   onOpenNode,
   onAddChildNode,
   onOpenHistory,
+  onTagsAndAppearance,
 }: FlowCanvasProps) {
   const [canvasNodes, setCanvasNodes] = useState(nodes);
   const [canvasEdges, setCanvasEdges] = useState(edges);
@@ -230,6 +235,12 @@ function FlowCanvasInner({
                 setContextMenu(null);
               },
             }),
+            ...(onTagsAndAppearance ? [{
+              label: "Tags & appearance",
+              icon: <Tag size={14} />,
+              onClick: () => { onTagsAndAppearance(contextMenu.nodePath); setContextMenu(null); },
+              separator: true as const,
+            }] : []),
             ...buildCopyItems({
               path: contextMenu.nodePath,
               ...(contextMenu.nodeKindId !== undefined ? { kindId: contextMenu.nodeKindId } : {}),
@@ -248,6 +259,11 @@ const HEADER_HEIGHT = 52;
 const SLOT_ROW_H = 22;
 const SLOTS_PADDING_TOP = 6;
 
+// Resolve a Lucide icon name to a component at runtime via the curated icon map.
+function DynIcon({ name, className }: { name: string; className?: string | undefined }) {
+  return <DynamicIcon name={name} className={className} />;
+}
+
 const FlowNodeCard = memo(function FlowNodeCard({
   data,
   selected,
@@ -264,13 +280,21 @@ const FlowNodeCard = memo(function FlowNodeCard({
   const slotRows = Math.max(inputs.length, outputs.length);
   const slotsBlockTop = HEADER_HEIGHT + SLOTS_PADDING_TOP;
 
+  // Read user-set appearance from the config.appearance slot.
+  const appRaw = data.snapshot.slots.find((s) => s.name === "config.appearance")?.value;
+  const appConfig = typeof appRaw === "object" && appRaw !== null && !Array.isArray(appRaw)
+    ? (appRaw as { icon?: string; color?: string })
+    : null;
+  const accentColor = appConfig?.color;
+  const iconName = appConfig?.icon;
+
   return (
     <div
       className={cn(
         "relative rounded-2xl border bg-background/95 shadow-sm transition-shadow",
         selected ? "border-primary shadow-md" : "border-border",
       )}
-      style={{ width: 240 }}
+      style={{ width: 240, ...(accentColor ? { borderTopColor: accentColor, borderTopWidth: 3 } : {}) }}
     >
       {/* Handles – positioned absolutely relative to card top */}
       {inputs.map((slot, index) => (
@@ -296,11 +320,14 @@ const FlowNodeCard = memo(function FlowNodeCard({
 
       {/* Header */}
       <div className="flex items-start justify-between gap-2 px-4 pt-3 pb-1">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold leading-snug">
-            {titleForKind(data.kind, data.snapshot.path.split("/").pop())}
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          {iconName && <DynIcon name={iconName} className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold leading-snug">
+              {titleForKind(data.kind, data.snapshot.path.split("/").pop())}
+            </div>
+            <div className="truncate text-[11px] text-muted-foreground">{data.snapshot.kind}</div>
           </div>
-          <div className="truncate text-[11px] text-muted-foreground">{data.snapshot.kind}</div>
         </div>
         <span className="mt-0.5 shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary-foreground">
           {live?.lifecycle ?? data.snapshot.lifecycle}

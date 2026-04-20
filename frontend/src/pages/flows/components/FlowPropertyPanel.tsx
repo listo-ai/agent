@@ -1,37 +1,47 @@
-import { type ReactNode, useState, useCallback } from "react";
+import { type ReactNode, useMemo, useState, useCallback } from "react";
 import { Check, Copy } from "lucide-react";
 import type { Kind, NodeSnapshot, Slot } from "@sys/agent-client";
 import { cn, compactUuid } from "@/lib/utils";
+import { useSlotWriter } from "@/lib/slots";
 import { useNodeSettings, NodeSettingsForm } from "@/lib/node-settings";
+import { TagsEditor, useNodeTags } from "@/lib/tags";
+import { AppearanceEditor, useNodeAppearance } from "@/lib/appearance";
 import { mergedSlots } from "../flow-model";
 
 /** Slot names managed by the canvas — hide from the live slots list. */
-const CANVAS_SLOTS = new Set(["position", "notes", "settings"]);
+const CANVAS_SLOTS = new Set(["position", "notes", "settings", "config.tags", "config.appearance"]);
 
 interface FlowPropertyPanelProps {
   node: NodeSnapshot | undefined;
   kind: Kind | undefined;
   /** Slot map (name → {name, value, generation}) from the live feed. */
   live: Record<string, Slot>;
-  onSaveSettings: (path: string, settings: Record<string, unknown>) => Promise<void>;
 }
 
 export function FlowPropertyPanel({
   node,
   kind,
   live,
-  onSaveSettings,
 }: FlowPropertyPanelProps) {
+  const saveSettings = useSlotWriter("settings");
+  const saveTags = useSlotWriter("config.tags");
+  const saveAppearance = useSlotWriter("config.appearance");
+
   const settingsState = useNodeSettings(
     node?.path,
     live["settings"],
-    onSaveSettings,
+    saveSettings,
   );
+  const tagsState = useNodeTags(node?.path, live["config.tags"], saveTags);
+  const appearanceState = useNodeAppearance(node?.path, live["config.appearance"], saveAppearance);
 
-  const hiddenSlots = new Set(CANVAS_SLOTS);
-  for (const def of kind?.slots ?? []) {
-    if (def.is_internal) hiddenSlots.add(def.name);
-  }
+  const hiddenSlots = useMemo(() => {
+    const s = new Set(CANVAS_SLOTS);
+    for (const def of kind?.slots ?? []) {
+      if (def.is_internal) s.add(def.name);
+    }
+    return s;
+  }, [kind]);
 
   const statusSlots = node
     ? mergedSlots(node, { lifecycle: undefined, slots: live, touchedAt: undefined }).filter(
@@ -71,8 +81,20 @@ export function FlowPropertyPanel({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto px-5 py-4">
-        {/* Settings */}
+        {/* Tags */}
         <section>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tags</h3>
+          <TagsEditor className="mt-3" {...tagsState} />
+        </section>
+
+        {/* Appearance */}
+        <section className="mt-6">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Appearance</h3>
+          <AppearanceEditor className="mt-3" {...appearanceState} />
+        </section>
+
+        {/* Settings */}
+        <section className="mt-6">
           <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Settings
           </h3>

@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 agent-client = { workspace = true }
 clap = { workspace = true }
+domain-tags = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

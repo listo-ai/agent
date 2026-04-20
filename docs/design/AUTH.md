@@ -27,6 +27,21 @@ Zitadel's native model, mapped to our product:
 
 Multi-tenancy is native, not simulated. Every token carries the org it was issued for; we can't accidentally leak data across tenants because the tenant is enforced in the token itself.
 
+## No teams in the trust model
+
+The identity hierarchy stops at **Org → User + roles**. There is no "team" entity in auth. Access decisions look at the JWT's `org_id` + `roles` claims; nothing else.
+
+This is deliberate. Teams as a first-class auth concept means team-membership joins on every permission check, cascading revokes, and "why did Alice lose access?" mysteries when someone edits a group. We don't want any of that.
+
+Operators still need to manage large groups of users efficiently. That's a **UI concern**, handled via tags (see [TAGS-PRESENTATION-QUERY.md](../sessions/TAGS-PRESENTATION-QUERY.md)):
+
+- Tags on `sys.auth.user` nodes (`[team/platform, oncall]`) are **saved selections**, not group memberships.
+- Studio bulk actions: filter by tag → multi-select → "Grant role X to these N users now" → Studio fans out N individual Zitadel role-grant calls.
+- Removing a tag only untags. It does **not** revoke anything — access changes are always explicit operator actions against Zitadel.
+- The user's profile page shows tags (grey chips, cosmetic) and grants (from Zitadel, authoritative) as visually distinct surfaces so the mental model stays clear.
+
+Tags are Gmail-labels over users, not Outlook-folders. They make bulk ops ergonomic without entering the trust path. Auth stays exactly "Zitadel says so, we verify the JWT" — no extra joins, no extra state, no extra failure modes.
+
 ## Identity types
 
 | Type | Who | How they authenticate | Token lifetime |

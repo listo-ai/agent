@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
 import { create, useStore } from "zustand";
 import type { NodeSnapshot, Link } from "@sys/agent-client";
 
 import { useAgent } from "@/hooks/useAgent";
 import { useGraphStoreOptional } from "@/store/graph-hooks";
 import { AGENT_BASE_URL } from "@/lib/agent";
+import { formatError } from "@/lib/utils";
+import { useCreateNode, useRemoveNode } from "@/lib/node";
 import {
   basename,
   isDirectChildOfFlow,
@@ -115,30 +116,8 @@ export function useFlowsList(): UseFlowsListReturn {
   }, [nodes, links, filter]);
 
   // Mutations
-  const createFlowMutation = useMutation({
-    mutationFn: async () => {
-      const name = nextFlowName(nodes.filter(isFlowNode).map((f) => f.path));
-      const created = await agent.data!.nodes.createNode({
-        parent: "/",
-        kind: "sys.core.flow",
-        name,
-      });
-      return created.path;
-    },
-    onSuccess: (path) => {
-      setErrorMessage(null);
-      navigate(`/flows/edit${path}`);
-    },
-    onError: (error) => setErrorMessage(formatError(error)),
-  });
-
-  const deleteFlowMutation = useMutation({
-    mutationFn: async (path: string) => {
-      await agent.data!.nodes.removeNode(path);
-    },
-    onSuccess: () => setErrorMessage(null),
-    onError: (error) => setErrorMessage(formatError(error)),
-  });
+  const createNode = useCreateNode();
+  const removeNode = useRemoveNode();
 
   // Determine overall status
   let status: ListStatus = "ready";
@@ -154,30 +133,35 @@ export function useFlowsList(): UseFlowsListReturn {
     filter,
     setFilter,
     errorMessage,
-    createFlow: () => createFlowMutation.mutate(),
-    createPending: createFlowMutation.isPending,
+    createFlow: () => {
+      const name = nextFlowName(nodes.filter(isFlowNode).map((f) => f.path));
+      createNode.mutate(
+        { parent: "/", kind: "sys.core.flow", name },
+        {
+          onSuccess: (path) => {
+            setErrorMessage(null);
+            navigate(`/flows/edit${path}`);
+          },
+          onError: (error) => setErrorMessage(formatError(error)),
+        },
+      );
+    },
+    createPending: createNode.isPending,
     deleteFlow: (path) => {
       if (
         confirm(
           `Delete flow ${path}? This removes the container and all child nodes.`,
         )
       ) {
-        deleteFlowMutation.mutate(path);
+        removeNode.mutate(path, {
+          onSuccess: () => setErrorMessage(null),
+          onError: (error) => setErrorMessage(formatError(error)),
+        });
       }
     },
-    deletePending: deleteFlowMutation.isPending,
+    deletePending: removeNode.isPending,
     openFlow: (path) => navigate(`/flows/edit${path}`),
   };
 }
 
-// ---------------------------------------------------------------------------
-// Util
-// ---------------------------------------------------------------------------
 
-function formatError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "message" in err) {
-    return String((err as { message: unknown }).message);
-  }
-  return String(err);
-}

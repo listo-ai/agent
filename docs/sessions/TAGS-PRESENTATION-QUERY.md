@@ -31,6 +31,20 @@ Ship one consistent model for classification + operational visibility:
 2. Runtime can decorate nodes with status/icon/color/message without mutating manifests.
 3. API/CLI/MCP can filter by tags and status through the same generic AST pipeline (no custom per-resource parser).
 
+## Tags are not auth
+
+Tags on `sys.auth.user` nodes look like team/group membership (`[team/platform, oncall]`) but they are **not part of the trust model**. See [AUTH.md § "No teams in the trust model"](../design/AUTH.md).
+
+Rules:
+
+- Tags on users are **saved selections** — a way to filter a list in Studio. They carry no authority.
+- Bulk operator UX: filter users by tag → multi-select → "Grant role X to these N users now" → Studio issues N individual Zitadel role-grant calls. Tags drive the fan-out; grants are what actually matter.
+- Removing a tag **never** revokes access. Untag is a filing change; access changes are always explicit operator actions against Zitadel.
+- The confirm dialog should read *"grant role X to these 12 users now"* — never *"sync team platform"*. "Sync" implies binding; we don't bind.
+- In the user profile, tags (grey chips) and grants (from Zitadel) render as visually distinct surfaces so the mental model stays clear.
+
+This keeps auth simple: the JWT's `org_id` + `roles` are the only inputs to any permission decision. Tags exist above that layer, for humans, not for enforcement.
+
 ## UX and syntax
 
 Accepted user-facing shorthand:

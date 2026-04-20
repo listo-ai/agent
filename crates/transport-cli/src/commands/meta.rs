@@ -169,6 +169,9 @@ pub fn all_commands() -> &'static [&'static CommandMeta] {
         &AI_PROVIDERS,
         &AI_RUN,
         &AI_STREAM,
+        &TAGS_GET,
+        &TAGS_SET,
+        &TAGS_CLEAR,
     ];
     ALL
 }
@@ -2417,6 +2420,118 @@ static AI_STREAM: CommandMeta = CommandMeta {
         ErrorInfo { code: "ai_unavailable", exit_code: 2 },
         ErrorInfo { code: "bad_request", exit_code: 1 },
         ErrorInfo { code: "upstream_error", exit_code: 2 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+// ---- tags -----------------------------------------------------------------
+
+static TAGS_GET: CommandMeta = CommandMeta {
+    name: "tags get",
+    summary: "Read the current tags on a node.",
+    args: &[ArgInfo {
+        name: "path",
+        required: true,
+        type_name: "node-path",
+        description: "Node path, e.g. /station/counter",
+    }],
+    examples: &[
+        "agent tags get /station/counter",
+        "agent tags get /station/counter --output json",
+    ],
+    related: &["tags set", "tags clear", "nodes get"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+                "path": { "type": "string", "format": "node-path" }
+            }
+        })
+    },
+    output_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": ["object", "null"],
+            "properties": {
+                "labels": { "type": "array", "items": { "type": "string" } },
+                "kv": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+        })
+    },
+    errors: &[
+        ErrorInfo { code: "not_found", exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+static TAGS_SET: CommandMeta = CommandMeta {
+    name: "tags set",
+    summary: "Set tags on a node using shorthand notation.",
+    args: &[
+        ArgInfo {
+            name: "path",
+            required: true,
+            type_name: "node-path",
+            description: "Node path, e.g. /station/counter",
+        },
+        ArgInfo {
+            name: "tags",
+            required: true,
+            type_name: "tags-shorthand",
+            description: "Shorthand tags expression, e.g. [code,ops]{site:abc}",
+        },
+    ],
+    examples: &[
+        "agent tags set /station/counter '[code,ops]'",
+        "agent tags set /station/counter '{site:abc,zone:w1}'",
+        "agent tags set /station/counter '[code]{site:abc}'",
+    ],
+    related: &["tags get", "tags clear"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path", "tags"],
+            "properties": {
+                "path": { "type": "string", "format": "node-path" },
+                "tags": { "type": "string", "description": "shorthand, e.g. [label]{key:val}" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::WriteSlotResponse>,
+    errors: &[
+        ErrorInfo { code: "not_found", exit_code: 1 },
+        ErrorInfo { code: "bad_request", exit_code: 1 },
+        ErrorInfo { code: "agent_unreachable", exit_code: 2 },
+    ],
+};
+
+static TAGS_CLEAR: CommandMeta = CommandMeta {
+    name: "tags clear",
+    summary: "Clear all tags from a node.",
+    args: &[ArgInfo {
+        name: "path",
+        required: true,
+        type_name: "node-path",
+        description: "Node path, e.g. /station/counter",
+    }],
+    examples: &["agent tags clear /station/counter"],
+    related: &["tags get", "tags set"],
+    input_schema: || {
+        serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+                "path": { "type": "string", "format": "node-path" }
+            }
+        })
+    },
+    output_schema: schema_for_type::<types::WriteSlotResponse>,
+    errors: &[
+        ErrorInfo { code: "not_found", exit_code: 1 },
         ErrorInfo { code: "agent_unreachable", exit_code: 2 },
     ],
 };

@@ -46,7 +46,7 @@ Non-negotiable requirement:
 
 | Layer | Mechanism | Purpose |
 |---|---|---|
-| **Build-time** | Cargo feature flag `--features mcp` | Customers with compliance requirements get binaries with no MCP code at all |
+| **Build-time** | Cargo feature flags `--features mcp-server` and/or `--features mcp-client` (independent) | Edge/cloud compliance builds get binaries with no MCP code at all, or only the side they need. See [SKILLS.md § Feature gating](SKILLS.md#feature-gating--mcp-is-optional-on-both-sides). |
 | **Config** | `mcp: { enabled: false }` in YAML | **Default off.** Must be explicitly enabled. |
 | **Runtime** | `yourapp mcp disable` / admin toggle | Live kill switch, no restart, for incident response |
 
@@ -117,16 +117,18 @@ Tools are where most MCP implementations go wrong. Rules for ours:
 
 ## Block- and node-contributed tools
 
-Core tools above are hand-curated. Blocks and node kinds contribute additional tools through their manifests — the MCP surface grows with the platform without the core team curating every new verb.
+Core tools above are hand-curated. Blocks, node kinds, and skills contribute additional tools through their manifests — the MCP surface grows with the platform without the core team curating every new verb. Skills (flows published as reusable units) and knowledge blocks (markdown, prompts, schemas) are covered in [SKILLS.md](SKILLS.md); the MCP-facing pieces below apply uniformly to all three block types.
 
-**The parity rule holds.** The MCP server never gains a code path that bypasses the REST router. Block-contributed tools dispatch via one of exactly two mechanisms:
+**The parity rule holds.** The MCP server never gains a code path that bypasses the REST router. Block-contributed tools dispatch via one of exactly four mechanisms:
 
 | Dispatch kind | What it is | Who uses it |
 |---|---|---|
 | `rest_proxy` | MCP handler re-issues the call through the in-process REST router. Declared in `block.yaml` with `{method, path}`. | Blocks that already expose a `/api/v1/blocks/<id>/rpc/<action>` REST route. |
 | `node_action` | MCP handler dispatches to a node's declared action via `POST /api/v1/nodes/:id/actions/:action` — a uniform REST surface every kind with an `mcp.actions` manifest block gets for free. | Node kinds contributing actions through their kind manifest (e.g. `bacnet.device.read_point.v1`). |
+| `subflow_invoke` | MCP handler starts a flow run via `POST /api/v1/flows/<flow_id>/run` with inputs validated against the skill's declared `input_schema`, and returns the flow's output validated against `output_schema`. | **Skill blocks** — a flow packaged as a reusable, composable, MCP-exposed unit. See [SKILLS.md](SKILLS.md). |
+| `mcp_forward` | MCP handler forwards the call to a remote MCP server over a live client session owned by an `mcp_client` block's supervisor, then validates the response against the cached remote `output_schema`. Makes our runtime a federating hub. | **MCP-client blocks** — external MCP servers imported as local tools. See [SKILLS.md § MCP-client block](SKILLS.md#mcp-client-block--importing-skills-from-external-mcp-servers). |
 
-Nothing else. No direct Wasm/process/native hooks into the MCP server.
+Nothing else. No direct Wasm/process/native hooks into the MCP server. All four dispatch kinds bottom out at the same REST router or client supervisor, under the same `AuthContext`, with the same audit.
 
 ### Block manifest — `contributes.mcp`
 
@@ -155,6 +157,28 @@ contributes:
         template: prompts/investigate.md
 ```
 
+### Skill block — `contributes.skill` automatically registers a tool
+
+Full shape in [SKILLS.md § Skill block](SKILLS.md#skill-block--a-flow-published-as-a-reusable-unit). Summary: a skill block's manifest declares `mcp_tool_id`, `input_schema`, `output_schema`, `description_md`, and `tier` — the MCP server registers the skill as `skills.<mcp_tool_id>` using `dispatch.kind: subflow_invoke`. No explicit `contributes.mcp.tools` entry is needed; the skill *is* the tool.
+
+```yaml
+# block.yaml (type: skill)
+contributes:
+  skill:
+    flow: skill/flow.json
+    input_schema:  skill/input_schema.json
+    output_schema: skill/output_schema.json
+    description_md: skill/description.md
+    tier: read
+    mcp_tool_id: triage_pr_v1         # → tools/list entry: "skills.triage_pr_v1"
+```
+
+All [Invariants preserved](#invariants-preserved) below apply to skill-backed tools identically. Static descriptions, signature binding, RBAC, write/destructive gating, audit provenance, name-collision safety — no special case.
+
+### Knowledge block — `contributes.knowledge` adds resources and prompts
+
+Knowledge blocks contribute MCP **resources** (read-only URIs like `knowledge://react/guide`) and **prompts** (parameterised templates), not tools. See [SKILLS.md § Knowledge block](SKILLS.md#knowledge-block--markdown-prompts-schemas). These ride the same resource/prompt machinery already used by core resources and block-contributed resources — subscription fan-out, cache TTLs, signature-bound content all apply.
+
 ### Node-kind manifest — automatic tool contribution
 
 Kind manifests can declare invokable actions; each one becomes a tool named `<kind-last-segment>.<action>.v1`:
@@ -176,7 +200,7 @@ mcp:
 
 | Invariant | How |
 |---|---|
-| **REST ≡ MCP parity** | Only `rest_proxy` and `node_action` dispatch. A block tool whose declared REST path doesn't exist at load is a manifest parse error. |
+| **REST ≡ MCP parity** | Only `rest_proxy`, `node_action`, `subflow_invoke`, and `mcp_forward` dispatch. A block tool whose declared REST path, skill flow, or upstream MCP endpoint doesn't exist at load is a manifest parse error (for federated tools, a scan-time `Degraded` status). |
 | **Static descriptions, no live data** | `description_md` is a file in the signed block bundle. Author-controlled but signature-bound — same trust model as the block's code. Never interpolated with runtime data. |
 | **RBAC** | Block tool calls use the same `AuthContext` + RBAC middleware as REST. `required_capabilities` (matched via the [VERSIONING.md](VERSIONING.md) capability matcher) filter tool visibility at `tools/list` time — callers never see tools they can't invoke. |
 | **Write/destructive gating** | `tier: write` tools register only if `mcp.allow_writes`. `tier: destructive` likewise. Block authors can't self-promote. |

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentClient, Kind, NodeSnapshot } from "@sys/agent-client";
+import type { Kind, NodeSnapshot } from "@sys/agent-client";
 import { useMutation } from "@tanstack/react-query";
 import type {
   Connection,
@@ -10,16 +10,17 @@ import type {
 } from "@xyflow/react";
 import type { NavigateFunction } from "react-router-dom";
 import { queryClient } from "@/providers/query";
+import { useAgent } from "@/hooks/useAgent";
+import { useInvalidateGraph } from "@/lib/node";
+import { formatError } from "@/lib/utils";
 import {
   autoLayout,
   nextNodeName,
   POSITION_SLOT,
   type FlowNodeData,
 } from "./flow-model";
-import { formatError } from "./flow-page-shared";
 
 interface UseFlowPageActionsOptions {
-  agent: AgentClient | undefined;
   navigate: NavigateFunction;
   openFlowPath: string | null;
   kindsById: Map<string, Kind>;
@@ -34,7 +35,6 @@ interface UseFlowPageActionsOptions {
 }
 
 export function useFlowPageActions({
-  agent,
   navigate,
   openFlowPath,
   kindsById,
@@ -47,17 +47,13 @@ export function useFlowPageActions({
   setSelectedNodes,
   setSelectedEdges,
 }: UseFlowPageActionsOptions) {
+  const agent = useAgent().data;
   const flowRef = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
   const moveTimers = useRef(new Map<string, number>());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addChildPath, setAddChildPath] = useState<string | null>(null);
 
-  const invalidateGraphQueries = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["nodes"] }),
-      queryClient.invalidateQueries({ queryKey: ["links"] }),
-    ]);
-  }, []);
+  const invalidateGraphQueries = useInvalidateGraph();
 
   const createNodeMutation = useMutation({
     mutationFn: async ({ kind, position }: { kind: Kind; position: { x: number; y: number } }) => {
@@ -110,14 +106,6 @@ export function useFlowPageActions({
         }
       }, 220);
       moveTimers.current.set(path, timer);
-    },
-    [agent],
-  );
-
-  const saveSettings = useCallback(
-    async (path: string, settings: Record<string, unknown>): Promise<void> => {
-      if (!agent) return;
-      await agent.slots.writeSlot(path, "settings", settings);
     },
     [agent],
   );
@@ -269,7 +257,6 @@ export function useFlowPageActions({
     setAddChildPath,
     createNode,
     persistNodePosition,
-    saveSettings,
     handleOpenNode,
     handleAddChildNode,
     handleConnect,

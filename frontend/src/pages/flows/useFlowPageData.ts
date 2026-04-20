@@ -103,7 +103,7 @@ export function useFlowPageData({ pathFromUrl, navigate }: UseFlowPageDataOption
   );
   const edgeList = useMemo(() => toCanvasEdges(visibleLinks, visibleNodeMap), [visibleLinks, visibleNodeMap]);
 
-  const liveByPath = useFlowLiveData(agent.data, nodes);
+  const liveByPath = useFlowLiveData(graphStore);
   const selectedNode = useMemo(
     () => nodes.find((node) => selectedNodePaths.includes(node.path)),
     [nodes, selectedNodePaths],
@@ -111,12 +111,11 @@ export function useFlowPageData({ pathFromUrl, navigate }: UseFlowPageDataOption
   const selectedKind = selectedNode ? kindsById.get(selectedNode.kind) : undefined;
   const selectedLive: Record<string, Slot> = selectedNode ? (liveByPath[selectedNode.path]?.slots ?? {}) : {};
 
-  // Synthetic query-compatible objects so FlowsPage loading/error guards still work.
-  const nodesQuery = { isPending: isLoading, isError: false, error: null, data: nodes } as const;
-  const linksQuery = { isPending: isLoading, isError: false, error: null, data: links } as const;
+  // Expose real error state from the agent query so FlowsPage can surface it.
+  const nodesQuery = { isPending: isLoading, isError: agent.isError, error: agent.error, data: nodes } as const;
+  const linksQuery = { isPending: isLoading, isError: agent.isError, error: agent.error, data: links } as const;
 
   return {
-    agent,
     nodesQuery,
     linksQuery,
     kindsQuery,

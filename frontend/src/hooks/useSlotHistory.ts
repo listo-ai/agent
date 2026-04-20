@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { HistoryRecord, HistoryQueryOptions, ScalarRecord } from "@sys/agent-client";
 
-import { agentPromise } from "@/lib/agent";
+import { useAgent } from "./useAgent";
 
 // ---- query keys ------------------------------------------------------------
 
@@ -27,13 +27,11 @@ export function useSlotHistory(
   slot: string,
   opts?: HistoryQueryOptions,
 ) {
+  const agentQuery = useAgent();
   return useQuery<HistoryRecord[]>({
     queryKey: historyKeys.history(path, slot, opts),
-    queryFn: async () => {
-      const client = await agentPromise;
-      return client.history.listHistory(path, slot, opts);
-    },
-    enabled: path.length > 0 && slot.length > 0,
+    queryFn: () => agentQuery.data!.history.listHistory(path, slot, opts),
+    enabled: path.length > 0 && slot.length > 0 && agentQuery.data !== undefined,
   });
 }
 
@@ -49,13 +47,11 @@ export function useSlotTelemetry(
   slot: string,
   opts?: HistoryQueryOptions,
 ) {
+  const agentQuery = useAgent();
   return useQuery<ScalarRecord[]>({
     queryKey: historyKeys.telemetry(path, slot, opts),
-    queryFn: async () => {
-      const client = await agentPromise;
-      return client.history.listTelemetry(path, slot, opts);
-    },
-    enabled: path.length > 0 && slot.length > 0,
+    queryFn: () => agentQuery.data!.history.listTelemetry(path, slot, opts),
+    enabled: path.length > 0 && slot.length > 0 && agentQuery.data !== undefined,
   });
 }
 
@@ -70,13 +66,11 @@ export function useSlotTelemetry(
  * automatically. The caller never has to think about cache invalidation.
  */
 export function useRecordHistory(path: string, slot: string) {
+  const agentQuery = useAgent();
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async () => {
-      const client = await agentPromise;
-      return client.history.record(path, slot);
-    },
+    mutationFn: () => agentQuery.data!.history.record(path, slot),
     onSuccess: () => {
       // Invalidate all history/telemetry entries for this node+slot regardless
       // of time-range opts — the key prefix match handles every variant.

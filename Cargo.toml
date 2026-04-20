@@ -38,6 +38,7 @@ members = [
     "crates/blocks-sdk-macros",
     "crates/blocks-host",
     "crates/apps/agent",
+    "crates/apps/mcp-sync",
     "crates/ai-runner",
     "crates/domain-ai",
     "clients/rs",

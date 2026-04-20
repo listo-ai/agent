@@ -1,13 +1,14 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AgentClient, Kind } from "@sys/agent-client";
+import type { Kind } from "@sys/agent-client";
 import { cn } from "@/lib/utils";
+import { useAgent } from "@/hooks/useAgent";
+import { useCreateNode } from "@/lib/node";
 
 interface AddChildNodeDialogProps {
   /** Graph path of the parent node (e.g. "/my-flow/device-a"). */
   parentPath: string;
-  agent: AgentClient;
   onClose: () => void;
   /** Called after the child node is successfully created. */
   onCreated: (createdPath: string) => void;
@@ -22,19 +23,19 @@ interface AddChildNodeDialogProps {
  */
 export function AddChildNodeDialog({
   parentPath,
-  agent,
   onClose,
   onCreated,
 }: AddChildNodeDialogProps) {
+  const agentQuery = useAgent();
+  const createNode = useCreateNode();
   const [selectedKind, setSelectedKind] = useState<Kind | null>(null);
   const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
   const kindsQuery = useQuery({
     queryKey: ["kinds-placeable-under", parentPath],
-    queryFn: () => agent.kinds.listPlaceableUnder(parentPath),
+    queryFn: () => agentQuery.data!.kinds.listPlaceableUnder(parentPath),
+    enabled: agentQuery.data !== undefined,
     staleTime: 30_000,
   });
 
@@ -64,19 +65,15 @@ export function AddChildNodeDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedKind || !name.trim()) return;
-    setSubmitting(true);
-    setError(null);
     try {
-      const created = await agent.nodes.createNode({
+      const path = await createNode.mutateAsync({
         parent: parentPath,
         kind: selectedKind.id,
         name: name.trim(),
       });
-      onCreated(created.path);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
+      onCreated(path);
+    } catch {
+      // error surfaced via createNode.error below
     }
   };
 
@@ -145,9 +142,9 @@ export function AddChildNodeDialog({
           </p>
 
           {/* Error */}
-          {error && (
+          {createNode.error && (
             <p className="mt-3 rounded-lg border border-destructive/20 bg-destructive/8 px-3 py-2 text-sm text-destructive">
-              {error}
+              {createNode.error instanceof Error ? createNode.error.message : String(createNode.error)}
             </p>
           )}
 
@@ -162,14 +159,14 @@ export function AddChildNodeDialog({
             </button>
             <button
               type="submit"
-              disabled={!selectedKind || !name.trim() || submitting || kinds.length === 0}
+              disabled={!selectedKind || !name.trim() || createNode.isPending || kinds.length === 0}
               className={cn(
                 "rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground",
                 "disabled:pointer-events-none disabled:opacity-40",
                 "hover:opacity-90",
               )}
             >
-              {submitting ? "Creating…" : "Create"}
+              {createNode.isPending ? "Creating…" : "Create"}
             </button>
           </div>
         </form>

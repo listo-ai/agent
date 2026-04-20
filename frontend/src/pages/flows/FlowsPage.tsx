@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "@xyflow/react/dist/style.css";
 import { AGENT_BASE_URL } from "@/lib/agent";
+import { NodeAppearanceDialog } from "@/components/NodeAppearanceDialog";
 import { CenteredMessage, formatError } from "./flow-page-shared";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { FlowPropertyPanel } from "./components/FlowPropertyPanel";
@@ -22,9 +23,10 @@ export function FlowsPage() {
 
   // History panel: which node path's slot history is being viewed.
   const [historyPath, setHistoryPath] = useState<string | null>(null);
+  // Tags & appearance dialog: path of the right-clicked node.
+  const [appearancePath, setAppearancePath] = useState<string | null>(null);
 
   const {
-    agent,
     nodesQuery,
     linksQuery,
     kindsQuery,
@@ -56,7 +58,6 @@ export function FlowsPage() {
     setAddChildPath,
     createNode,
     persistNodePosition,
-    saveSettings,
     handleOpenNode,
     handleAddChildNode,
     handleConnect,
@@ -64,10 +65,8 @@ export function FlowsPage() {
     deleteEdges,
     autoLayoutNodes,
     handleSelectionChange,
-    invalidateGraphQueries,
     createNodeByKindId,
   } = useFlowPageActions({
-    agent: agent.data,
     navigate,
     openFlowPath,
     kindsById,
@@ -85,11 +84,11 @@ export function FlowsPage() {
     return <CenteredMessage title="Loading flows…" detail={AGENT_BASE_URL} />;
   }
 
-  if (nodesQuery.isError || linksQuery.isError || kindsQuery.isError || agent.isError) {
+  if (nodesQuery.isError || linksQuery.isError || kindsQuery.isError) {
     return (
       <CenteredMessage
         title="Could not reach the agent"
-        detail={`${AGENT_BASE_URL} — ${formatError(nodesQuery.error ?? linksQuery.error ?? kindsQuery.error ?? agent.error)}`}
+        detail={`${AGENT_BASE_URL} — ${formatError(nodesQuery.error ?? linksQuery.error ?? kindsQuery.error)}`}
       />
     );
   }
@@ -141,6 +140,7 @@ export function FlowsPage() {
                 onOpenNode={handleOpenNode}
                 onAddChildNode={handleAddChildNode}
                 onOpenHistory={(nodePath) => setHistoryPath(nodePath)}
+                onTagsAndAppearance={(nodePath) => setAppearancePath(nodePath)}
               />
             ) : (
               <CenteredMessage
@@ -160,23 +160,26 @@ export function FlowsPage() {
               node={selectedNode}
               kind={selectedKind}
               live={selectedLive}
-              onSaveSettings={saveSettings}
             />
           )}
         </div>
       </section>
 
-      {addChildPath && agent.data && (
+      {addChildPath && (
         <AddChildNodeDialog
           parentPath={addChildPath}
-          agent={agent.data}
           onClose={() => setAddChildPath(null)}
-          onCreated={async () => {
-            setAddChildPath(null);
-            await invalidateGraphQueries();
-          }}
+          onCreated={() => setAddChildPath(null)}
         />
       )}
+
+      <NodeAppearanceDialog
+        open={appearancePath !== null}
+        onClose={() => setAppearancePath(null)}
+        nodeLabel={visibleNodes.find((n) => n.path === appearancePath)?.path.split("/").pop() ?? ""}
+        nodePath={appearancePath ?? undefined}
+        live={appearancePath ? (liveByPath[appearancePath]?.slots ?? {}) : {}}
+      />
     </div>
   );
 }

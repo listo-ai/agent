@@ -113,6 +113,40 @@ fn with_synthesised_slots(mut manifest: KindManifest) -> KindManifest {
         );
     }
 
+    ensure_slot(
+        &mut manifest,
+        SlotSchema::new("config.tags", SlotRole::Config)
+            .writable()
+            .with_schema(json!({
+                "type": ["object", "null"],
+                "properties": {
+                    "labels": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "kv": {
+                        "type": "object",
+                        "additionalProperties": { "type": "string" }
+                    }
+                },
+                "additionalProperties": false
+            })),
+    );
+
+    ensure_slot(
+        &mut manifest,
+        SlotSchema::new("config.appearance", SlotRole::Config)
+            .writable()
+            .with_schema(json!({
+                "type": ["object", "null"],
+                "properties": {
+                    "icon":  { "type": "string" },
+                    "color": { "type": "string" }
+                },
+                "additionalProperties": false
+            })),
+    );
+
     manifest
 }
 
@@ -154,5 +188,7 @@ mod tests {
 
         assert!(stored.slots.iter().any(|slot| slot.name == "position"));
         assert!(stored.slots.iter().any(|slot| slot.name == "notes"));
+        assert!(stored.slots.iter().any(|slot| slot.name == "config.tags"));
+        assert!(stored.slots.iter().any(|slot| slot.name == "config.appearance"));
     }
 }

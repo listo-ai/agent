@@ -1,12 +1,21 @@
 {
   "mcpServers": {
+    "puppeteer": {
+      "args": [
+        "dlx",
+        "@modelcontextprotocol/server-puppeteer"
+      ],
+      "command": "pnpm",
+      "env": {}
+    },
     "shadcn": {
-      "command": "/home/user/.nvm/versions/node/v22.22.0/bin/npx",
-      "args": ["--yes", "shadcn@latest", "mcp"],
-      "env": {
-        "HOME": "/home/user",
-        "PATH": "/home/user/.nvm/versions/node/v22.22.0/bin:/usr/bin:/bin"
-      }
+      "args": [
+        "dlx",
+        "shadcn@latest",
+        "mcp"
+      ],
+      "command": "pnpm",
+      "env": {}
     }
   }
 }

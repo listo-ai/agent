@@ -109,6 +109,15 @@ dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)
 	rm -rf dev/cloud-plugins/* dev/edge-plugins/*
 	@echo "dev/ reset — next boot will seed fresh graphs."
 
+# ── mcp sync ──────────────────────────────────────────────────────────────────
+.PHONY: mcp-sync
+mcp-sync: ## Sync mcp-compose.yaml to all connected coding agents
+	$(CARGO) run -p mcp-sync -- sync
+
+.PHONY: mcp-test
+mcp-test: ## Test the health of all servers in mcp-compose.yaml
+	$(CARGO) run -p mcp-sync -- test
+
 # ── check / lint ──────────────────────────────────────────────────────────────
 .PHONY: check
 check: ## cargo check (all workspace crates)

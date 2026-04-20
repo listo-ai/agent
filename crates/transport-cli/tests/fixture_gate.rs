@@ -1301,6 +1301,9 @@ fn every_variant_has_a_fixture() {
         "ui-compose",
         "ai-providers",
         "ai-run",
+        "tags-get",
+        "tags-set",
+        "tags-clear",
     ];
     let dir = fixtures_dir();
     for cmd in required {

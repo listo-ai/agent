@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import type { Link, NodeSnapshot } from "@sys/agent-client";
 import { useGraphStoreOptional } from "@/store/graph-hooks";
-import { useAgent } from "@/hooks/useAgent";
 import { isFlowNode } from "@/pages/flows/flow-model";
-import { buildNodeContextItems, NodeContextMenu } from "@/components/node-context-menu";
+import { buildNodeContextItems, buildCopyItems, NodeContextMenu } from "@/components/node-context-menu";
+import { useRemoveNode } from "@/lib/node";
 import { AddChildNodeDialog } from "@/components/AddChildNodeDialog";
 import { cn } from "@/lib/utils";
 import {
@@ -127,7 +127,6 @@ const emptyStore = create(() => ({
 function FlowsTree() {
   const navigate = useNavigate();
   const graphStore = useGraphStoreOptional();
-  const agent = useAgent();
   const active = graphStore ?? emptyStore;
 
   const nodeMap      = useStore(active, (s) => s.nodes);
@@ -137,6 +136,7 @@ function FlowsTree() {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [addChildPath, setAddChildPath] = useState<string | null>(null);
   const closeCtx = () => setCtxMenu(null);
+  const removeNode = useRemoveNode();
 
   function handleContextMenu(e: React.MouseEvent, node: NodeSnapshot, flowPath: string) {
     e.preventDefault();
@@ -181,22 +181,27 @@ function FlowsTree() {
           y={ctxMenu.y}
           nodeLabel={nodeName(ctxMenu.node.path)}
           onClose={closeCtx}
-          items={buildNodeContextItems({
-            onOpen: () => { navigate(`/flows/edit${ctxMenu.flowPath}`); closeCtx(); },
-            onAddChild: () => { setAddChildPath(ctxMenu.node.path); closeCtx(); },
-            onSettings: () => { navigate(`/flows/edit${ctxMenu.flowPath}`); closeCtx(); },
-            onDelete: async () => {
-              closeCtx();
-              if (!agent.data) return;
-              await agent.data.nodes.removeNode(ctxMenu.node.path);
-            },
-          })}
+          items={[
+            ...buildNodeContextItems({
+              onOpen: () => { navigate(`/flows/edit${ctxMenu.node.path}`); closeCtx(); },
+              onAddChild: () => { setAddChildPath(ctxMenu.node.path); closeCtx(); },
+              onHistory: () => { navigate(`/flows/edit${ctxMenu.node.path}`); closeCtx(); },
+              onSettings: () => { navigate(`/flows/edit${ctxMenu.node.path}`); closeCtx(); },
+              onDelete: () => {
+                closeCtx();
+                removeNode.mutate(ctxMenu.node.path);
+              },
+            }),
+            ...buildCopyItems({
+              path: ctxMenu.node.path,
+              kindId: ctxMenu.node.kind,
+            }),
+          ]}
         />
       )}
-      {addChildPath && agent.data && (
+      {addChildPath && (
         <AddChildNodeDialog
           parentPath={addChildPath}
-          agent={agent.data}
           onClose={() => setAddChildPath(null)}
           onCreated={() => setAddChildPath(null)}
         />
