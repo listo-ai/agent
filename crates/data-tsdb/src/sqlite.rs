@@ -27,8 +27,10 @@ impl SqliteTelemetryRepo {
         let conn = Connection::open(path).map_err(|e| TsdbError::Backend(e.to_string()))?;
         // The table is created by data-sqlite migrations; we just need
         // WAL mode enabled to avoid blocking graph writes.
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-            .map_err(|e| TsdbError::Backend(e.to_string()))?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;",
+        )
+        .map_err(|e| TsdbError::Backend(e.to_string()))?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
