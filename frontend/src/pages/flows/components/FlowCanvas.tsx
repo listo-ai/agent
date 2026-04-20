@@ -22,7 +22,7 @@ import {
   type OnSelectionChangeParams,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { buildNodeContextItems, NodeContextMenu } from "@/components/node-context-menu";
+import { buildCopyItems, buildNodeContextItems, NodeContextMenu } from "@/components/node-context-menu";
 import { cn } from "@/lib/utils";
 import {
   formatLiveValue,
@@ -120,7 +120,7 @@ function FlowCanvasInner({
   const nodeTypes = useMemo(() => ({ flowNode: FlowNodeCard }), []);
 
   // ── Context menu ────────────────────────────────────────────────────────
-  type ContextMenu = { nodeId: string; nodePath: string; nodeLabel: string; x: number; y: number } | null;
+  type ContextMenu = { nodeId: string; nodePath: string; nodeKindId: string | undefined; nodeLabel: string; x: number; y: number } | null;
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
 
   const selectNodeById = useCallback((nodeId: string) => {
@@ -134,7 +134,8 @@ function FlowCanvasInner({
       event.preventDefault();
       const label = titleForKind(node.data.kind, node.data.snapshot.path.split("/").pop());
       const nodePath = node.data.snapshot.path;
-      setContextMenu({ nodeId: node.id, nodePath, nodeLabel: label, x: event.clientX, y: event.clientY });
+      const nodeKindId = node.data.snapshot.kind;
+      setContextMenu({ nodeId: node.id, nodePath, nodeKindId, nodeLabel: label, x: event.clientX, y: event.clientY });
     },
     [],
   ); 
@@ -216,19 +217,25 @@ function FlowCanvasInner({
           y={contextMenu.y}
           nodeLabel={contextMenu.nodeLabel}
           onClose={() => setContextMenu(null)}
-          items={buildNodeContextItems({
-            ...(onOpenNode ? { onOpen: () => { onOpenNode(contextMenu.nodePath); setContextMenu(null); } } : {}),
-            ...(onAddChildNode ? { onAddChild: () => { onAddChildNode(contextMenu.nodePath); setContextMenu(null); } } : {}),
-            onSettings: () => {
-              selectNodeById(contextMenu.nodeId);
-              setContextMenu(null);
-            },
-            ...(onOpenHistory ? { onHistory: () => { onOpenHistory(contextMenu.nodePath); setContextMenu(null); } } : {}),
-            onDelete: () => {
-              onDeleteNodes([contextMenu.nodeId]);
-              setContextMenu(null);
-            },
-          })}
+          items={[
+            ...buildNodeContextItems({
+              ...(onOpenNode ? { onOpen: () => { onOpenNode(contextMenu.nodePath); setContextMenu(null); } } : {}),
+              ...(onAddChildNode ? { onAddChild: () => { onAddChildNode(contextMenu.nodePath); setContextMenu(null); } } : {}),
+              onSettings: () => {
+                selectNodeById(contextMenu.nodeId);
+                setContextMenu(null);
+              },
+              ...(onOpenHistory ? { onHistory: () => { onOpenHistory(contextMenu.nodePath); setContextMenu(null); } } : {}),
+              onDelete: () => {
+                onDeleteNodes([contextMenu.nodeId]);
+                setContextMenu(null);
+              },
+            }),
+            ...buildCopyItems({
+              path: contextMenu.nodePath,
+              ...(contextMenu.nodeKindId !== undefined ? { kindId: contextMenu.nodeKindId } : {}),
+            }),
+          ]}
         />
       )}
     </div>

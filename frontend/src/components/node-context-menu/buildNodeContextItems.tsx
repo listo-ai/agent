@@ -1,4 +1,4 @@
-import { Clock, FolderOpen, PlusCircle, Settings, Trash2 } from "lucide-react";
+import { Clipboard, Clock, FolderOpen, Hash, PlusCircle, Settings, Trash2 } from "lucide-react";
 import type { NodeContextMenuItem } from "./types";
 
 export interface BuildNodeContextItemsOptions {
@@ -10,6 +10,60 @@ export interface BuildNodeContextItemsOptions {
   onHistory?: () => void;
   onSettings: () => void;
   onDelete: () => void;
+}
+
+export interface NodeCopyInfo {
+  /** Full path of the node, e.g. "/flows/my-flow/my-node" */
+  path: string;
+  /** Node kind identifier, e.g. "acme.core.timer" */
+  kindId?: string;
+}
+
+/**
+ * Returns clipboard-copy items for the common node identifiers.
+ * The first item gets a separator so these appear as a distinct group.
+ */
+export function buildCopyItems(info: NodeCopyInfo): NodeContextMenuItem[] {
+  const copy = (text: string) => () => navigator.clipboard.writeText(text);
+
+  const segments = info.path.replace(/\/$/, "").split("/");
+  const nodeId = segments[segments.length - 1] ?? info.path;
+  const parentId = segments.length >= 2 ? (segments[segments.length - 2] ?? "/") : "/";
+  const parentPath = segments.slice(0, -1).join("/") || "/";
+
+  const items: NodeContextMenuItem[] = [
+    {
+      label: `Copy node id`,
+      icon: <Hash size={14} />,
+      onClick: copy(nodeId),
+      separator: true,
+    },
+    {
+      label: `Copy parent id`,
+      icon: <Hash size={14} />,
+      onClick: copy(parentId),
+    },
+    {
+      label: `Copy path`,
+      icon: <Clipboard size={14} />,
+      onClick: copy(info.path),
+    },
+    {
+      label: `Copy parent path`,
+      icon: <Clipboard size={14} />,
+      onClick: copy(parentPath),
+    },
+  ];
+
+  if (info.kindId) {
+    items.push({
+      label: `Copy kind`,
+      icon: <Clipboard size={14} />,
+      onClick: copy(info.kindId),
+    });
+  }
+
+  return items;
 }
 
 /** Convenience factory for the standard node context-menu items. */

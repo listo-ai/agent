@@ -574,6 +574,10 @@ pub struct UiSubscriptionPlan {
 pub struct UiComponentTree {
     pub ir_version: u32,
     pub root: UiComponent,
+    /// Author-declared constants; referenced from bindings via
+    /// `{{$vars.<key>}}`.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub vars: std::collections::HashMap<String, JsonValue>,
 }
 
 /// A single component in the IR tree. Discriminated by `"type"`.

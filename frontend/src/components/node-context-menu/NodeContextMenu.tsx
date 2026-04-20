@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import type { NodeContextMenuProps } from "./types";
@@ -55,24 +55,28 @@ export function NodeContextMenu({
       {/* Items */}
       <div className="p-1">
         {items.map((item, i) => (
-          <button
-            key={i}
-            type="button"
-            disabled={item.disabled}
-            onClick={() => { item.onClick(); onClose(); }}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
-              "disabled:pointer-events-none disabled:opacity-40",
-              item.variant === "destructive"
-                ? "text-destructive hover:bg-destructive/10"
-                : "text-foreground hover:bg-accent",
+          <Fragment key={i}>
+            {item.separator && (
+              <div className="my-1 border-t border-border" />
             )}
-          >
-            {item.icon && (
-              <span className="shrink-0 opacity-70">{item.icon}</span>
-            )}
-            {item.label}
-          </button>
+            <button
+              type="button"
+              disabled={item.disabled}
+              onClick={() => { item.onClick(); onClose(); }}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
+                item.variant === "destructive"
+                  ? "text-destructive hover:bg-destructive/10"
+                  : "text-foreground hover:bg-accent",
+              )}
+            >
+              {item.icon && (
+                <span className="shrink-0 opacity-70">{item.icon}</span>
+              )}
+              {item.label}
+            </button>
+          </Fragment>
         ))}
       </div>
     </div>,

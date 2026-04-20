@@ -653,6 +653,72 @@ async fn server_with_ui_binding_error_fixture() -> (
 }
 
 #[tokio::test]
+async fn ui_resolve_substitutes_vars_in_table_query() {
+    // Tree-level `vars` are substituted into `source.query` before
+    // subscription plans are derived. Probes the full $vars roundtrip:
+    // parser → evaluator → query templating → subscription subjects.
+    let page_cell: Arc<std::sync::Mutex<Option<spi::NodeId>>> = Arc::new(Default::default());
+    let set = page_cell.clone();
+    let (addr, _srv) = start_with_graph(move |g| {
+        let root = spi::NodePath::root();
+        let page = g
+            .create_child(&root, KindId::new("ui.page"), "vars_page")
+            .unwrap();
+        let page_path = spi::NodePath::from_str("/vars_page").unwrap();
+        g.write_slot(
+            &page_path,
+            "layout",
+            serde_json::json!({
+                "ir_version": 1,
+                "vars": { "the_kind": "ui.page" },
+                "root": {
+                    "type": "page",
+                    "id": "root",
+                    "children": [{
+                        "type": "table",
+                        "id": "t",
+                        "source": {
+                            "query": "kind=={{$vars.the_kind}}",
+                            "subscribe": true
+                        },
+                        "columns": [{"title":"Path","field":"path"}]
+                    }]
+                }
+            }),
+        )
+        .unwrap();
+        *set.lock().unwrap() = Some(page);
+    })
+    .await;
+    let page = page_cell.lock().unwrap().unwrap();
+    let c = client(addr);
+
+    let req = agent_client::types::UiResolveRequest {
+        page_ref: page.0.to_string(),
+        stack: Vec::new(),
+        page_state: serde_json::json!({}),
+        dry_run: false,
+        auth_subject: None,
+        user_claims: Default::default(),
+        layout: None,
+    };
+    let resp = c.ui().resolve(&req).await.unwrap();
+    match resp {
+        agent_client::types::UiResolveResponse::Ok { subscriptions, .. } => {
+            let t_plan = subscriptions
+                .iter()
+                .find(|p| p.widget_id == "t")
+                .expect("table subscription plan must be emitted");
+            assert!(
+                !t_plan.subjects.is_empty(),
+                "substituted query `kind==ui.page` should match the vars_page node and emit subjects"
+            );
+        }
+        other => panic!("expected Ok, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn ui_resolve_dry_run_binding_errors() {
     let (addr, _srv, page) = server_with_ui_binding_error_fixture().await;
     let c = client(addr);

@@ -363,6 +363,8 @@ export const UiComponentSchema: z.ZodType<UiComponent> = z.lazy(() =>
 export const UiComponentTreeSchema = z.object({
   ir_version: z.number().int().nonnegative(),
   root: UiComponentSchema,
+  /** Author-declared constants; referenced via `{{$vars.<key>}}`. */
+  vars: z.record(z.string(), z.unknown()).default({}),
 });
 export type UiComponentTree = z.infer<typeof UiComponentTreeSchema>;
 

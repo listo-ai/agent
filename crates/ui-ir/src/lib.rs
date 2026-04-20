@@ -31,6 +31,13 @@ pub struct ComponentTree {
     pub ir_version: u32,
     /// The root component (always a `page` variant for resolve output).
     pub root: Component,
+    /// Author-declared constants, referenced from bindings via
+    /// `{{$vars.<key>}}`. Scoped to the whole tree; resolved once per
+    /// resolve call, before any other binding substitution. Values are
+    /// any JSON — strings, numbers, arrays, nested objects. Vars
+    /// cannot reference other vars in v1 (no recursion).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub vars: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl ComponentTree {
@@ -39,6 +46,7 @@ impl ComponentTree {
         Self {
             ir_version: IR_VERSION,
             root,
+            vars: std::collections::HashMap::new(),
         }
     }
 }

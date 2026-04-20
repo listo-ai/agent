@@ -36,6 +36,10 @@ pub enum Source {
     SelfSlot(String),
     UserClaim(String),
     PageField(String),
+    /// `$vars.<key>` — author-declared constants on the ComponentTree.
+    /// Resolved against the tree's `vars` map at resolve time; same
+    /// ref-walk semantics as the other sources.
+    Var(String),
 }
 
 /// Parsed binding: a source plus an optional trailing slot walk.
@@ -50,7 +54,7 @@ pub struct Binding {
 pub enum BindingError {
     #[error("empty binding expression")]
     Empty,
-    #[error("binding must start with `$stack`, `$self`, `$user`, or `$page` — got `{0}`")]
+    #[error("binding must start with `$stack`, `$self`, `$user`, `$page`, or `$vars` — got `{0}`")]
     UnknownSource(String),
     #[error("malformed binding: {0}")]
     Malformed(String),
@@ -64,6 +68,8 @@ pub enum BindingError {
     UnknownClaim(String),
     #[error("page state missing field `{0}`")]
     UnknownPageField(String),
+    #[error("`$vars.{0}` not declared in ComponentTree.vars")]
+    UnknownVar(String),
     #[error("cannot walk slot `{slot}` — current value is not an object or nodeRef")]
     WalkThroughNonObject { slot: String },
     #[error("ref walk: node `{0}` not found")]
@@ -103,6 +109,11 @@ impl Binding {
                 let r = rest.ok_or(BindingError::Malformed("$user needs a claim".into()))?;
                 let (field, rest) = split_first_segment(r)?;
                 (Source::UserClaim(field), rest)
+            }
+            "$vars" => {
+                let r = rest.ok_or(BindingError::Malformed("$vars needs a key".into()))?;
+                let (field, rest) = split_first_segment(r)?;
+                (Source::Var(field), rest)
             }
             "$page" => {
                 let r = rest.ok_or(BindingError::Malformed("$page needs a field".into()))?;
@@ -183,6 +194,12 @@ impl Binding {
                 .cloned()
                 .map(|v| (v, None))
                 .ok_or_else(|| BindingError::UnknownPageField(field.clone())),
+            Source::Var(key) => ctx
+                .vars
+                .get(key)
+                .cloned()
+                .map(|v| (v, None))
+                .ok_or_else(|| BindingError::UnknownVar(key.clone())),
         }
     }
 }
@@ -195,6 +212,9 @@ pub struct EvalContext<'a, R: NodeReader + ?Sized> {
     pub self_id: NodeId,
     pub user_claims: &'a HashMap<String, JsonValue>,
     pub page_state: &'a JsonValue,
+    /// ComponentTree-scoped author-declared constants. Empty when
+    /// the tree has no `vars` section.
+    pub vars: &'a HashMap<String, JsonValue>,
     /// Optional recorder for `(node_id, slot_name)` slot reads — feeds
     /// the subscription-plan emitter in `dashboard-transport::resolve`.
     /// Leave `None` when subscriptions aren't needed (e.g. dry-run).
@@ -343,12 +363,18 @@ mod tests {
         user: &'a HashMap<String, JsonValue>,
         page: &'a JsonValue,
     ) -> EvalContext<'a, R> {
+        // Test helper: every call uses empty vars. Leaks a fresh
+        // static on each invocation rather than threading vars through
+        // every existing test.
+        let vars: &'static HashMap<String, JsonValue> =
+            Box::leak(Box::new(HashMap::new()));
         EvalContext {
             reader,
             stack,
             self_id,
             user_claims: user,
             page_state: page,
+            vars,
             access_log: None,
         }
     }
@@ -560,6 +586,7 @@ mod tests {
         let empty: HashMap<String, JsonValue> = HashMap::new();
         let page = json!({});
 
+        let empty_vars: HashMap<String, JsonValue> = HashMap::new();
         let log = RefCell::new(Vec::new());
         let ctx = EvalContext {
             reader: &reader,
@@ -567,6 +594,7 @@ mod tests {
             self_id: NodeId::new(),
             user_claims: &empty,
             page_state: &page,
+            vars: &empty_vars,
             access_log: Some(&log),
         };
         let _ = Binding::parse("$stack.t.owner.name")

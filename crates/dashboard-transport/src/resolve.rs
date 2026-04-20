@@ -182,6 +182,26 @@ pub async fn handler(
     }))
 }
 
+/// Pull the `vars` map off the layout JSON. Missing / non-object →
+/// empty map. Kept outside the ComponentTree parse path because
+/// query-templating runs before we know the tree is structurally
+/// valid; a partial or still-invalid tree can still have a vars
+/// block we want to honour.
+fn extract_tree_vars(
+    layout: &JsonValue,
+) -> std::collections::HashMap<String, JsonValue> {
+    layout
+        .as_object()
+        .and_then(|m| m.get("vars"))
+        .and_then(|v| v.as_object())
+        .map(|obj| {
+            obj.iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn substitute_query_bindings(
     layout: &mut JsonValue,
     page: &NodeSnapshot,
@@ -190,12 +210,14 @@ fn substitute_query_bindings(
 ) {
     use dashboard_runtime::{Binding, ContextStack, EvalContext};
     let stack = ContextStack::build(reader, &req.stack, 128).unwrap_or_default();
+    let vars = extract_tree_vars(layout);
     let ctx = EvalContext {
         reader,
         stack: &stack,
         self_id: page.id,
         user_claims: &req.user_claims,
         page_state: &req.page_state,
+        vars: &vars,
         access_log: None,
     };
     walk_table_queries(layout, &|q| {
@@ -267,6 +289,11 @@ fn collect_binding_issues(
         .and_then(|p| p.as_object())
         .map(|m| m.keys().cloned().collect());
 
+    // ComponentTree-scoped vars — pulled from the layout itself so
+    // $vars bindings resolve against the candidate tree, not the
+    // persisted one.
+    let tree_vars = extract_tree_vars(layout);
+
     crate::binding_walk::walk_string_leaves(layout, "root", &mut |loc, s| {
         crate::binding_walk::for_each_binding_expr(
             s,
@@ -298,6 +325,7 @@ fn collect_binding_issues(
                     self_id: page.id,
                     user_claims: &req.user_claims,
                     page_state: &req.page_state,
+                    vars: &tree_vars,
                     access_log: None,
                 };
                 if let Err(err) = parsed.evaluate(&ctx) {

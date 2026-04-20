@@ -4,6 +4,8 @@ export interface NodeContextMenuItem {
   onClick: () => void;
   variant?: "default" | "destructive";
   disabled?: boolean;
+  /** Render a thin divider line before this item. */
+  separator?: boolean;
 }
 
 export interface NodeContextMenuProps {
