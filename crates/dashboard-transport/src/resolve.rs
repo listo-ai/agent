@@ -44,10 +44,11 @@ pub struct ResolveRequest {
     /// User claims available as `$user.*` in bindings.
     #[serde(default)]
     pub user_claims: std::collections::HashMap<String, JsonValue>,
-    /// Candidate layout to validate in place of the node's persisted
-    /// `layout` slot. Only honoured when `dry_run` is true — the
-    /// live-resolve path always reads from the graph so subscription
-    /// plans keep their cache-key semantics.
+    /// Candidate layout to resolve in place of the node's persisted
+    /// `layout` slot. Honoured on both `dry_run` (for validation) and
+    /// live resolve (for the builder's live preview, which needs the
+    /// subscription plan derived from the in-flight buffer rather
+    /// than the last-saved slot).
     #[serde(default)]
     pub layout: Option<JsonValue>,
 }
@@ -118,16 +119,12 @@ pub async fn handler(
         .ok_or(TransportError::PageNotFound(req.page_ref))?;
     require_kind(&page, PAGE_KIND)?;
 
-    // Dry-run may pass an inline `layout` to validate the in-flight
-    // editor buffer before save. Live resolve ignores the override so
-    // subscription plans always reflect persisted state.
+    // Layout override (inline candidate) takes precedence over the
+    // persisted slot for both dry-run and live resolve. The builder
+    // uses this on every keystroke so its preview + subscription plan
+    // reflect the in-flight buffer instead of the last-saved tree.
     let persisted = page.slots.get("layout").cloned().filter(|v| !v.is_null());
-    let layout = if req.dry_run {
-        req.layout.clone().or(persisted)
-    } else {
-        persisted
-    };
-    let layout = layout.ok_or_else(|| {
+    let layout = req.layout.clone().or(persisted).ok_or_else(|| {
         TransportError::MalformedPage(page.id, "page has no `layout` slot".into())
     })?;
 

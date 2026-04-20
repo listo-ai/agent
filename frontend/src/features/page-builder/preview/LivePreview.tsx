@@ -1,61 +1,95 @@
-// Live preview pane — renders the draft through the same SDUI stack
-// the runtime uses. Read-only against the store: never writes, never
-// fetches. Persistence and validation live elsewhere.
+// Live preview pane.
 //
-// PR 1 does a local parse of the draft's `layoutText` and renders it
-// through `SduiProvider`. PR 2 swaps the trigger from "parse locally"
-// to "use the dry-run + resolve result" so the preview reflects what
-// the server would actually produce.
+// Unlike `/ui/:id` (which resolves the persisted slot), the builder's
+// preview resolves the in-flight editor buffer — we POST the parsed
+// draft as an inline `layout` override to `/ui/resolve`. The response
+// includes the same render tree *and* the subscription plan derived
+// from the candidate buffer, so live ticks invalidate exactly the
+// widgets that would tick in production.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { agentPromise } from "@/lib/agent";
 import { useBuilderStore } from "../store/builder-store.js";
+import { validateLayout } from "../model/validate-layout.js";
 import { SduiProvider, type CustomRegistry } from "@/sdui/context";
 import { Renderer } from "@/sdui/Renderer";
-import type { UiComponent, UiActionResponse } from "@sys/agent-client";
+import { useSubscriptions } from "@/sdui/useSubscriptions";
+import type { UiActionResponse, UiResolveResponse } from "@sys/agent-client";
 
 const emptyRegistry: CustomRegistry = new Map();
-
-interface ParsedLayout {
-  kind: "ok";
-  root: UiComponent;
-}
-
-interface ParsedError {
-  kind: "error";
-  message: string;
-}
-
-type ParseResult = ParsedLayout | ParsedError;
-
-function parseLayout(text: string): ParseResult {
-  if (!text.trim()) return { kind: "error", message: "Empty layout" };
-  try {
-    const v = JSON.parse(text) as unknown;
-    if (
-      typeof v === "object" &&
-      v !== null &&
-      "root" in v &&
-      typeof (v as { root: unknown }).root === "object"
-    ) {
-      return { kind: "ok", root: (v as { root: UiComponent }).root };
-    }
-    return { kind: "error", message: "Missing `root` component" };
-  } catch (e) {
-    return { kind: "error", message: e instanceof Error ? e.message : String(e) };
-  }
-}
+const DEBOUNCE_MS = 250;
 
 export function LivePreview() {
   const draft = useBuilderStore((s) => s.draft);
-  const parsed = useMemo<ParseResult | null>(
-    () => (draft ? parseLayout(draft.layoutText) : null),
-    [draft],
+  const [debouncedText, setDebouncedText] = useState<string | undefined>(
+    draft?.layoutText,
+  );
+  const queryClient = useQueryClient();
+
+  // Debounce editor buffer → what we actually send to the server.
+  useEffect(() => {
+    if (draft?.layoutText === undefined) return;
+    const t = window.setTimeout(() => setDebouncedText(draft.layoutText), DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [draft?.layoutText]);
+
+  const parsed = useMemo(
+    () => (debouncedText !== undefined ? validateLayout(debouncedText) : null),
+    [debouncedText],
   );
 
-  // PR 1: preview does not dispatch actions (the builder's preview is
-  // a render-only surface until Stage 3). Provide a no-op so the
-  // context contract holds.
-  const noopDispatch = async (): Promise<UiActionResponse> => ({ type: "none" });
+  const [pageState, setPageState] = useState<Record<string, unknown>>({});
+  const mergePageState = useMemo(
+    () => (patch: Record<string, unknown>) =>
+      setPageState((prev) => ({ ...prev, ...patch })),
+    [],
+  );
+
+  const queryKey = [
+    "page-builder-resolve",
+    draft?.nodeId ?? "",
+    debouncedText ?? "",
+    pageState,
+  ] as const;
+
+  const { data } = useQuery<UiResolveResponse | null>({
+    queryKey,
+    enabled: !!draft?.nodeId && parsed?.ok === true,
+    staleTime: 0,
+    queryFn: async () => {
+      if (!draft || parsed?.ok !== true) return null;
+      const client = await agentPromise;
+      return client.ui.resolve({
+        page_ref: draft.nodeId,
+        stack: [],
+        page_state: pageState,
+        dry_run: false,
+        user_claims: {},
+        layout: parsed.value,
+      });
+    },
+  });
+
+  const subscriptions =
+    data && "subscriptions" in data ? data.subscriptions : undefined;
+  useSubscriptions(queryKey, subscriptions);
+
+  const dispatchAction = useMemo(
+    () => async (handler: string, args?: unknown): Promise<UiActionResponse> => {
+      const client = await agentPromise;
+      return client.ui.action({
+        handler,
+        args: args ?? null,
+        context: { stack: [], page_state: pageState },
+      });
+    },
+    [pageState],
+  );
+
+  // Surface a preview-invalidation helper for future manual refresh.
+  const _refresh = () => queryClient.invalidateQueries({ queryKey });
+  void _refresh;
 
   if (!draft) {
     return (
@@ -65,11 +99,34 @@ export function LivePreview() {
     );
   }
 
-  if (parsed?.kind === "error") {
+  if (parsed && !parsed.ok) {
     return (
       <div className="p-6 text-sm">
         <p className="mb-1 font-semibold text-destructive">Preview unavailable</p>
-        <p className="text-muted-foreground">{parsed.message}</p>
+        <p className="text-muted-foreground">{parsed.issues[0]?.message}</p>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+        Resolving…
+      </div>
+    );
+  }
+
+  if ("errors" in data) {
+    return (
+      <div className="p-6 text-sm">
+        <p className="mb-1 font-semibold text-destructive">Preview failed</p>
+        <ul className="space-y-1 text-xs">
+          {data.errors.map((e, i) => (
+            <li key={i}>
+              <code className="text-muted-foreground">{e.location}</code>: {e.message}
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }
@@ -77,13 +134,13 @@ export function LivePreview() {
   return (
     <div className="h-full overflow-auto p-4">
       <SduiProvider
-        dispatchAction={noopDispatch}
+        dispatchAction={dispatchAction}
         customRegistry={emptyRegistry}
-        pageState={{}}
-        setPageState={() => {}}
-        treeQueryKey={["page-builder-preview", draft.nodeId] as const}
+        pageState={pageState}
+        setPageState={mergePageState}
+        treeQueryKey={queryKey}
       >
-        {parsed && <Renderer node={parsed.root} />}
+        <Renderer node={data.render.root} />
       </SduiProvider>
     </div>
   );
