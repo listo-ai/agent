@@ -289,8 +289,4 @@ fn render_table<T>(headers: &[&str], rows: &[T], row_to_cells: impl Fn(&T) -> Ve
     }
 }
 
-/// Strip dashes from a UUID string for compact display and easy copy-paste.
-/// `"a18c25a1-8a27-480e-bb5d-bf213efda73e"` → `"a18c25a18a27480ebb5dbf213efda73e"`
-pub fn compact_id(id: &str) -> String {
-    id.replace('-', "")
-}
+

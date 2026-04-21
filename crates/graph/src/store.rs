@@ -228,43 +228,15 @@ impl GraphStore {
             .ok_or_else(|| GraphError::NotFound(parent.clone()))?;
         let parent_manifest = self.require_kind(&parent_rec.kind)?;
 
-        // Placement check: parent may contain this kind.
-        // Nodes with `isAnywhere` bypass the parent's `may_contain` whitelist —
-        // they are placement-agnostic by declaration and must not be gated by
-        // container manifests that predate them.
-        let child_is_anywhere = manifest.facets.contains(spi::Facet::IsAnywhere);
-        if !child_is_anywhere && !parent_manifest.containment.may_contain.is_empty() {
-            let ok = parent_manifest
-                .containment
-                .may_contain
-                .iter()
-                .any(|m| match m {
-                    spi::ParentMatcher::Kind(k) => k == &kind,
-                    spi::ParentMatcher::Facet(f) => manifest.facets.contains(*f),
-                });
-            if !ok {
-                return Err(GraphError::PlacementRejected {
-                    kind,
-                    parent: parent.clone(),
-                    parent_kind: parent_rec.kind.clone(),
-                });
-            }
-        }
-
-        // Placement check: this kind may live under that parent.
-        if !manifest.containment.must_live_under.is_empty() {
-            let ok = manifest
-                .containment
-                .must_live_under
-                .iter()
-                .any(|m| m.matches(&parent_rec.kind, &parent_manifest.facets));
-            if !ok {
-                return Err(GraphError::PlacementRejected {
-                    kind,
-                    parent: parent.clone(),
-                    parent_kind: parent_rec.kind.clone(),
-                });
-            }
+        // Two-sided containment check — see `placement::placement_allowed`
+        // for the one-source-of-truth rule (including the `isAnywhere`
+        // carve-out). The REST palette endpoint calls the same function.
+        if !crate::placement::placement_allowed(&parent_rec.kind, &parent_manifest, &manifest) {
+            return Err(GraphError::PlacementRejected {
+                kind,
+                parent: parent.clone(),
+                parent_kind: parent_rec.kind.clone(),
+            });
         }
 
         // Cardinality check.

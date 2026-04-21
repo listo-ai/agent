@@ -1,166 +1,19 @@
-# New Session Prompt — Start Here
+# New Session — moved
 
-You are an AI coding assistant working on this repository. This doc is the entry point for any coding session: it tells you what the project is, the non-negotiables, which docs to read for the task the user gave you, and how to work in the repo.
+The per-session orientation + decision tree that used to live here is now in:
 
-**Read this file first. Then read the docs it points you to for your specific task. Do not skip the routing — the docs are short, focused, and answer questions you'd otherwise guess at.**
+### **→ [HOW-TO-ADD-CODE.md](HOW-TO-ADD-CODE.md)**
 
----
+That doc covers:
 
-## What this project is
+- Which **language skills** to load from `/home/user/code/workspace/SKILLS/` before writing code
+- The **non-negotiables** (Rules A–H) — everything-is-a-node, graph-is-the-world, modular-libraries-are-load-bearing
+- **Where does my code go?** — the decision tree that routes a task to the right repo (`contracts` / `agent` / `agent-sdk` / `agent-client-*` / `ui-kit` / `ui-core` / `block-ui-sdk` / `studio` / `blocks` / `listod` / `agent-cli`)
+- **What each library is for** + the MUST / MUST NOT rules that keep the "anyone can build a new UI" promise honest
+- **Workflow** — driving everything via [`mani`](../../../repos-cli/EXAMPLE.md) across the multi-repo workspace
+- **Task-specific reading** — which design docs to open for a given change
+- **Worked examples** — three real tasks walked through the decision tree end-to-end
 
-A generic, extensible, flow-based integration platform. Rust, one codebase, runs on 512 MB ARM edge gateways and in the cloud. Users author flows in a desktop/browser Studio; the Control Plane ships flows to agents; agents execute them against pluggable blocks.
+The big-picture map of the workspace (repos, deployment profiles, build targets, key libraries) lives in [OVERVIEW.md](OVERVIEW.md).
 
-The thesis is a **node/slot/flow** model plus a first-class **block system**. Anything a flow can touch — a protocol driver, an API, a database, a user account, the agent's own health metrics — is a node in a unified graph. Nothing is special-cased.
-
-Common applications include BAS, industrial IoT, home automation, service orchestration, ETL, internal-tools glue. None of them is the reason the platform exists; the platform exists to be a good generic substrate for all of them.
-
----
-
-## READ THIS. Two coupled rules that govern everything.
-
-These are not guidelines. They are the platform's spine. Get either one wrong and the whole system becomes a parallel-universe mess of special cases.
-
-### Rule A — Everything. Is. A. Node.
-
-**No exceptions. No private entities. No parallel state.**
-
-Everything users touch: devices, points, users, roles, flows, alarms, schedules, dashboards, widgets, blocks, settings, history — **nodes**.
-
-Everything the platform itself runs on: the agent, the engine, health metrics, block supervisor, safe-state policies, every long-running subsystem's state — **nodes**.
-
-If you're about to write a subsystem that owns `Mutex<SomeState>` in a private struct nobody outside the subsystem can observe, **stop**. You are building a parallel system. Promote the state to a kind with status-role slots and make the subsystem an execution-only concern over graph state.
-
-See [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md), especially § "The agent itself is a node too — no parallel state".
-
-### Rule B — The graph is the world. The engine + flows consume it. There is no back channel.
-
-The graph is the single source of truth for what exists in the system and what it's doing right now. **The engine does not hold a parallel model.** Flows do not hold a parallel model. The Studio does not hold a parallel model.
-
-Everything that wants to observe or act on any part of the system — engine, flows, Studio, MCP, CLI, audit, RBAC, dashboard widget, Slack notifier, scheduled backup, another block — reads and writes the graph through exactly one API: slot read, slot write, slot subscribe, lifecycle transition, link add/remove. **Same API for the engine as for a third-party flow.**
-
-Practical consequences:
-
-- A flow can subscribe to `graph.<tenant>.agent.engine.slot.state.changed` to react to engine lifecycle, because engine state *is* a slot.
-- The Studio renders engine status with the same generic property panel it uses for a Modbus device, because both are nodes with slots.
-- RBAC on engine state works the same as RBAC on a user's email address, because both are slots with roles.
-- When Stage 7 ships NATS, every subsystem becomes remotely observable automatically, because the graph already emits events for every change.
-
-**When you add a new subsystem, your first question is: "What nodes does it contribute? What slots does it read? What slots does it write?"** — not "what new API do I need?" If you're reaching for a new API, you're probably violating Rule A or Rule B.
-
----
-
-## Non-negotiables
-
-These are enforced in review. A PR that violates them gets sent back. No exceptions.
-
-1. **Rule A + Rule B above.** Everything is a node (including the agent); the graph is the world; engine and flows consume it through the same API, with no back channel. If you haven't just read the "READ THIS" section above, go back and read it — violating these two rules is the #1 way a PR gets sent back.
-2. **Layer separation: `transport → domain → data`.** Never the other direction. No SQL in handlers. No HTTP in domain. No business logic in transport. See [CODE-LAYOUT.md](CODE-LAYOUT.md).
-3. **Small files, small functions.** 400 lines per file max, 50 lines per function max, ~10 public items per module. If you're about to write a 1200-line "complete solution," stop and split it first.
-4. **Traits first, implementations second.** Write the interface before the impl. Domain depends on traits, not on concrete impls.
-5. **Node-RED-compatible `Msg` envelope** is the message shape on wires. Immutable on the wire; mutable at the QuickJS Function-node JS boundary. See [EVERYTHING-AS-NODE.md § "Wires, ports, and messages"](EVERYTHING-AS-NODE.md) and [NODE-AUTHORING.md](NODE-AUTHORING.md).
-6. **Every contract surface is versioned independently** via capability manifests — blocks declare required capabilities, host advertises provided ones, install is a set-match. See [VERSIONING.md](VERSIONING.md).
-7. **Logging goes through the shared primitive, never through `println!` / `eprintln!` / `console.log`.** One format, one field contract, one redactor, one outbox-backed ship path — across core, Wasm, and process blocks alike. See [LOGGING.md](LOGGING.md).
-
-## Doc index
-
-| Doc | What it covers |
-|---|---|
-| [README.md](../../README.md) | Full stack overview — engine, blocks, DB, messaging, auth, Studio, CLI, MCP. Read for the big picture. |
-| [OVERVIEW.md](OVERVIEW.md) | Deployment profiles, build targets, capability matrix per deployment, memory budgets. |
-| [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md) | **The core model.** Graph, nodes, slots, kinds, facets, containment, cascading delete, Msg envelope, slot API, settings schemas (single + multi-variant). |
-| [NODE-AUTHORING.md](NODE-AUTHORING.md) | How to write a node kind — manifest anatomy, settings vs msg overrides, worked HTTP-client example. |
-| [RUNTIME.md](RUNTIME.md) | Engine lifecycle, safe-state on shutdown, simulation vs commissioning modes, crossflow concepts, outbox backpressure. |
-| [UI.md](UI.md) | Studio architecture, Tauri + Rsbuild + Shadcn, Module Federation + iframe isolation for untrusted blocks, build targets. |
-| [AUTH.md](AUTH.md) | Zitadel integration, JWT verification, JWKS caching (24h ceiling), offline operation, revocation via NATS deny-list. |
-| [MCP.md](MCP.md) | MCP server — tools, resources, prompts, stdio auth, prompt-injection mitigations, three-layer off switch. |
-| [QUERY-LANG.md](QUERY-LANG.md) | Generic RSQL → AST → SeaQuery framework used by REST, CLI, SDKs, MCP, NATS filters. |
-| [DOCKER.md](DOCKER.md) | Multi-arch distroless images, docker-compose overlays per profile, edge vs cloud NATS topology, signing. |
-| [CODE-LAYOUT.md](CODE-LAYOUT.md) | Crate structure (`/crates/*`), naming rules, layer discipline, anti-patterns, AI-specific guidance. |
-| [VERSIONING.md](VERSIONING.md) | Per-surface semver rules, capability manifest, block install-time match, kind migrations, deprecation windows. |
-| [LOGGING.md](LOGGING.md) | One log format everywhere. Canonical fields, levels, correlation ids, per-deployment sinks, block integration across all three flavors, redaction, outbox-backed shipping, log-vs-audit boundary. |
-| [TESTS.md](TESTS.md) | Test-driven development here — test categories, trait-suite pattern, contract fixtures, multi-backend parity, property + snapshot tests, determinism rules, what NOT to test, CI gates. |
-| [../testing/TESTING.md](../testing/TESTING.md) | **Local dev environment for testing.** Canonical CLI commands to build and start the full cloud+edge stack or a solo edge agent. Read this before running any local integration test. FOR LOCAL TESTING ONLY. |
-| [../sessions/STEPS.md](../sessions/STEPS.md) | **Current coding stages** with `[DONE]` / `[DEFERRED]` markers. Temporary — will be removed when implementation catches up. Always check it to see what's already wired up before duplicating work. |
-
-## Task router — read these docs before starting
-
-Find your task. Read the listed docs **in the order given** before touching code.
-
-| Task | Read, in order |
-|---|---|
-| **Run local tests / start the dev environment** | NEW-SESSION (this doc) → [TESTING.md](../testing/TESTING.md) — contains the exact `make` commands; do not guess the startup sequence |
-| **Build a block / block** (protocol driver, API integration, compute block) | NEW-SESSION (this doc) → EVERYTHING-AS-NODE → NODE-AUTHORING → VERSIONING → UI (if it contributes UI) → CODE-LAYOUT (where block crates live) → README (block sections) |
-| **Add a new built-in node kind** | NEW-SESSION → EVERYTHING-AS-NODE → NODE-AUTHORING → CODE-LAYOUT (`domain-*` crates) → STEPS (current stage) |
-| **Work on the frontend / Studio** | NEW-SESSION → UI → EVERYTHING-AS-NODE (data model the UI renders) → NODE-AUTHORING (property-panel schemas + multi-variant forms) |
-| **Work on the graph service (`/crates/graph`)** | NEW-SESSION → EVERYTHING-AS-NODE (entire doc — especially containment + cascading delete) → CODE-LAYOUT → RUNTIME (event model, subject taxonomy) → STEPS |
-| **Work on the flow engine / runtime (`/crates/engine`)** | NEW-SESSION → RUNTIME → EVERYTHING-AS-NODE (wires, ports, messages; trigger policies) → NODE-AUTHORING (msg overrides) → CODE-LAYOUT |
-| **Add or modify a REST API endpoint** | NEW-SESSION → QUERY-LANG → EVERYTHING-AS-NODE (slot API) → AUTH (AuthContext, RBAC) → CODE-LAYOUT (`transport-rest`) |
-| **Work on auth / Zitadel / JWT** | NEW-SESSION → AUTH → CODE-LAYOUT (`/crates/auth`) |
-| **Work on messaging / NATS / subjects** | NEW-SESSION → README (messaging section) → EVERYTHING-AS-NODE (event model, subject taxonomy) → CODE-LAYOUT (`/crates/messaging`, `transport-nats`) → RUNTIME (outbox) |
-| **Database / persistence** | NEW-SESSION → CODE-LAYOUT (`data-*` crates, dual-backend rules) → EVERYTHING-AS-NODE (persistence schema) → README (database section) |
-| **Time-series / telemetry** | NEW-SESSION → README (messaging + telemetry) → CODE-LAYOUT (`data-tsdb`). Remember: `data-tsdb` is a **code seam**, TimescaleDB is the cloud impl, SQLite rolling tables the edge impl. |
-| **MCP server** | NEW-SESSION → MCP → AUTH → EVERYTHING-AS-NODE (slot API — MCP wraps it) |
-| **Docker / deployment / Helm** | NEW-SESSION → DOCKER → OVERVIEW → README (cloud vs edge topology) |
-| **CLI commands (`/crates/transport-cli`)** | NEW-SESSION → README (CLI section) → CODE-LAYOUT → QUERY-LANG (RSQL flags) |
-| **Versioning / capabilities / block compat** | NEW-SESSION → VERSIONING → CODE-LAYOUT (`/crates/spi`) |
-| **Logging / tracing / observability** | NEW-SESSION → LOGGING → CODE-LAYOUT (`/crates/observability`) → VERSIONING (log schema is a contract surface) |
-| **Writing or reviewing tests** | NEW-SESSION → TESTS → CODE-LAYOUT (where tests live) — read TESTS before writing any test, especially trait-suite / contract / snapshot patterns |
-| **Cross-cutting refactor / unsure where to start** | NEW-SESSION → CODE-LAYOUT → EVERYTHING-AS-NODE → STEPS — then **ask the user a clarifying question** before touching code |
-
-If your task isn't in the table: read NEW-SESSION + CODE-LAYOUT + EVERYTHING-AS-NODE, then ask the user which other docs apply.
-
-## How to actually work in this repo
-
-### Before writing any code
-
-1. Confirm you've read the docs the task router pointed at. If you haven't, do that first.
-2. Check [STEPS.md](../sessions/STEPS.md) — is this task already partially done? Is it blocked on a deferred dependency from an earlier stage? Don't duplicate existing work; don't build on top of `[DEFERRED]` dependencies without flagging it.
-3. Locate the right crate in [CODE-LAYOUT.md](CODE-LAYOUT.md). Be specific — if you're tempted to put something in `apps/agent`, you're almost certainly in the wrong place; `apps/agent` is thin composition only.
-4. If what you're about to do needs a new trait, **design the trait before the impl.** Domain crates depend on traits, not on concrete `data-*` or `transport-*` types.
-5. If what you're about to do touches a contract surface (`spi`, public API, manifest schemas, `Msg`, kind IDs), re-read the relevant section of [VERSIONING.md](VERSIONING.md) and make sure the change is add-only within the major or is correctly deprecating.
-
-### While coding
-
-- **No files over 400 lines. No functions over 50 lines. No `pub mod utils`.** If you're heading there, split now, not later.
-- **Every crate has its own `Error` enum.** Use `thiserror` in libraries; reserve `anyhow` for the binary crate (`apps/agent`).
-- **No `unwrap()` / `panic!()` in library code** except for explicitly-documented invariant violations.
-- **Write no comments that restate the code.** Only leave a comment for non-obvious *why* — a hidden constraint, a workaround, a subtle invariant. Never reference "the current task" or PR context; that belongs in the commit message.
-- **No `TODO`/`FIXME` without an issue number.**
-- **Tests arrive with the code, never after.** Same PR. Unit tests in `#[cfg(test)] mod tests`; integration tests in `tests/`. A change to domain logic must have a test; a test must fail if the implementation is reverted. See [TESTS.md](TESTS.md) for the full pattern library (trait-suite, contract fixtures, snapshot, property, determinism rules).
-- **Message authoring:** use `spi::Msg` + `Msg::new` / `Msg::child`. Messages are immutable on the wire — you produce a new one, you don't mutate.
-- **Slot role discipline:** `config` (user-authored, persisted, audited), `input` (live data in), `output` (live data out), `status` (engine-computed). Role determines RBAC, audit, and telemetry routing — getting it wrong breaks all three quietly.
-
-### Running the build
-
-```
-cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
-
-All three must pass before handing work back.
-
-### Committing
-
-- Only commit when the user explicitly asks.
-- Never amend a previous commit — create a new one.
-- Never skip hooks (`--no-verify`) unless the user explicitly says so.
-- Never force-push to `main` / `master`.
-- Commit message focuses on **why**, not what. One or two sentences. Don't recap the diff.
-
-### What to do when stuck
-
-Ask the user. Do not guess at design questions that affect the node model, layer boundaries, or contract surfaces — getting those wrong compounds. One sentence of "which of these two approaches did you want?" beats an hour refactoring the wrong direction.
-
-## STEPS.md — where we are in implementation
-
-For now, [STEPS.md](../sessions/STEPS.md) is the working plan: numbered stages, each producing something that runs, each proving a specific architectural risk. Each item is marked `[DONE]`, `[DEFERRED]`, or left unmarked (not started).
-
-- **Always check STEPS first** when asked to implement something — it tells you what's already wired up and what's blocked.
-- **Don't skip ahead of `[DEFERRED]` items** that a later stage depends on without flagging the situation to the user. The stage ordering exists because earlier stages are load-bearing for later ones.
-
-STEPS will be removed once implementation is complete. This doc (NEW-SESSION) stays as the permanent orientation for new sessions.
-
-## One-line summary
-
-**Generic extensible flow platform. Everything is a node. Small files, strict layer separation, traits-first. Read the right docs for your task before coding. When in doubt, ask rather than guess.**
+This stub stays so existing cross-references (`NODE-AUTHORING.md`, `NODE-RED-MODEL.md`, `TESTS.md`, `TESTING.md`, session docs) keep resolving. New sessions should start at **HOW-TO-ADD-CODE.md** directly.

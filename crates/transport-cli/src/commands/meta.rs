@@ -1086,6 +1086,8 @@ static KINDS_LIST: CommandMeta = CommandMeta {
         "agent kinds list",
         "agent kinds list --facet isContainer",
         "agent kinds list --under sys.core.station",
+        "agent kinds list --filter 'org==com.listo'",
+        "agent kinds list --filter 'facets=contains=isCompute' --sort org,id",
     ],
     related: &["nodes create"],
     input_schema: || {
@@ -1094,7 +1096,9 @@ static KINDS_LIST: CommandMeta = CommandMeta {
             "type": "object",
             "properties": {
                 "facet": { "type": "string" },
-                "under": { "type": "string" }
+                "under": { "type": "string" },
+                "filter": { "type": "string" },
+                "sort": { "type": "string" }
             }
         })
     },

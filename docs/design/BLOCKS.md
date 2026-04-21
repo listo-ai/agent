@@ -48,6 +48,7 @@ contributes:
         module: "./Panel"
         contributes_to: sidebar        # sidebar | property-panel | node:<kind_id>
   kinds: []                            # YAML files under kinds/ registered via spi::KindManifest
+  builtin: false                       # true ⇒ behaviour is linked into the agent binary (first-party only)
   native_lib: null                     # e.g. native/libhello.so (Stage 3c)
   wasm_modules: []                     # (Stage 3b)
   process_bin: null                    # e.g. bin/hello-driver (Stage 3c)
@@ -175,9 +176,60 @@ One block directory can mix flavours; each flavour uses the transport that fits 
 |---|---|---|---|
 | **UI** (MF remote) | Plain HTTP via `ServeDir` at `/blocks/:id/*` + REST for API calls | Browsers can't speak gRPC natively; MF needs static hosting | First landing |
 | **Kind YAML only** (manifest, no code) | None — nothing runs | Manifest is registered with `graph::KindRegistry`; behaviour is in-tree | First landing |
-| **Native Rust** | Direct trait calls (in-process) | Same binary as the agent; adding gRPC here is ceremony with zero benefit | Stage 3a (SDK exists) |
+| **Built-in Rust** (compiled into the agent) | Direct trait calls (in-process); no transport | First-party block crate linked into the agent binary at build time. Same pattern as [`domain-function`](../../crates/domain-function/) — the block exports `register_kinds()` + `behavior()`, the composition root wires them into `KindRegistry` + `BehaviorRegistry`. No UDS, no gRPC, no supervisor, no process spawn. | First landing |
+| **Native Rust** (dynamic `.so`/`.dll`/`.dylib`) | Direct trait calls (in-process) | Same binary ABI as the agent; adding gRPC here is ceremony with zero benefit | Stage 3a (SDK exists) |
 | **Wasm** | Wasmtime host-function ABI (in-process) | Wasmtime's own call convention, fuel + memory caps enforced at the ABI | Stage 3b (deferred) |
 | **Process block** | **gRPC over Unix-domain socket** — [`crates/spi/proto/block.proto`](../../crates/spi/proto/block.proto) | Out-of-process isolation (cgroup limits, crash containment), polyglot block authors (Rust / Go / Python / TS), streaming for `Discover`/`Subscribe`, typed contract versioned per [VERSIONING.md § proto](VERSIONING.md) | Stage 3c (deferred) |
+
+### Built-in vs process: when to pick which
+
+Built-in blocks trade isolation for simplicity and latency. Both flavours implement the same `NodeKind` + `NodeBehavior` traits — the engine's dispatcher doesn't care which one it's calling. The choice is packaging, not contract.
+
+| Concern | Built-in | Process |
+|---|---|---|
+| Deployment | One binary | Agent + block binaries |
+| Crash isolation | Block crash takes down the agent | Supervisor restarts the block; agent keeps running |
+| Capability sandbox | Inherits full agent perms | Per-block capability grant (Stage 10) |
+| Latency on `on_message` | Direct call | UDS gRPC round-trip |
+| Hot-reload | Requires agent restart | Supervisor can re-spawn |
+| Authoring language | Rust only | Rust / Go / Python / TS |
+| Agent binary size | Grows with each built-in | Unchanged |
+
+**Rule of thumb:** built-in for first-party, trusted, high-frequency kinds (e.g. `domain-function`, `mqtt-client`, `bacnet`, `modbus`). Process for third-party, untrusted, polyglot, or crash-prone kinds where isolation matters.
+
+### Built-in block shape
+
+A built-in block is a workspace crate under `agent/crates/blocks-<name>/` that exports two functions — no `#[tokio::main]`, no `run_process_plugin`, no `BlockIdentity`:
+
+```rust
+pub fn register_kinds(kinds: &KindRegistry);
+pub fn behavior_for(kind_id: &KindId) -> Option<Arc<dyn DynBehavior>>;
+// or one fn per kind if the block exports multiple:
+//   pub fn client_behavior()    -> Arc<dyn DynBehavior>;
+//   pub fn publish_behavior()   -> Arc<dyn DynBehavior>;
+//   pub fn subscribe_behavior() -> Arc<dyn DynBehavior>;
+```
+
+Composition root ([`apps/agent/src/main.rs`](../../crates/apps/agent/src/main.rs)) wires it once, alongside `domain_function::register_kinds`:
+
+```rust
+blocks_mqtt::register_kinds(&kinds);
+engine.behaviors().register(
+    <blocks_mqtt::Client as NodeKind>::kind_id(),
+    blocks_mqtt::client_behavior(),
+)?;
+// repeat for each kind the block contributes
+```
+
+The block still ships a `block.yaml` and `kinds/*.yaml` in the blocks dir so Studio sees the same manifest shape as every other block flavour; `BlockRegistry::scan` recognises the block as built-in (see below) and skips process-spawn. Kind manifests are the contract with Studio; the Rust crate is the contract with the engine.
+
+**Manifest marker.** `contributes.builtin: true` tells the loader the block's behaviour is linked into the agent binary — no `process_bin`, no `native_lib`, no `wasm_modules` required (and setting any of them alongside `builtin: true` is a manifest error). At scan time, the loader verifies every kind the manifest declares has a behaviour registered in `BehaviorRegistry`; a declared-but-unregistered kind → `Failed` with a clear reason (catches "forgot to wire it in the composition root" at boot, not at first message).
+
+**Optional Cargo feature.** Gate each built-in crate with a feature (`features = ["builtin-mqtt"]`) so deployments that don't need the kind don't pay for its dependencies. First-party defaults on; strip-down builds turn it off.
+
+**Shared runtime.** Built-in blocks reuse the agent's tokio multi-thread runtime. Background tasks (MQTT event loop, BACnet poll loop, etc.) use `tokio::spawn` against the same runtime — no second `#[tokio::main]`, no runtime nesting.
+
+**No slot-event bus needed.** Process blocks emit via the slot-event bus because `GraphAccess` across the UDS boundary is currently a stub. Built-in blocks call `ctx.write_slot()` / `ctx.emit()` directly through the `NodeCtx` graph handle — one less indirection.
 
 ### Process-block wire in detail
 
@@ -260,7 +312,7 @@ Once [Stage 7](../sessions/STEPS.md) lands NATS end-to-end, streaming RPCs (`Dis
 
 **Not in the first landing, to stay honest:**
 
-- ❌ Running Rust code from the block dir. That's Stage 3c (process) or compile-time link (native). Until then, "block" means **UI bundles + kind manifests only**. A block can declare kinds whose behaviour is implemented by an in-tree crate (like `domain-compute`); it cannot ship its own behaviour binary yet.
+- ❌ Running Rust code *from the block dir*. That's Stage 3c (process) or Stage 3a (dynamic native). **Built-in blocks are different** — the Rust code lives in the agent's workspace and is linked at build time, so it's always available. Until Stage 3a/3c, "block" means **UI bundles + kind manifests + optional built-in behaviour linked at build time**. A block can declare kinds whose behaviour is implemented by an in-tree crate (built-in or `domain-*`); it cannot ship its own behaviour binary loaded from the blocks dir yet.
 - ❌ Hot-reload of running flows when a block is disabled. Stage 10.
 - ❌ Signature verification — `signature` file is read but not verified today. Stage 10 flips the switch *and* refuses blocks whose signature file fails verification (no "silently accept because verification is off" footgun once the switch is on).
 - ❌ Block-contributed *capabilities* (blocks declaring new `spi.*` surfaces). Not a v1 concept; capabilities flow host → blocks, not the reverse.
@@ -293,8 +345,9 @@ Deferred seams — each gets a one-line TODO comment pointing at the stage that 
 6. **`requires ⊆ host_caps` is a hard fail at load time**, from day one. No warn-now-fail-later transition.
 7. **`scan` is two-phase (validate all, then commit).** Partial failures never leave the shared kind registry half-populated.
 8. **UI bundles are the only block-supplied code that runs in the first landing.** Block-contributed node kinds are allowed via YAML; their behaviour must be in-tree until Stage 3b/3c.
-9. **gRPC is the wire for out-of-process blocks only.** UI (HTTP/MF), native (in-process traits), Wasm (Wasmtime ABI), and kind-YAML contributions do not use gRPC. The contract lives in [`spi/proto/block.proto`](../../crates/spi/proto/block.proto); `blocks-sdk` gives block authors a one-liner so they never hand-write the service.
+9. **gRPC is the wire for out-of-process blocks only.** UI (HTTP/MF), built-in (compiled-in), native (dynamic in-process), Wasm (Wasmtime ABI), and kind-YAML contributions do not use gRPC. The contract lives in [`spi/proto/block.proto`](../../crates/spi/proto/block.proto); `blocks-sdk` gives block authors a one-liner so they never hand-write the service.
+10. **Built-in blocks are a first-class packaging flavour**, not a shortcut. Same `block.yaml`, same `NodeKind`/`NodeBehavior` traits, same manifest ownership rules — only difference is `contributes.builtin: true` and the crate is linked into the agent at build time. Reserved for first-party, trusted kinds; third-party blocks must use process (or eventually Wasm) for isolation.
 
 ## One-line summary
 
-**A block is a reverse-DNS-named directory holding one `block.yaml` plus optional UI / kinds / Wasm / native / process artefacts; the host scans the blocks dir on boot, validates required capabilities, registers contributions, and exposes both a REST surface and a `ServeDir` so the frontend loads UI bundles via Module Federation — the same contract works today for UI-only blocks and tomorrow for signed, fleet-delivered, process-isolated blocks.**
+**A block is a reverse-DNS-named directory holding one `block.yaml` plus optional UI / kinds / built-in-linkage / Wasm / native / process artefacts; the host scans the blocks dir on boot, validates required capabilities, registers contributions (including built-in behaviour linked at compile time), and exposes both a REST surface and a `ServeDir` so the frontend loads UI bundles via Module Federation — the same contract works today for UI-only and built-in blocks and tomorrow for signed, fleet-delivered, process-isolated blocks.**

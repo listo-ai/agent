@@ -158,13 +158,13 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
                 &flows,
                 |f| {
                     vec![
-                        output::compact_id(&f.id),
+                        f.id.clone(),
                         f.name.clone(),
                         f.head_seq.to_string(),
                         f.head_revision_id
                             .as_deref()
-                            .map(output::compact_id)
-                            .unwrap_or_default(),
+                            .unwrap_or_default()
+                            .to_string(),
                     ]
                 },
             )?;
@@ -175,7 +175,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
             output::ok_msg(
                 fmt,
                 &flow,
-                &format!("{} ({})", flow.name, output::compact_id(&flow.id)),
+                &format!("{} ({})", flow.name, flow.id.clone()),
             )?;
         }
 
@@ -193,7 +193,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
                 &format!(
                     "created flow {} ({})",
                     flow.name,
-                    output::compact_id(&flow.id)
+                    flow.id.clone()
                 ),
             )?;
         }
@@ -221,7 +221,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
                 &result,
                 &format!(
                     "head is now {}",
-                    output::compact_id(&result.head_revision_id)
+                    result.head_revision_id.clone()
                 ),
             )?;
         }
@@ -240,7 +240,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
                 &result,
                 &format!(
                     "head is now {}",
-                    output::compact_id(&result.head_revision_id)
+                    result.head_revision_id.clone()
                 ),
             )?;
         }
@@ -265,7 +265,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
                 &result,
                 &format!(
                     "head is now {}",
-                    output::compact_id(&result.head_revision_id)
+                    result.head_revision_id.clone()
                 ),
             )?;
         }
@@ -285,7 +285,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
                 &result,
                 &format!(
                     "head is now {}",
-                    output::compact_id(&result.head_revision_id)
+                    result.head_revision_id.clone()
                 ),
             )?;
         }
@@ -299,7 +299,7 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &FlowsCmd) -> Res
                 |r| {
                     vec![
                         r.seq.to_string(),
-                        output::compact_id(&r.id),
+                        r.id.clone(),
                         r.op.clone(),
                         r.author.clone(),
                         r.summary.clone(),
