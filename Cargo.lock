@@ -2388,6 +2388,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 [[package]]
 name = "listo-agent-client"
 version = "0.1.0"
+source = "git+https://github.com/listo-ai/agent-client-rs?branch=main#bd248600d7512061b2af88de9d777a98c39e6c8f"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -2401,6 +2402,7 @@ dependencies = [
 [[package]]
 name = "listo-blocks-sdk"
 version = "0.1.0"
+source = "git+https://github.com/listo-ai/agent-sdk?branch=main#e25ef7880c2dcbb7a70de5ed1fd5e527829cb0cf"
 dependencies = [
  "listo-blocks-sdk-macros",
  "listo-spi",
@@ -2413,6 +2415,7 @@ dependencies = [
 [[package]]
 name = "listo-blocks-sdk-macros"
 version = "0.1.0"
+source = "git+https://github.com/listo-ai/agent-sdk?branch=main#e25ef7880c2dcbb7a70de5ed1fd5e527829cb0cf"
 dependencies = [
  "listo-spi",
  "proc-macro2",
@@ -2425,6 +2428,7 @@ dependencies = [
 [[package]]
 name = "listo-spi"
 version = "0.1.0"
+source = "git+https://github.com/listo-ai/contracts?branch=main#63bfd39faa27dfdb64bedeb696bfa4c0f62b13f8"
 dependencies = [
  "async-trait",
  "futures-core",
@@ -2438,6 +2442,7 @@ dependencies = [
 [[package]]
 name = "listo-ui-ir"
 version = "0.1.0"
+source = "git+https://github.com/listo-ai/contracts?branch=main#63bfd39faa27dfdb64bedeb696bfa4c0f62b13f8"
 dependencies = [
  "schemars 0.8.22",
  "serde",

@@ -49,7 +49,7 @@ publish = false
 [workspace.dependencies]
 # Shared internal crates — referenced via `workspace = true` in member manifests.
 # spi and ui-ir extracted to listo-ai/contracts (M1 migration)
-spi = { path = "../../listo-repos/contracts/spi", package = "listo-spi" }
+spi = { git = "https://github.com/listo-ai/contracts", branch = "main", package = "listo-spi" }
 query = { path = "crates/query" }
 auth = { path = "crates/auth" }
 messaging = { path = "crates/messaging" }
@@ -75,7 +75,7 @@ domain-history = { path = "crates/domain-history" }
 dashboard-nodes = { path = "crates/dashboard-nodes" }
 dashboard-runtime = { path = "crates/dashboard-runtime" }
 dashboard-transport = { path = "crates/dashboard-transport" }
-ui-ir = { path = "../../listo-repos/contracts/ui-ir", package = "listo-ui-ir" }
+ui-ir = { git = "https://github.com/listo-ai/contracts", branch = "main", package = "listo-ui-ir" }
 transport-rest = { path = "crates/transport-rest" }
 transport-grpc = { path = "crates/transport-grpc" }
 transport-nats = { path = "crates/transport-nats" }
@@ -88,12 +88,12 @@ ai-runner = { path = "crates/ai-runner" }
 domain-ai = { path = "crates/domain-ai" }
 # blocks-sdk and blocks-sdk-macros extracted to listo-ai/agent-sdk (M3 migration)
 # Aliased so all `blocks-sdk = { workspace = true }` references continue to work unchanged
-blocks-sdk = { path = "../../listo-repos/agent-sdk/blocks-sdk", package = "listo-blocks-sdk" }
-blocks-sdk-macros = { path = "../../listo-repos/agent-sdk/blocks-sdk-macros", package = "listo-blocks-sdk-macros" }
+blocks-sdk = { git = "https://github.com/listo-ai/agent-sdk", branch = "main", package = "listo-blocks-sdk" }
+blocks-sdk-macros = { git = "https://github.com/listo-ai/agent-sdk", branch = "main", package = "listo-blocks-sdk-macros" }
 blocks-host = { path = "crates/blocks-host" }
 # agent-client extracted to listo-ai/agent-client-rs (M4 migration)
 # Aliased so transport-cli's `agent-client = { workspace = true }` continues to work
-agent-client = { path = "../../listo-repos/agent-client-rs", package = "listo-agent-client" }
+agent-client = { git = "https://github.com/listo-ai/agent-client-rs", branch = "main", package = "listo-agent-client" }
 
 # Third-party.
 async-trait = "0.1"
