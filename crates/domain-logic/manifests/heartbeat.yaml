@@ -2,6 +2,7 @@ id: sys.logic.heartbeat
 display_name: Heartbeat
 facets:
   - isCompute
+  - isAnywhere
 containment:
   must_live_under: []
   may_contain: []

@@ -229,7 +229,11 @@ impl GraphStore {
         let parent_manifest = self.require_kind(&parent_rec.kind)?;
 
         // Placement check: parent may contain this kind.
-        if !parent_manifest.containment.may_contain.is_empty() {
+        // Nodes with `isAnywhere` bypass the parent's `may_contain` whitelist —
+        // they are placement-agnostic by declaration and must not be gated by
+        // container manifests that predate them.
+        let child_is_anywhere = manifest.facets.contains(spi::Facet::IsAnywhere);
+        if !child_is_anywhere && !parent_manifest.containment.may_contain.is_empty() {
             let ok = parent_manifest
                 .containment
                 .may_contain
