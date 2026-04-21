@@ -4,3 +4,4 @@ packages:
   - "../../listo-repos/agent-client-ts"
   - "../../listo-repos/ui-kit"
   - "../../listo-repos/ui-core"
+  - "../../listo-repos/block-ui-sdk"
