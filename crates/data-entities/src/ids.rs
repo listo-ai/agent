@@ -9,16 +9,9 @@ pub struct FlowId(pub Uuid);
 #[serde(transparent)]
 pub struct DeviceId(pub Uuid);
 
-impl DeviceId {
-    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
-    pub fn to_hex(&self) -> String {
-        self.0.simple().to_string()
-    }
-}
-
 impl std::fmt::Display for DeviceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.simple())
+        std::fmt::Display::fmt(&self.0, f)
     }
 }
 
@@ -31,16 +24,11 @@ impl NodeId {
     pub fn new_random() -> Self {
         Self(Uuid::new_v4())
     }
-
-    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
-    pub fn to_hex(&self) -> String {
-        self.0.simple().to_string()
-    }
 }
 
 impl std::fmt::Display for NodeId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.simple())
+        std::fmt::Display::fmt(&self.0, f)
     }
 }
 
@@ -60,16 +48,11 @@ impl RevisionId {
     pub fn new_random() -> Self {
         Self(Uuid::new_v4())
     }
-
-    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
-    pub fn to_hex(&self) -> String {
-        self.0.simple().to_string()
-    }
 }
 
 impl std::fmt::Display for RevisionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.simple())
+        std::fmt::Display::fmt(&self.0, f)
     }
 }
 
@@ -84,16 +67,11 @@ impl FlowId {
     pub fn new_random() -> Self {
         Self(Uuid::new_v4())
     }
-
-    /// UUID without dashes, e.g. `7ab193b59cf34155adc9b36cbd7dbb87`.
-    pub fn to_hex(&self) -> String {
-        self.0.simple().to_string()
-    }
 }
 
 impl std::fmt::Display for FlowId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.simple())
+        std::fmt::Display::fmt(&self.0, f)
     }
 }
 

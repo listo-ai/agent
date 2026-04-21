@@ -611,6 +611,7 @@ async fn bootstrap(
     seed::register_builtins(&kinds);
     engine_kinds::register(&kinds);
     domain_compute::register_kinds(&kinds);
+    domain_function::register_kinds(&kinds);
     domain_logic::register_kinds(&kinds);
     domain_history::register_kinds(&kinds);
     domain_blocks::register_kinds(&kinds);
@@ -690,6 +691,13 @@ async fn bootstrap(
             domain_compute::add_behavior(),
         )
         .context("registering math.add behaviour")?;
+    engine
+        .behaviors()
+        .register(
+            <domain_function::Function as blocks_sdk::NodeKind>::kind_id(),
+            domain_function::behavior(),
+        )
+        .context("registering sys.logic.function behaviour")?;
     engine
         .behaviors()
         .register(

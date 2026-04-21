@@ -36,6 +36,7 @@ transport-rest = { workspace = true }
 transport-fleet-zenoh = { workspace = true }
 transport-cli = { workspace = true }
 domain-compute = { workspace = true }
+domain-function = { workspace = true }
 domain-logic = { workspace = true }
 domain-history = { workspace = true }
 domain-blocks = { workspace = true }

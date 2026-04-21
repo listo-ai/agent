@@ -1,0 +1,30 @@
+[package]
+name = "domain-function"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+spi = { workspace = true }
+blocks-sdk = { workspace = true }
+graph = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+# Rhai: pure-Rust embedded scripting. `sync` locks the Engine to
+# Send+Sync so we can hand it across tokio tasks. `no_closure` would
+# strip some features but we keep full closures for helper ergonomics.
+# `unchecked` is NOT enabled — we rely on Rhai's built-in overflow /
+# op-counter safety.
+rhai = { version = "1.22", features = ["sync", "serde"] }
+
+[dev-dependencies]
+engine = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sync"] }
+serde_yml = { workspace = true }

@@ -248,7 +248,7 @@ fn grouped_telemetry_to_json(r: GroupedTelemetryResult) -> serde_json::Value {
             let data: Vec<BucketedRowDto> =
                 s.rows.into_iter().map(telemetry_row_to_dto).collect();
             SeriesOut {
-                node_id: s.node_id.simple().to_string(),
+                node_id: s.node_id.to_string(),
                 path: s.node_path,
                 bucket_count: data.len(),
                 data,

@@ -13,6 +13,7 @@ members = [
     "crates/data-postgres",
     "crates/data-tsdb",
     "crates/domain-compute",
+    "crates/domain-function",
     "crates/domain-logic",
     "crates/domain-flows",
     "crates/domain-devices",
@@ -63,6 +64,7 @@ data-sqlite = { path = "crates/data-sqlite" }
 data-postgres = { path = "crates/data-postgres" }
 data-tsdb = { path = "crates/data-tsdb" }
 domain-compute = { path = "crates/domain-compute" }
+domain-function = { path = "crates/domain-function" }
 domain-logic = { path = "crates/domain-logic" }
 domain-flows = { path = "crates/domain-flows" }
 domain-devices = { path = "crates/domain-devices" }

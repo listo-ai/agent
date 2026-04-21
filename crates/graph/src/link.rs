@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use spi::NodeId;
 
-/// Link identifier. Same wire contract as `NodeId`: un-hyphenated
-/// 32-char hex form on serialize + Display, tolerant on deserialize.
+/// Link identifier. Same wire contract as `NodeId`: standard hyphenated
+/// UUID form on serialize + Display, tolerant of simple form on deserialize.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LinkId(pub Uuid);
 
@@ -33,13 +33,13 @@ impl Default for LinkId {
 
 impl fmt::Display for LinkId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.simple())
+        fmt::Display::fmt(&self.0, f)
     }
 }
 
 impl Serialize for LinkId {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_str(&self.0.simple())
+        s.collect_str(&self.0)
     }
 }
 

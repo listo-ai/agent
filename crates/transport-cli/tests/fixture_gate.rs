@@ -169,14 +169,11 @@ fn load_fixture(rel: &str) -> Value {
 }
 
 /// Normalise a JSON value for comparison:
-/// - UUID-shaped string (hyphenated or simple) → zeros in the same shape
+/// - Hyphenated UUID string → canonical zero UUID
 /// - Other strings → unchanged
 /// - Arrays / objects → recurse
 fn normalise(v: Value) -> Value {
     match v {
-        Value::String(s) if is_simple_uuid(&s) => {
-            Value::String("00000000000000000000000000000000".into())
-        }
         Value::String(s) if is_hyphenated_uuid(&s) => {
             Value::String("00000000-0000-0000-0000-000000000000".into())
         }
@@ -188,14 +185,8 @@ fn normalise(v: Value) -> Value {
     }
 }
 
-fn is_simple_uuid(s: &str) -> bool {
-    // 32 hex chars, no separators — the wire format NodeId/LinkId now emit.
-    s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit())
-}
-
 fn is_hyphenated_uuid(s: &str) -> bool {
-    // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx — tolerated on input, e.g.
-    // when a fixture stores a hand-written hyphenated form.
+    // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx — the canonical wire format.
     if s.len() != 36 {
         return false;
     }

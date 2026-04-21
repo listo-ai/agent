@@ -1,0 +1,111 @@
+# `sys.logic.function` — Node-RED-style Function node.
+#
+# One inbound msg, one script, zero-or-more outbound msgs. The script
+# is written in Rhai (https://rhai.rs), a pure-Rust scripting language
+# with JavaScript-flavoured syntax. Trade-off vs. QuickJS: the syntax
+# isn't byte-for-byte JS (no `===`, `let` not `var`, function decl is
+# `fn foo(x)`), but there's no C dep and no sandboxing ceremony —
+# Rhai's operation counter gives bounded execution for free.
+#
+# Script contract:
+#
+#   * A variable `msg` is pre-bound to the inbound message as a Rhai Map.
+#     Fields: `payload`, `topic`, `_msgid`, plus any flattened custom keys
+#     (`qos`, `retain`, …) — exactly what Node-RED shows.
+#
+#   * The script's *last expression* is what's emitted:
+#       return msg;                   // mutate-and-return (Node-RED style)
+#       msg                           // same thing, expression-form
+#       new_msg(42)                   // fresh msg with fresh _msgid
+#       [msg, new_msg("second")]      // multi-emit on `out` in order
+#       ()                            // no emission (drop silently)
+#
+#   * Helpers in scope (see domain-function/src/helpers.rs for the full list):
+#       log / warn / error      — tracing
+#       now_ms()                — Unix ms as int
+#       uuid()                  — fresh msgid as string
+#       new_msg(payload)        — build a Msg with payload
+#       new_msg(payload, topic) — ditto with a topic
+#       parse_json(s) / to_json(x)
+#       get_slot(path, slot)    — READ-ONLY cross-node slot read; `()` on miss
+#
+#   * Errors (panics, compile failures, runaway loops) route per `on_error`:
+#       drop      — log + error_count++, emit nothing
+#       emit_err  — log + emit `{ error, source_msg }` on the `err` port
+#       throw     — bubble as NodeError to the engine
+#
+# Compiled ASTs are cached per node (keyed by script hash) so editing
+# the script recompiles once and subsequent invocations reuse it.
+
+id: sys.logic.function
+display_name: Function
+
+facets:
+  - isCompute
+
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: many_per_parent
+  cascade: strict
+
+slots:
+  - name: in
+    role: input
+    value_kind: json
+    trigger: true
+
+  - name: out
+    role: output
+    value_kind: json
+
+  # Error fan-out (Node-RED catch-node pattern at the node level). Only
+  # populated when `on_error: emit_err` and the script failed.
+  - name: err
+    role: output
+    value_kind: json
+
+  # Bookkeeping — `exec_count` is user-facing (runs), `last_error` is
+  # internal (operator-only, hidden by default in Studio).
+  - name: exec_count
+    role: status
+    value_kind: number
+  - name: error_count
+    role: status
+    value_kind: number
+  - name: last_error
+    role: status
+    value_kind: string
+    is_internal: true
+
+settings_schema:
+  type: object
+  title: Function settings
+  description: >
+    Rhai script body executed once per inbound msg. See the module docs
+    for the `msg` shape, return conventions, and registered helpers.
+  properties:
+    script:
+      type: string
+      title: Script
+      description: Rhai script body. `msg` is pre-bound. Last expression is emitted.
+      default: "msg"
+    max_operations:
+      type: integer
+      title: Max operations
+      default: 100000
+      minimum: 0
+      description: >
+        Rhai operation counter cap per call. Prevents runaway loops. 0
+        disables the cap (use only for trusted long-running transforms).
+    on_error:
+      type: string
+      enum: [drop, emit_err, throw]
+      default: emit_err
+      title: On error
+      description: >
+        Behaviour when the script errors. `emit_err` routes the error
+        on the `err` output port — the node-level equivalent of a
+        Node-RED catch node.
+  required: [script]
+  additionalProperties: false

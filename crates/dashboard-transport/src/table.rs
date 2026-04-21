@@ -119,7 +119,7 @@ pub async fn handler(
         .list_all()
         .into_iter()
         .map(|snap| TableRow {
-            // NodeId::Display → un-hyphenated (matches SSE + /nodes).
+            // NodeId::Display → standard hyphenated UUID (matches SSE + /nodes).
             id: snap.id.to_string(),
             kind: snap.kind.as_str().to_string(),
             path: snap.path.unwrap_or_default(),

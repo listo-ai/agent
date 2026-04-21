@@ -89,7 +89,7 @@ impl TelemetryRepo for SqliteTelemetryRepo {
                 let mut groups: HashMap<(String, String), Vec<&ScalarRecord>> = HashMap::new();
                 for r in records {
                     groups
-                        .entry((r.node_id.simple().to_string(), r.slot_name.clone()))
+                        .entry((r.node_id.to_string(), r.slot_name.clone()))
                         .or_default()
                         .push(r);
                 }
@@ -133,7 +133,7 @@ impl TelemetryRepo for SqliteTelemetryRepo {
 
                     for r in &group {
                         ins.execute(params![
-                            r.node_id.simple().to_string(),
+                            r.node_id.to_string(),
                             r.slot_name,
                             r.ts_ms,
                             r.bool_value.map(|b| b as i64),
@@ -163,7 +163,7 @@ impl TelemetryRepo for SqliteTelemetryRepo {
                     AND ts_ms BETWEEN ?3 AND ?4
                   ORDER BY ts_ms ASC, id ASC{limit_clause}"
             );
-            let nid = q.node_id.simple().to_string();
+            let nid = q.node_id.to_string();
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map(params![nid, q.slot_name, q.from_ms, q.to_ms], |row| {
                 let node_id_str: String = row.get(0)?;
@@ -243,7 +243,7 @@ impl TelemetryRepo for SqliteTelemetryRepo {
         );
 
         self.with_conn(|conn| {
-            let nid = q.node_id.simple().to_string();
+            let nid = q.node_id.to_string();
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map(
                 params![nid, q.slot_name, q.from_ms, q.to_ms, q.bucket_ms],
@@ -273,7 +273,7 @@ impl TelemetryRepo for SqliteTelemetryRepo {
         self.with_conn(|conn| {
             let n: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM slot_timeseries WHERE node_id = ?1 AND slot_name = ?2",
-                params![node_id.simple().to_string(), slot_name],
+                params![node_id.to_string(), slot_name],
                 |row| row.get(0),
             )?;
             Ok(n as u64)
@@ -289,7 +289,7 @@ impl TelemetryRepo for SqliteTelemetryRepo {
                       ORDER BY ts_ms ASC, id ASC
                       LIMIT ?3
                  )",
-                params![node_id.simple().to_string(), slot_name, n as i64],
+                params![node_id.to_string(), slot_name, n as i64],
             )?;
             Ok(())
         })
