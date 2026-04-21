@@ -372,13 +372,13 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 | **M7** | Extract `@listo/block-ui-sdk` | ✅ Done — pushed to GitHub |
 | **M8** | Move remaining `frontend/` → `listo-ai/studio` | ✅ Done — pushed to GitHub |
 | **M9** | Move `blocks/` → `listo-ai/blocks` | ✅ Done — pushed to GitHub |
-| **M10** | Rename `us` → `listo-ai/agent` (change remote, push to new GitHub repo) | ❌ Not started |
+| **M10** | Rename `us` → `listo-ai/agent` (change remote, push to new GitHub repo) | ✅ Done — pushed to `listo-ai/agent` |
 | **M11** | Commit uncommitted fixes in `us` (`folder.yaml`, `station.yaml`, `pnpm-lock.yaml`) | ✅ Done — committed + pushed |
-| **M12** | Switch all Rust path deps → git deps (or crates.io) | ❌ Not started |
-| **M13** | Switch all TS `workspace:*` deps → npm version ranges | ❌ Not started |
-| **M14** | Push `ui-kit` tsc-alias build fix to GitHub | ❌ Not started |
-| **M15** | Fix `agent-sdk` back-reference to `us/crates/transport-grpc` | ❌ Not started |
-| **M16** | Set up GitHub Actions CI on all repos | ❌ Not started |
+| **M12** | Switch all Rust path deps → git deps (or crates.io) | ✅ Done — git deps in `us/Cargo.toml` |
+| **M13** | Switch all TS `workspace:*` deps → npm version ranges | ✅ Done — `^0.1.0` in ui-core, block-ui-sdk, studio |
+| **M14** | Push `ui-kit` tsc-alias build fix to GitHub | ✅ Done — pushed to `listo-ai/ui-kit` |
+| **M15** | Fix `agent-sdk` back-reference to `us/crates/transport-grpc` | ✅ Done — git dep in `agent-sdk/Cargo.toml` |
+| **M16** | Set up GitHub Actions CI on all repos | ✅ Done — CI on all 8 repos |
 | **M17** | npm/crates.io publish prep (`prepublishOnly`, changelogs, `integration.lock`) | ❌ Not started |
 
 ---
@@ -407,17 +407,14 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 - `pnpm-workspace.yaml` wires `../../listo-repos/*` packages via `workspace:*` — **dev-only**, only works on this machine
 - `Cargo.toml` wires extracted crates via `path = "../../listo-repos/..."` — **dev-only**, only works on this machine
 - `crates/graph/manifests/folder.yaml`, `crates/graph/manifests/station.yaml`, `pnpm-lock.yaml` — committed and pushed (M11 ✅)
-- Origin remote is still `https://github.com/NubeDev/us` — not yet pointed at `listo-ai/agent`
+- Origin remote is now `https://github.com/listo-ai/agent` — history pushed ✅
 
 ### Known broken cross-repo references
 
 | Location | Problem |
 |----------|---------|
-| `us/Cargo.toml` | All Rust path deps use `../../listo-repos/...` — absolute to this machine |
-| `us/pnpm-workspace.yaml` | All TS deps use `../../listo-repos/...` — absolute to this machine |
-| `listo-repos/agent-sdk/Cargo.toml` | `transport-grpc` feature still points `path = "../../rust/us/crates/transport-grpc"` |
-| `listo-repos/blocks/*/Cargo.toml` | `blocks-sdk` path dep points to `../../agent-sdk/blocks-sdk` — works only in `listo-repos/` sibling layout |
-| `listo-repos/studio/rsbuild.config.ts` | MF types zip missing (`dist/@mf-types.zip`) — non-fatal warning in dev |
+| `listo-ai/ui-core`, `block-ui-sdk`, `studio` `package.json` | `@listo/*` deps set to `^0.1.0` — packages not yet on npm; CI uses bootstrap-clone workaround until M17 |
+| `listo-ai/blocks/*/Cargo.toml` | `blocks-sdk` path dep points to `../../agent-sdk/blocks-sdk` — needs git dep |
 
 ---
 
@@ -425,18 +422,17 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 
 ### P0 — finish the repo migration (this machine → GitHub)
 
-1. ~~**M11**~~ ✅ Already done — `folder.yaml`, `station.yaml`, `pnpm-lock.yaml` committed and pushed.
+~~M11~~, ~~M10~~, ~~M14~~ ✅ All three done — `us` is live on `listo-ai/agent`, `ui-kit` build fix is pushed, graph manifests committed.
 
-2. **M10** Wire `us` to `listo-ai/agent` on GitHub:
-   ```bash
-   cd /home/user/code/rust/us
-   git remote set-url origin https://github.com/listo-ai/agent.git
-   git push -u origin master
-   ```
+### P1 — make deps portable
 
-3. **M14** Commit + push the `ui-kit` tsc-alias fix to `listo-ai/ui-kit`:
-   - `package.json` build script changed to `tsc && tsc-alias -p tsconfig.json`
-   - `tsc-alias` added to `devDependencies`
+~~M12~~, ~~M13~~, ~~M15~~ ✅ All done — Rust path deps are now git deps; TS `workspace:*` replaced with `^0.1.0`; `agent-sdk` transport-grpc back-ref fixed.
+
+**Note:** `@listo/*` npm packages are still unpublished. TS CI for `ui-core` and `block-ui-sdk` uses a bootstrap-clone workaround (clones sibling repos in CI) until M17.
+
+### P2 — CI
+
+~~M16~~ ✅ Done — GitHub Actions CI on all 8 repos (contracts, agent-sdk, agent-client-rs, agent, agent-client-ts, ui-kit, ui-core, block-ui-sdk).
 
 ### P1 — make deps portable (anyone can clone and build)
 
@@ -479,34 +475,33 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 ## Next-session prompt
 
 ```
-Context: Rust+React monorepo at `/home/user/code/rust/us` is mid-way through a
-multi-repo extraction into `github.com/listo-ai/`. The extraction of all source
-code is COMPLETE (M1–M11 done). What remains is wiring, portability, and CI.
+Context: Rust+React monorepo multi-repo extraction into `github.com/listo-ai/`
+is complete. All 17 migration steps M1–M16 are DONE. All repos are live on
+GitHub, deps are portable (git deps / ^0.1.0 ranges), CI is in place.
+
+What remains is M17 — publishing to registries (P3).
 
 Repo layout on disk:
-- `/home/user/code/rust/us` — the backend monorepo (will become listo-ai/agent)
-- `/home/user/code/listo-repos/{contracts,agent-client-ts,agent-sdk,agent-client-rs,ui-kit,ui-core,block-ui-sdk,studio,blocks}` — all extracted repos, already pushed to GitHub
+- `/home/user/code/rust/us` — the backend monorepo, origin = listo-ai/agent
+- `/home/user/code/listo-repos/{contracts,agent-client-ts,agent-sdk,agent-client-rs,ui-kit,ui-core,block-ui-sdk,studio,blocks}` — all extracted repos, all on GitHub with CI
 
-Current blockers before anyone else can clone and build (in priority order):
-1. `us` origin is still `NubeDev/us` — needs pointing at `listo-ai/agent` and
-   pushing (M10)
-2. `listo-repos/ui-kit` has a local tsc-alias fix (build script + devDep) not
-   yet committed/pushed to listo-ai/ui-kit (M14)
-3. All Rust deps in `us/Cargo.toml` use `path = "../../listo-repos/..."` — must
-   become git deps (`git = "https://github.com/listo-ai/contracts"` etc.) (M12)
-4. `listo-repos/agent-sdk/Cargo.toml` still has a back-ref to
-   `../../rust/us/crates/transport-grpc` — must be removed or made optional (M15)
-5. All TS packages use `workspace:*` — must become npm version ranges once
-   packages are published (M13)
+M17 tasks (P3 — publish to registries):
+1. Tag `v0.1.0` on contracts, agent-sdk, agent-client-rs, agent-client-ts
+2. `cargo publish` for listo-spi, listo-ui-ir, listo-blocks-sdk,
+   listo-blocks-sdk-macros, listo-block-client, listo-block-domain, listo-agent-client
+3. `npm publish` for @listo/agent-client, @listo/ui-kit, @listo/ui-core,
+   @listo/block-ui-sdk
+4. Once published, remove bootstrap-clone workaround from ui-core and
+   block-ui-sdk CI workflows (replace with plain `pnpm install --frozen-lockfile`)
+5. Switch Cargo git deps → crates.io version deps
+6. Add `integration.lock` to listo-ai/agent (pinned version matrix)
 
 Plan doc: `/home/user/code/rust/us/docs/sessions/REFACTOR-MULTI-REPO.md`
-  (read the "Pending work — prioritised" section for full task list)
-
-Please work through tasks in this order:
-  P0 (M10 → M14), then P1 (M12 → M15 → M13), then P2 (M16).
+  (see P3 / M17 section for full task list)
 
 Tech stack: Rust/Cargo workspaces, pnpm workspaces, React 19, Rsbuild, tsc,
-tsc-alias, GitHub CLI (`gh`). Rust toolchain 1.90, Node v22, pnpm v10.
+tsc-alias, GitHub CLI (`gh`), cargo-release, npm publish.
+Rust toolchain 1.90, Node v22, pnpm v10.
 ```
 
 ---
