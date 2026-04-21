@@ -11,8 +11,8 @@
  */
 
 import { useStore, create } from "zustand";
-import { FleetScope } from "@sys/agent-client";
-import type { Link, NodeSnapshot } from "@sys/agent-client";
+import { FleetScope } from "@listo/agent-client";
+import type { Link, NodeSnapshot } from "@listo/agent-client";
 import { useGraphStoreOptional } from "@/store/graph-hooks";
 import type { RemoteAgentNode, RemoteAgentConnection } from "./types";
 

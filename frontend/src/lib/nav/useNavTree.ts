@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { UiNavNode } from "@sys/agent-client";
+import type { UiNavNode } from "@listo/agent-client";
 import { useAgent } from "@/hooks/useAgent";
 import { formatError } from "@/lib/utils";
 import type { NavNode, NavTreeState } from "./types";

@@ -31,7 +31,7 @@ import type {
   UiSubscriptionPlan,
   UiTableResponse,
   UiTableRow,
-} from "@sys/agent-client";
+} from "@listo/agent-client";
 
 // `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
 const UUID_RE =

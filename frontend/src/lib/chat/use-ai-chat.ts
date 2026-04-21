@@ -9,7 +9,7 @@
  * `ai.run` endpoint instead (single request/response).
  */
 import { useCallback, useRef, useState } from 'react'
-import type { AgentClient, AiRunRequest, AiStreamEvent } from '@sys/agent-client'
+import type { AgentClient, AiRunRequest, AiStreamEvent } from '@listo/agent-client'
 import type { ChatMessage } from './types'
 
 export interface UseAiChatOptions {

@@ -12,7 +12,7 @@
 
 import { useEffect, useRef } from "react";
 import { agentPromise } from "@/lib/agent";
-import { GenerationMismatchError } from "@sys/agent-client";
+import { GenerationMismatchError } from "@listo/agent-client";
 import { useBuilderStore } from "../store/builder-store";
 import { validateLayout } from "../model/validate-layout";
 

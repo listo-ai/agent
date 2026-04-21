@@ -12,7 +12,7 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import type { UiActionResponse, UiResolveResponse } from "@sys/agent-client";
+import type { UiActionResponse, UiResolveResponse } from "@listo/agent-client";
 import { useSdui } from "./context";
 import { replaceAt } from "./applyPatch";
 

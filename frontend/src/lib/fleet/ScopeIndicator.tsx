@@ -13,7 +13,7 @@
 import { NavLink } from "react-router-dom";
 import { ArrowLeft, Server } from "lucide-react";
 import { useScope } from "./useScope";
-import { FleetScope } from "@sys/agent-client";
+import { FleetScope } from "@listo/agent-client";
 
 export function ScopeIndicator() {
   const scope = useScope();

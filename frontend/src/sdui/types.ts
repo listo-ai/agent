@@ -4,7 +4,7 @@
  * (`{ type: string; [key: string]: unknown }`), so we define each
  * variant shape explicitly here rather than using `Extract<>`.
  */
-import type { UiComponent, UiAction, UiTableSource, UiTableColumn } from "@sys/agent-client";
+import type { UiComponent, UiAction, UiTableSource, UiTableColumn } from "@listo/agent-client";
 
 export type PageNode = {
   type: "page"; id: string; title?: string | null; children: UiComponent[];

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { HistoryRecord } from "@sys/agent-client";
+import type { HistoryRecord } from "@listo/agent-client";
 
 import { cn } from "@/lib/utils";
 

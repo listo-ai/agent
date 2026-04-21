@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import type { UiTableRow } from "@sys/agent-client";
+import type { UiTableRow } from "@listo/agent-client";
 import type { TableNode } from "../types";
 import { agentPromise } from "@/lib/agent";
 import { useSdui } from "../context";

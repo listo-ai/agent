@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAgent } from "@/hooks/useAgent";
-import type { FlowRevisionDto } from "@sys/agent-client";
+import type { FlowRevisionDto } from "@listo/agent-client";
 
 export interface UseFlowRevisionsOptions {
   /** Flow ULID. Pass `undefined` to disable the query. */

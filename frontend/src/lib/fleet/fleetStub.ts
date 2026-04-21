@@ -20,7 +20,7 @@
  * components fail fast with a clear message instead of hanging on timeout.
  */
 
-import type { FleetRequestFn } from "@sys/agent-client";
+import type { FleetRequestFn } from "@listo/agent-client";
 
 /**
  * Fleet request function stub.

@@ -10,7 +10,7 @@
  */
 import { useMemo } from "react";
 import { create, useStore } from "zustand";
-import type { NodeSnapshot } from "@sys/agent-client";
+import type { NodeSnapshot } from "@listo/agent-client";
 import type { GraphStore } from "@/store/graph-hooks";
 import { slotMap, type LiveNodeState } from "./flow-model";
 

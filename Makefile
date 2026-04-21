@@ -17,7 +17,7 @@ CROSS         := cross
 export PATH := $(HOME)/.local/bin:$(HOME)/.bun/bin:$(HOME)/.npm-global/bin:$(HOME)/.config/npm/global/bin:/opt/homebrew/bin:/usr/local/bin:$(PATH)
 
 PNPM          := pnpm
-CLIENT_PKG    := @sys/agent-client
+CLIENT_PKG    := @listo/agent-client
 FRONTEND_DIR  := frontend
 AGENT_CLI_MANIFEST := ../agent-cli/Cargo.toml
 
@@ -50,7 +50,7 @@ install: ## Install all JS/TS dependencies (pnpm workspaces)
 	$(PNPM) install
 
 .PHONY: build-client
-build-client: ## Compile @sys/agent-client → clients/ts/dist/
+build-client: ## Compile @listo/agent-client → listo-repos/agent-client-ts/dist/
 	$(PNPM) --filter $(CLIENT_PKG) build
 
 # ── dev ───────────────────────────────────────────────────────────────────────

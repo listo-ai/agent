@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { create, useStore } from "zustand";
-import type { Link, NodeSnapshot, Slot } from "@sys/agent-client";
+import type { Link, NodeSnapshot, Slot } from "@listo/agent-client";
 import type { NavigateFunction } from "react-router-dom";
 import { useAgent, useKinds } from "@/hooks/useAgent";
 import { useFlowStore } from "@/store/flow";

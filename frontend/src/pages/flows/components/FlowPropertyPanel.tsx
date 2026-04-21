@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState, useCallback } from "react";
 import { Check, Copy } from "lucide-react";
-import type { Kind, NodeSnapshot, Slot } from "@sys/agent-client";
+import type { Kind, NodeSnapshot, Slot } from "@listo/agent-client";
 import { cn, compactUuid } from "@/lib/utils";
 import { useSlotWriter } from "@/lib/slots";
 import { useNodeSettings, NodeSettingsForm } from "@/lib/node/settings";

@@ -19,7 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui";
 import { agentPromise } from "@/lib/agent";
-import type { NodeSnapshot } from "@sys/agent-client";
+import type { NodeSnapshot } from "@listo/agent-client";
 
 const UI_PAGE_KIND = "ui.page";
 const LAYOUT_SLOT = "layout";

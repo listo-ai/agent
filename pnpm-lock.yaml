@@ -6,7 +6,7 @@ settings:
 
 importers:
 
-  clients/ts:
+  ../../listo-repos/agent-client-ts:
     dependencies:
       semver:
         specifier: ^7.6.0
@@ -36,6 +36,9 @@ importers:
 
   frontend:
     dependencies:
+      '@listo/agent-client':
+        specifier: workspace:*
+        version: link:../../../listo-repos/agent-client-ts
       '@module-federation/enhanced':
         specifier: ^0.6.0
         version: 0.6.16(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3)
@@ -66,9 +69,6 @@ importers:
       '@rjsf/validator-ajv8':
         specifier: ^6.5.1
         version: 6.5.1(@rjsf/utils@6.5.1(react@19.2.5))
-      '@sys/agent-client':
-        specifier: workspace:*
-        version: link:../clients/ts
       '@tanstack/react-query':
         specifier: ^5.40.0
         version: 5.99.0(react@19.2.5)

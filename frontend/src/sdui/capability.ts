@@ -8,7 +8,7 @@
  * this constant follows. Keep aligned with
  * [crates/ui-ir/src/lib.rs](../../../crates/ui-ir/src/lib.rs).
  */
-import type { UiComponentTree } from "@sys/agent-client";
+import type { UiComponentTree } from "@listo/agent-client";
 
 export const SUPPORTED_IR_VERSION = 1;
 

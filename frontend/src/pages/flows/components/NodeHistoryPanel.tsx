@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { X, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { NodeSnapshot } from "@sys/agent-client";
+import type { NodeSnapshot } from "@listo/agent-client";
 
 import { SmartSlotHistoryPanel } from "@/components/slot-history/SmartSlotHistoryPanel";
 import { RecordHistoryButton } from "@/components/slot-history/RecordHistoryButton";

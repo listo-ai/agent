@@ -1,4 +1,4 @@
-import type { HistoryQueryOptions } from "@sys/agent-client";
+import type { HistoryQueryOptions } from "@listo/agent-client";
 
 import {
   Dialog,

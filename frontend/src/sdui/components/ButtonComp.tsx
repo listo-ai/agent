@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import type { UiResolveResponse } from "@sys/agent-client";
+import type { UiResolveResponse } from "@listo/agent-client";
 import type { ButtonNode } from "../types";
 import { useSdui } from "../context";
 import { useActionResponse } from "../useActionResponse";

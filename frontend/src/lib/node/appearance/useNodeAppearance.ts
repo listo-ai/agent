@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { Slot } from "@sys/agent-client";
+import type { Slot } from "@listo/agent-client";
 import { useSlotEditor } from "@/lib/slots";
 import type { NodeAppearance, NodeAppearanceState } from "./types";
 

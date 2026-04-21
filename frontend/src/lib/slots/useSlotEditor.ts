@@ -14,7 +14,7 @@
  * action helpers (`addLabel`, `setIcon`, …) from the returned `persist`.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Slot } from "@sys/agent-client";
+import type { Slot } from "@listo/agent-client";
 
 export type SaveState = "idle" | "saving" | "ok" | "error";
 

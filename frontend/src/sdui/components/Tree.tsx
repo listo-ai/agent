@@ -3,7 +3,7 @@
  */
 import { useState } from "react";
 import { useSdui } from "../context";
-import type { UiAction } from "@sys/agent-client";
+import type { UiAction } from "@listo/agent-client";
 
 type TreeItem = {
   id: string;

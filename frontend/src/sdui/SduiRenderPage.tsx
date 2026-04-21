@@ -15,7 +15,7 @@ import { SduiProvider, type CustomRegistry } from "./context";
 import { Renderer } from "./Renderer";
 import { useSubscriptions } from "./useSubscriptions";
 import { checkIrVersion } from "./capability";
-import type { UiActionResponse, UiResolveResponse } from "@sys/agent-client";
+import type { UiActionResponse, UiResolveResponse } from "@listo/agent-client";
 
 export const globalCustomRegistry: CustomRegistry = new Map();
 

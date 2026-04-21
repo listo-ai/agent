@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { NodeSnapshot } from "@sys/agent-client";
+import type { NodeSnapshot } from "@listo/agent-client";
 
 /**
  * Resolves a flow's node-path (e.g. `/flow-1`) to its ULID from the

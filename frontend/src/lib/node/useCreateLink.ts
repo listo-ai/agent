@@ -12,7 +12,7 @@
  *   });
  */
 import { useMutation } from "@tanstack/react-query";
-import type { LinkEndpointRef } from "@sys/agent-client";
+import type { LinkEndpointRef } from "@listo/agent-client";
 import { useAgent } from "@/hooks/useAgent";
 import { queryClient } from "@/providers/query";
 

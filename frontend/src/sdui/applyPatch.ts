@@ -7,7 +7,7 @@
  * subtree for FullRender-style replacement). Everything else stays
  * pointer-identical so React only re-renders the affected branch.
  */
-import type { UiComponent, UiComponentTree } from "@sys/agent-client";
+import type { UiComponent, UiComponentTree } from "@listo/agent-client";
 
 /** Shallow-merge `fields` into the component with the matching `id`. */
 export function mergeAt(

@@ -15,7 +15,7 @@ import { validateLayout } from "../model/validate-layout.js";
 import { SduiProvider, type CustomRegistry } from "@/sdui/context";
 import { Renderer } from "@/sdui/Renderer";
 import { useSubscriptions } from "@/sdui/useSubscriptions";
-import type { UiActionResponse, UiResolveResponse } from "@sys/agent-client";
+import type { UiActionResponse, UiResolveResponse } from "@listo/agent-client";
 
 const emptyRegistry: CustomRegistry = new Map();
 const DEBOUNCE_MS = 250;

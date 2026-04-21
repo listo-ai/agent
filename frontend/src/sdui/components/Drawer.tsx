@@ -3,7 +3,7 @@
  * `$page[page_state_key]` so other components (buttons, menu items)
  * can toggle it through `setPageState`.
  */
-import type { UiComponent } from "@sys/agent-client";
+import type { UiComponent } from "@listo/agent-client";
 import { Renderer } from "../Renderer";
 import { useSdui } from "../context";
 

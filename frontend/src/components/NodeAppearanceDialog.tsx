@@ -4,7 +4,7 @@
  * Combines TagsEditor and AppearanceEditor in one focused dialog.
  * Both editors auto-save with debounce; no explicit Save button needed.
  */
-import type { Slot } from "@sys/agent-client";
+import type { Slot } from "@listo/agent-client";
 import {
   Dialog,
   DialogContent,

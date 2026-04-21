@@ -1,4 +1,4 @@
-import type { HistoryQueryOptions, HistoryRecord, ScalarRecord } from "@sys/agent-client";
+import type { HistoryQueryOptions, HistoryRecord, ScalarRecord } from "@listo/agent-client";
 
 import { useSlotHistory, useSlotTelemetry } from "@/hooks/useSlotHistory";
 import { SlotHistoryTable } from "./SlotHistoryTable";

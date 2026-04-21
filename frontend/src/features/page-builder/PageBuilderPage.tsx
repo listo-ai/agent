@@ -21,7 +21,7 @@ import { SaveStatus } from "./panels/SaveStatus";
 import { useValidator } from "./persistence/use-validator";
 import { useAutosave } from "./persistence/use-autosave";
 import type { DraftPage } from "./model/types";
-import type { NodeSnapshot } from "@sys/agent-client";
+import type { NodeSnapshot } from "@listo/agent-client";
 
 const LAYOUT_SLOT = "layout";
 

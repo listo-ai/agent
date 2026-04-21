@@ -11,7 +11,7 @@ import {
   Loader2,
   Box,
 } from "lucide-react";
-import type { Link, NodeSnapshot } from "@sys/agent-client";
+import type { Link, NodeSnapshot } from "@listo/agent-client";
 import { useGraphStoreOptional } from "@/store/graph-hooks";
 import { isFlowNode } from "@/pages/flows/flow-model";
 import { buildNodeContextItems, buildCopyItems, NodeContextMenu } from "@/components/node-context-menu";

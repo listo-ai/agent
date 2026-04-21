@@ -10,7 +10,7 @@
  * this hook, never `useParams()` directly.
  */
 
-import { FleetScope } from "@sys/agent-client";
+import { FleetScope } from "@listo/agent-client";
 import { useScopeContext } from "./ScopeContext";
 import type { FleetScope as FleetScopeType } from "./types";
 

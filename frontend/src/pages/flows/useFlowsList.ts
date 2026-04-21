@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { create, useStore } from "zustand";
-import type { NodeSnapshot, Link } from "@sys/agent-client";
+import type { NodeSnapshot, Link } from "@listo/agent-client";
 
 import { useAgent } from "@/hooks/useAgent";
 import { useGraphStoreOptional } from "@/store/graph-hooks";

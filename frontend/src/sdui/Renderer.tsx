@@ -3,7 +3,7 @@
  * matching implementation.  Unknown types degrade to a neutral stub so a
  * single unrecognised variant never crashes the whole tree.
  */
-import type { UiComponent } from "@sys/agent-client";
+import type { UiComponent } from "@listo/agent-client";
 import type {
   PageNode, RowNode, ColNode, GridNode, TabsNode,
   TextNode, HeadingNode, BadgeNode, DiffNode,

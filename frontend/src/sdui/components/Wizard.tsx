@@ -3,7 +3,7 @@
  * navigates forward/back, fires `submit` on the last step.
  */
 import { useState } from "react";
-import type { UiAction, UiComponent } from "@sys/agent-client";
+import type { UiAction, UiComponent } from "@listo/agent-client";
 import { Renderer } from "../Renderer";
 import { useSdui } from "../context";
 

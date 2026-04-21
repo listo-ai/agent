@@ -21,7 +21,7 @@ import {
   type ReactNode,
 } from "react";
 import { useParams } from "react-router-dom";
-import { AgentClient, FleetScope } from "@sys/agent-client";
+import { AgentClient, FleetScope } from "@listo/agent-client";
 import { AGENT_BASE_URL } from "@/lib/agent";
 import { fleetRequestStub } from "./fleetStub";
 import type { ScopeContextValue, ScopeClientState } from "./types";

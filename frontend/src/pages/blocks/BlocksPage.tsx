@@ -1,5 +1,5 @@
 import { version as hostReactVersion } from "react";
-import type { PluginLifecycle, PluginSummary } from "@sys/agent-client";
+import type { PluginLifecycle, PluginSummary } from "@listo/agent-client";
 import { RefreshCw, Eye, EyeOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";

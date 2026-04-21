@@ -3,7 +3,7 @@
  * registry so every component in the tree can reach them without prop-drilling.
  */
 import React, { createContext, useContext } from "react";
-import type { UiActionResponse } from "@sys/agent-client";
+import type { UiActionResponse } from "@listo/agent-client";
 
 export type ActionFn = (
   handler: string,

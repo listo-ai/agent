@@ -1,4 +1,4 @@
-import type { Slot } from "@sys/agent-client";
+import type { Slot } from "@listo/agent-client";
 import { useSlotEditor } from "@/lib/slots";
 import type { NodeSettingsState } from "./types";
 

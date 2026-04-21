@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Kind } from "@sys/agent-client";
+import type { Kind } from "@listo/agent-client";
 import { cn } from "@/lib/utils";
 import { useAgent } from "@/hooks/useAgent";
 import { useCreateNode } from "@/lib/node";

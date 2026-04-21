@@ -1,6 +1,6 @@
 import dagre from "dagre";
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import type { Kind, Link, NodeSnapshot, Slot } from "@sys/agent-client";
+import type { Kind, Link, NodeSnapshot, Slot } from "@listo/agent-client";
 
 export const FLOW_KIND = "sys.core.flow";
 export const POSITION_SLOT = "position";

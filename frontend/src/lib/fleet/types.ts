@@ -6,7 +6,7 @@
 // operates on these types; components receive them as props / hook results.
 // ---------------------------------------------------------------------------
 
-import type { FleetScope } from "@sys/agent-client";
+import type { FleetScope } from "@listo/agent-client";
 
 export type { FleetScope };
 
@@ -57,7 +57,7 @@ export type ScopeClientStatus = "loading" | "ready" | "error";
 export interface ScopeClientState {
   status: ScopeClientStatus;
   /** Present when `status === "ready"`. */
-  client: import("@sys/agent-client").AgentClient | null;
+  client: import("@listo/agent-client").AgentClient | null;
   /** Present when `status === "error"`. */
   errorDetail: string | null;
 }

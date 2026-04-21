@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Kind } from "@sys/agent-client";
+import type { Kind } from "@listo/agent-client";
 import { facetGroup, titleForKind } from "../flow-model";
 import { Badge, Input } from "@/components/ui";
 

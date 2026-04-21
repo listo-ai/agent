@@ -13,7 +13,7 @@
  * gate its UI on it yet; the `useCapabilities` hook surfaces the
  * manifest so the UI can display it.
  */
-import { AgentClient } from "@sys/agent-client";
+import { AgentClient } from "@listo/agent-client";
 
 // PUBLIC_AGENT_URL is injected at build time by rsbuild (source.define in
 // rsbuild.config.ts reads process.env.PUBLIC_AGENT_URL). Direct property

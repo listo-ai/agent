@@ -1,4 +1,4 @@
-import type { ScalarRecord } from "@sys/agent-client";
+import type { ScalarRecord } from "@listo/agent-client";
 
 interface ScalarHistoryTableProps {
   records: ScalarRecord[];
