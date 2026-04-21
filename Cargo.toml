@@ -33,8 +33,6 @@ members = [
     "crates/transport-mcp",
     "crates/graph",
     "crates/engine",
-    "crates/blocks-sdk",
-    "crates/blocks-sdk-macros",
     "crates/blocks-host",
     "crates/apps/agent",
     "crates/ai-runner",
@@ -89,8 +87,10 @@ graph = { path = "crates/graph" }
 engine = { path = "crates/engine" }
 ai-runner = { path = "crates/ai-runner" }
 domain-ai = { path = "crates/domain-ai" }
-blocks-sdk = { path = "crates/blocks-sdk" }
-blocks-sdk-macros = { path = "crates/blocks-sdk-macros" }
+# blocks-sdk and blocks-sdk-macros extracted to listo-ai/agent-sdk (M3 migration)
+# Aliased so all `blocks-sdk = { workspace = true }` references continue to work unchanged
+blocks-sdk = { path = "../../listo-repos/agent-sdk/blocks-sdk", package = "listo-blocks-sdk" }
+blocks-sdk-macros = { path = "../../listo-repos/agent-sdk/blocks-sdk-macros", package = "listo-blocks-sdk-macros" }
 blocks-host = { path = "crates/blocks-host" }
 agent-client = { path = "clients/rs" }
 
