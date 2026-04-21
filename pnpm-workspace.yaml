@@ -1,7 +1,4 @@
-packages:
-  - "../../listo-repos/studio"
-  - "examples/block-hello"
-  - "../../listo-repos/agent-client-ts"
-  - "../../listo-repos/ui-kit"
-  - "../../listo-repos/ui-core"
-  - "../../listo-repos/block-ui-sdk"
+# No TypeScript packages live in this repo (listo-ai/agent is Rust-only).
+# All TS packages are managed from the workspace root at listo-ai/workspace:
+#   /home/user/code/listo-repos/pnpm-workspace.yaml
+packages: []
