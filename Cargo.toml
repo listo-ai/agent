@@ -37,7 +37,6 @@ members = [
     "crates/apps/agent",
     "crates/ai-runner",
     "crates/domain-ai",
-    "clients/rs",
 ]
 
 [workspace.package]
@@ -92,7 +91,9 @@ domain-ai = { path = "crates/domain-ai" }
 blocks-sdk = { path = "../../listo-repos/agent-sdk/blocks-sdk", package = "listo-blocks-sdk" }
 blocks-sdk-macros = { path = "../../listo-repos/agent-sdk/blocks-sdk-macros", package = "listo-blocks-sdk-macros" }
 blocks-host = { path = "crates/blocks-host" }
-agent-client = { path = "clients/rs" }
+# agent-client extracted to listo-ai/agent-client-rs (M4 migration)
+# Aliased so transport-cli's `agent-client = { workspace = true }` continues to work
+agent-client = { path = "../../listo-repos/agent-client-rs", package = "listo-agent-client" }
 
 # Third-party.
 async-trait = "0.1"
