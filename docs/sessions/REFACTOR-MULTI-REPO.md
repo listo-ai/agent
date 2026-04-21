@@ -414,7 +414,6 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 | Location | Problem |
 |----------|---------|
 | `listo-ai/ui-core`, `block-ui-sdk`, `studio` `package.json` | `@listo/*` deps set to `^0.1.0` — packages not yet on npm; CI uses bootstrap-clone workaround until M17 |
-| `listo-ai/blocks/*/Cargo.toml` | `blocks-sdk` path dep points to `../../agent-sdk/blocks-sdk` — needs git dep |
 
 ---
 
