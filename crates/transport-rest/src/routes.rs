@@ -366,7 +366,7 @@ async fn create_node(
 }
 
 #[derive(Deserialize)]
-struct WriteSlotReq {
+pub(crate) struct WriteSlotReq {
     path: String,
     slot: String,
     value: JsonValue,
@@ -379,6 +379,50 @@ struct WriteSlotResp {
     generation: u64,
 }
 
+/// Result type returned by [`write_slot_core`].
+///
+/// Serialised as a tagged JSON object so the fleet handler can embed
+/// the outcome in a reply payload without introducing HTTP status codes
+/// on the fleet path. The `status` discriminant mirrors the two
+/// meaningful outcomes of a `write_slot` call:
+///
+/// - `{ "status": "ok", "generation": N }` — write committed.
+/// - `{ "status": "generation_mismatch", "current_generation": N }` — CAS
+///   conflict; caller should re-read and retry.
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub(crate) enum WriteSlotResult {
+    Ok { generation: u64 },
+    GenerationMismatch { current_generation: u64 },
+}
+
+/// Core logic for `POST /api/v1/slots`. Shared by the axum handler and
+/// the fleet `api.v1.slots.write` handler — one function, two surfaces.
+/// Auth is the caller's responsibility (the axum handler checks
+/// `Scope::WriteSlots`; the fleet handler validates the bearer token
+/// forwarded as a message header).
+pub(crate) fn write_slot_core(
+    state: &AppState,
+    req: WriteSlotReq,
+) -> Result<WriteSlotResult, ApiError> {
+    let path = parse_path(&req.path)?;
+    let result = match req.expected_generation {
+        Some(expected) => state
+            .graph
+            .write_slot_expected(&path, &req.slot, req.value, expected),
+        None => state.graph.write_slot(&path, &req.slot, req.value),
+    };
+    match result {
+        Ok(gen) => Ok(WriteSlotResult::Ok { generation: gen }),
+        Err(graph::GraphError::GenerationMismatch { current, .. }) => {
+            Ok(WriteSlotResult::GenerationMismatch {
+                current_generation: current,
+            })
+        }
+        Err(e) => Err(ApiError::from_graph(e)),
+    }
+}
+
 async fn write_slot(
     ctx: AuthContext,
     State(s): State<AppState>,
@@ -386,24 +430,18 @@ async fn write_slot(
 ) -> Result<Response, ApiError> {
     ctx.require(Scope::WriteSlots)
         .map_err(ApiError::from_auth)?;
-    let path = parse_path(&req.path)?;
-    let result = match req.expected_generation {
-        Some(expected) => s
-            .graph
-            .write_slot_expected(&path, &req.slot, req.value, expected),
-        None => s.graph.write_slot(&path, &req.slot, req.value),
-    };
-    match result {
-        Ok(gen) => Ok(Json(WriteSlotResp { generation: gen }).into_response()),
-        Err(graph::GraphError::GenerationMismatch { current, .. }) => Ok((
+    match write_slot_core(&s, req)? {
+        WriteSlotResult::Ok { generation } => {
+            Ok(Json(WriteSlotResp { generation }).into_response())
+        }
+        WriteSlotResult::GenerationMismatch { current_generation } => Ok((
             StatusCode::CONFLICT,
             Json(serde_json::json!({
                 "code": "generation_mismatch",
-                "current_generation": current,
+                "current_generation": current_generation,
             })),
         )
             .into_response()),
-        Err(e) => Err(ApiError::from_graph(e)),
     }
 }
 

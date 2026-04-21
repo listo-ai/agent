@@ -34,9 +34,15 @@ import {
   SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui";
+import { NavTreeView, NavModeToggle, useNavTree, useNavMode } from "@/lib/nav";
+import {
+  RemoteAgentsSection,
+  ScopeIndicator,
+  useRemoteAgents,
+} from "@/lib/fleet";
 
 // ---------------------------------------------------------------------------
-// Static nav items
+// Static nav items (admin mode)
 // ---------------------------------------------------------------------------
 
 interface NavItem { label: string; to: string; icon: React.ElementType; }
@@ -48,10 +54,81 @@ const BOTTOM_NAV: NavItem[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// AppSidebar
+// Admin sidebar content (flows tree + pages/blocks/settings)
+// ---------------------------------------------------------------------------
+
+function AdminSidebarContent() {
+  const remoteAgents = useRemoteAgents();
+
+  return (
+    <SidebarContent>
+      <ScopeIndicator />
+
+      <SidebarGroup>
+        <SidebarGroupLabel>Flows</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <FlowsTree />
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      {remoteAgents.length > 0 && (
+        <SidebarGroup>
+          <SidebarGroupLabel>Remote Agents</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <RemoteAgentsSection agents={remoteAgents} />
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
+
+      <SidebarGroup>
+        <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {BOTTOM_NAV.map(({ label, to, icon: Icon }) => (
+              <SidebarMenuItem key={to}>
+                <SidebarMenuButton asChild tooltip={label}>
+                  <NavLink to={to}>
+                    <Icon />
+                    <span>{label}</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    </SidebarContent>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// User sidebar content (ui.nav tree)
+// ---------------------------------------------------------------------------
+
+function UserSidebarContent() {
+  const { userNavRootId } = useNavMode();
+  const navState = useNavTree(userNavRootId ?? undefined);
+
+  return (
+    <SidebarContent>
+      <ScopeIndicator />
+      <SidebarGroup>
+        <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <NavTreeView state={navState} />
+        </SidebarGroupContent>
+      </SidebarGroup>
+    </SidebarContent>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AppSidebar — selects admin or user content; always shows the toggle
 // ---------------------------------------------------------------------------
 
 export function AppSidebar() {
+  const { navMode, setNavMode } = useNavMode();
+
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
@@ -69,34 +146,14 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Flows</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <FlowsTree />
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {navMode === "admin" ? <AdminSidebarContent /> : <UserSidebarContent />}
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {BOTTOM_NAV.map(({ label, to, icon: Icon }) => (
-                <SidebarMenuItem key={to}>
-                  <SidebarMenuButton asChild tooltip={label}>
-                    <NavLink to={to}>
-                      <Icon />
-                      <span>{label}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter />
+      <SidebarFooter>
+        <NavModeToggle
+          mode={navMode}
+          onToggle={() => setNavMode(navMode === "admin" ? "user" : "admin")}
+        />
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

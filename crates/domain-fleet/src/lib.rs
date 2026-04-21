@@ -1,17 +1,37 @@
-//! Fleet remote-agent and group node kinds.
+//! Fleet remote-agent, group, and connection node kinds.
 //!
-//! Registers `sys.fleet.remote-agent` and `sys.fleet.group` so the
-//! graph tree can hold discovered remotes without any parallel state.
-//! See `docs/design/FLEET-TRANSPORT.md § "The remote-agent node"`.
+//! Registers `sys.fleet.remote-agent`, `sys.fleet.group`, and
+//! `sys.agent.fleet` so the graph tree can hold discovered remotes and
+//! expose the live fleet transport state without any parallel state.
+//! See `docs/design/FLEET-TRANSPORT.md`.
 
 use blocks_sdk::NodeKind;
 use graph::KindRegistry;
 
-/// Register both fleet kinds into the shared [`KindRegistry`].
+/// Register all fleet kinds into the shared [`KindRegistry`].
 pub fn register_kinds(kinds: &KindRegistry) {
     kinds.register(<RemoteAgent as NodeKind>::manifest());
     kinds.register(<Group as NodeKind>::manifest());
+    kinds.register(<FleetConnection as NodeKind>::manifest());
 }
+
+/// `sys.agent.fleet` — singleton node that mirrors the live fleet
+/// transport connection status into the graph.
+///
+/// Lives under `/agent` (a `sys.core.folder`) until `sys.agent.self`
+/// lands as its proper parent. The `health()` stream from
+/// [`spi::FleetTransport`] drives the `connection` slot so flows can
+/// react to "cloud dropped" as a first-class graph event.
+///
+/// See `docs/design/FLEET-TRANSPORT.md § "Representing the fleet
+/// connection as a node"`.
+#[derive(blocks_sdk::NodeKind)]
+#[node(
+    kind = "sys.agent.fleet",
+    manifest = "manifests/fleet_connection.yaml",
+    behavior = "none"
+)]
+pub struct FleetConnection;
 
 /// `sys.fleet.remote-agent` — one known remote agent.
 ///
@@ -55,6 +75,33 @@ mod tests {
             kinds.contains(&KindId::new("sys.fleet.group")),
             "sys.fleet.group not registered",
         );
+        assert!(
+            kinds.contains(&KindId::new("sys.agent.fleet")),
+            "sys.agent.fleet not registered",
+        );
+    }
+
+    #[test]
+    fn fleet_connection_is_not_a_container_and_is_one_per_parent() {
+        let kinds = graph::KindRegistry::new();
+        register_kinds(&kinds);
+        let m = kinds.get(&KindId::new("sys.agent.fleet")).unwrap();
+        assert!(
+            !m.facets.contains(spi::Facet::IsContainer),
+            "sys.agent.fleet must not be a container",
+        );
+        assert_eq!(
+            m.containment.cardinality_per_parent,
+            spi::Cardinality::OnePerParent,
+            "only one fleet connection node per agent folder",
+        );
+        let slot_names: Vec<_> = m.slots.iter().map(|s| s.name.as_str()).collect();
+        for expected in &["backend", "connection", "messages_in", "messages_out", "url"] {
+            assert!(
+                slot_names.contains(expected),
+                "sys.agent.fleet missing slot `{expected}`",
+            );
+        }
     }
 
     #[test]

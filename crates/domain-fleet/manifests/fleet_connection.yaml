@@ -1,0 +1,56 @@
+id: sys.agent.fleet
+display_name: Fleet Connection
+# Singleton under the agent folder — represents the live fleet transport
+# connection. "Connection state is a graph node" — no parallel status
+# struct. See docs/design/FLEET-TRANSPORT.md § "Representing the fleet
+# connection as a node".
+facets:
+  - isSystem
+containment:
+  # Lives under /agent (sys.core.folder) until sys.agent.self lands.
+  must_live_under:
+    - kind: sys.core.folder
+    - kind: sys.core.station
+  cardinality_per_parent: one_per_parent
+  cascade: strict
+slots:
+  - name: backend
+    role: status
+    value_schema:
+      type: string
+      enum: ["none", "nats", "zenoh", "mqtt"]
+    writable: false
+  - name: connection
+    role: status
+    value_schema:
+      type: string
+      enum: ["connected", "reconnecting", "disconnected", "disabled"]
+    writable: false
+  - name: connected_since
+    role: status
+    value_schema:
+      type: string
+    writable: false
+    nullable: true
+  - name: last_error
+    role: status
+    value_schema:
+      type: string
+    writable: false
+    nullable: true
+  - name: messages_in
+    role: status
+    value_schema:
+      type: integer
+    writable: false
+  - name: messages_out
+    role: status
+    value_schema:
+      type: integer
+    writable: false
+  - name: url
+    role: config
+    value_schema:
+      type: string
+    writable: true
+    nullable: true

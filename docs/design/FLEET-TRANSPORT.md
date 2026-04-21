@@ -371,16 +371,53 @@ Verified on [`dev/cloud.yaml`](../../dev/cloud.yaml) + [`dev/edge.yaml`](../../d
 
 **Not yet shipped (fleet connection):** the actual fleet WS/NATS connection that Studio uses as its `fleetRequestFn`. The `AgentClient` scope-switching seam is complete; what remains is wiring up a NATS-WS (or Zenoh equivalent) client in Studio and passing it as `fleetRequestFn` when constructing a `Remote`-scoped `AgentClient`. The URL-based scope routing in Studio (`/scope/:tenant/:agent_id/...`) follows once the connection is live.
 
+## What's not yet shipped
+
+The table below captures every gap between what the doc describes and what is actually in the codebase. Items are ordered by implementation priority (highest first).
+
+| # | Gap | Why it matters | Where the work lands |
+|---|---|---|---|
+| **1** | **`sys.agent.fleet` node kind not registered** | `health()` stream exists on the trait but never seeds a graph node. "Connection state is a graph node" is a locked decision, not yet reality. | New YAML manifest in `crates/domain-fleet/manifests/`; `register_kinds()` call in `domain-fleet`; `health()` subscriber in `agent run` that writes slots. |
+| **2** | **Only `api.v1.nodes.list` fleet handler mounted** | `fleet::mount` (in `transport-rest/src/fleet.rs`) registers exactly one subject. `nodes.get`, `slots.write`, and every other REST route that should be reachable over fleet are absent. | Extend `fleet::mount` with the same seam already used for `list_nodes_core` — wrap each `*_core` fn in a `FleetHandler` impl and call `transport.serve(…)`. |
+| **3** | **Studio fleet WS connection (`fleetRequestFn`) missing** | `AgentClient` scope-switching is complete. Passing a real NATS-WS (or Zenoh-equivalent) closure as `fleetRequestFn` is the only remaining seam. Without it, `Remote` scoped clients can never issue a live request. | New module in `frontend/src/lib/` (or `clients/ts/`) that opens a NATS-WS connection and exports a `FleetRequestFn`-compatible closure. |
+| **4** | **Studio `/scope/:tenant/:agent_id/...` URL routing missing** | `router.tsx` has no `/scope/` routes. The design spec states the URL is the source of truth for current scope (deep-linking, back/forward, tab isolation). Without it scope is ephemeral window state. | Add a `/scope/:tenant/:agent_id/*` route in `router.tsx`; Zustand store subscribes to URL params and exposes current `FleetScope` to `AgentClient`. |
+| **5** | **Frontend remote-agent tree rendering missing** | Selecting a `sys.fleet.remote-agent` node should push a `Remote` scope and expand the remote subtree inline via fleet req/reply. No frontend code for the select → expand → render path exists yet. | New tree component / hook that detects `sys.fleet.remote-agent` kind, constructs a `Remote`-scoped `AgentClient`, and renders the subtree. Requires gaps 3 and 4 to land first. |
+| **6** | **`AuthContext` not threaded into fleet `FleetHandler::handle`** | Axum routes extract `AuthContext` from HTTP headers. Fleet handlers receive raw bytes — no auth extraction, no tenant enforcement on the fleet path. | Pass bearer token as a message header on fleet requests (same header name as HTTP); extract in a wrapper inside `fleet::mount` before forwarding to the handler. Mirrors the axum extractor pattern. |
+| **7** | **`transport-fleet-nats` crate not started** | NATS is the planned SaaS-primary backend. JetStream durable outbox, NATS WS for browser Studio, and multi-tenant account isolation all block on this crate existing. | New crate at `crates/transport-fleet-nats/`. Implements `FleetTransport`. Cargo feature `fleet-nats`. Config tag `backend: nats`. NATS-WS client lives here or in a companion `clients/ts/` module for Studio. |
+
+### Deferred (explicitly out of scope for v1)
+
+| Item | Reason |
+|---|---|
+| `Scope::Broadcast` / `AgentFilter` fan-out | Partial-reply handling and timeout aggregation need a dedicated design pass. |
+| Cloud-populated `sys.fleet.remote-agent` discovery | Depends on cloud-side presence tracking (cloud control plane not yet landed). |
+| MQTT backend | Only relevant when integrating an existing MQTT broker fleet. |
+
+### Recommended sequencing
+
+The biggest-bang-for-buck order based on dependency structure:
+
+1. **`sys.agent.fleet` kind registration** — small, self-contained, closes the "connection state is a graph node" invariant that's a locked decision.
+2. **Remaining `api.v1.*` fleet handlers** — mechanical, additive, no new abstractions, high value for remote Studio operations.
+3. **Studio `/scope/:...` URL routing + `fleetRequestFn` wiring** — unblocks 4 and 5; the seam is ready, only the Studio glue remains.
+4. **Frontend remote-agent tree rendering** — depends on 3; after this lands, the full Studio → cloud → edge drill-down path is complete.
+5. **`AuthContext` in fleet handlers** — correctness fix; can land in parallel with 2 but must land before any multi-tenant fleet path is exposed externally.
+6. **`transport-fleet-nats`** — largest item, unblocks browser Studio fleet and production multi-tenant SaaS topology.
+
+---
+
 ## Evolution path
 
 | Today | Stage N | Stage N+1 |
 |---|---|---|
-| `transport-fleet-zenoh` shipped, embedded, one handler mounted | + remaining `api.v1.*` handlers (`nodes.get`, `slots.write`, …) on the same seam | + streaming replies for long-running ops |
-| Axum `AuthContext` extractor threaded through first mutating routes | + `AuthContext` threaded into fleet `FleetHandler::handle` via reply-bearing headers | + `StaticTokenProvider` wired from config for real tenant isolation |
-| `transport-fleet-nats` planned | + NATS backend alongside Zenoh, same trait | + NATS-WS client for Studio browser, JetStream durable outbox |
+| `transport-fleet-zenoh` shipped, embedded; only `nodes.list` handler mounted | + remaining `api.v1.*` handlers (`nodes.get`, `slots.write`, …) on the same seam | + streaming replies for long-running ops |
+| `sys.agent.fleet` manifest drafted; kind not yet registered, `health()` not seeding graph | + manifest registered in `domain-fleet`; `health()` subscriber writes connection slots | + `last_error` + counters driven by backend metrics |
+| Axum `AuthContext` extractor threaded through REST routes; fleet path has no auth extraction | + bearer token forwarded as fleet message header; extracted in `fleet::mount` wrapper | + `StaticTokenProvider` wired from config for real tenant isolation |
+| `transport-fleet-nats` planned, no crate | + NATS backend crate alongside Zenoh, same trait | + NATS-WS client for Studio browser, JetStream durable outbox |
+| Studio `AgentClient` scope-switching seam complete; no `fleetRequestFn` implementation | + Studio fleet WS connection wired as `fleetRequestFn`; `/scope/:tenant/:agent_id/...` URL routing | + remote-agent tree rendering (inline subtree via fleet req/reply) |
 | Single-process dev topology | + multi-region cloud, leaf chaining | + federated multi-tenant clouds |
-| Object-store URLs for bulk | + content-addressed cache at each edge | + peer caching ("ask my neighbour first") |
-| `FleetScope` type + TS mirror shipped; `sys.fleet.remote-agent` / `sys.fleet.group` kinds registered; `RequestTransport` interface + `FleetRequestTransport` + `AgentClient` scope switching shipped | + Studio fleet WS/NATS-WS connection wired as `fleetRequestFn`; Studio `/scope/:tenant/:agent_id/...` URL routing | + cloud-populated discovery under `sys.fleet.group`, then `Scope::Broadcast` with `AgentFilter` |
+| Object-store URLs for bulk transfer | + content-addressed cache at each edge | + peer caching ("ask my neighbour first") |
+| `sys.fleet.remote-agent` / `sys.fleet.group` kinds registered; manual node creation only | + cloud-populated discovery under `sys.fleet.group` | + `Scope::Broadcast` with `AgentFilter` |
 
 Each row is additive; the trait signature never changes.
 

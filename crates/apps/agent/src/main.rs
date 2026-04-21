@@ -37,6 +37,7 @@ use engine::{kinds as engine_kinds, Engine};
 use graph::{seed, GraphStore, KindRegistry};
 use spi::{AuthProvider, FleetTransport, KindId, TenantId};
 use tokio::signal::unix::{signal, SignalKind};
+use tokio_stream::StreamExt as _;
 use tracing::{info, warn};
 use transport_cli::{CliCommand, GlobalOpts};
 use transport_fleet_zenoh::{ZenohConfig, ZenohTransport};
@@ -471,6 +472,9 @@ async fn run_daemon(
         }
     } // end if let Some(path) = db_path
 
+    // Seed the sys.agent.fleet node and write initial connection state.
+    seed_fleet_node(&graph, &cfg.fleet).context("seeding /agent/fleet node")?;
+
     // Optional embedded fleet transport. `NullTransport` stays in place
     // when `fleet: null` (the default) is resolved.
     let _fleet_servers = match &cfg.fleet {
@@ -501,6 +505,10 @@ async fn run_daemon(
                     .await
                     .context("zenoh connect")?,
             );
+            // Spawn the health monitor — writes HealthStatus changes into
+            // the `/agent/fleet` node's `connection` slot so flows can
+            // subscribe to "cloud dropped" as a first-class graph event.
+            spawn_health_monitor(graph.clone(), transport.health());
             app_state = app_state.with_fleet(transport);
             let servers = transport_rest::fleet::mount(app_state.clone(), &tenant_id, agent_id)
                 .await
@@ -749,6 +757,93 @@ fn seed_plugin_nodes(graph: &GraphStore, blocks: &BlockRegistry) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+/// Create `/agent/fleet` (`sys.agent.fleet`) under the `/agent` folder
+/// and write the initial `backend` + `connection` slots derived from
+/// the resolved fleet config.
+///
+/// Idempotent — if the node already exists (e.g. from a persisted
+/// SQLite graph) the create is skipped and the slots are refreshed.
+fn seed_fleet_node(graph: &GraphStore, fleet: &FleetConfig) -> Result<()> {
+    use std::str::FromStr;
+
+    let agent_path = spi::NodePath::from_str("/agent").expect("literal path");
+    let fleet_path = agent_path.child("fleet");
+
+    if graph.get(&fleet_path).is_none() {
+        graph
+            .create_child(&agent_path, KindId::new("sys.agent.fleet"), "fleet")
+            .context("creating /agent/fleet node")?;
+    }
+
+    let (backend, connection) = match fleet {
+        FleetConfig::Null => ("none", "disabled"),
+        FleetConfig::Zenoh { .. } => ("zenoh", "disconnected"),
+    };
+    graph.write_slot(
+        &fleet_path,
+        "backend",
+        serde_json::Value::String(backend.to_string()),
+    )?;
+    graph.write_slot(
+        &fleet_path,
+        "connection",
+        serde_json::Value::String(connection.to_string()),
+    )?;
+    // Seed counters to zero — graph stores them as status slots.
+    graph.write_slot(&fleet_path, "messages_in", serde_json::json!(0))?;
+    graph.write_slot(&fleet_path, "messages_out", serde_json::json!(0))?;
+
+    info!(%backend, %connection, "seeded /agent/fleet node");
+    Ok(())
+}
+
+/// Spawn a background task that drains the fleet transport's [`HealthStream`]
+/// and writes every [`spi::HealthStatus`] change into the `connection`
+/// slot of `/agent/fleet`.
+///
+/// This is the seam that makes "fleet disconnected" a first-class graph
+/// event — flows can subscribe to the slot just like any other.
+fn spawn_health_monitor(graph: Arc<GraphStore>, health: spi::HealthStream) {
+    use std::str::FromStr;
+    tokio::spawn(async move {
+        let fleet_path = spi::NodePath::from_str("/agent/fleet").expect("literal path");
+        let mut stream = health;
+        while let Some(status) = stream.next().await {
+            let val = match status {
+                spi::HealthStatus::Connected => "connected",
+                spi::HealthStatus::Reconnecting => "reconnecting",
+                spi::HealthStatus::Disconnected => "disconnected",
+                spi::HealthStatus::Disabled => "disabled",
+            };
+            tracing::debug!(connection = val, "fleet health update");
+            if let Err(e) = graph.write_slot(
+                &fleet_path,
+                "connection",
+                serde_json::Value::String(val.to_string()),
+            ) {
+                tracing::warn!(
+                    error = %e,
+                    connection = val,
+                    "failed to write fleet connection slot — node may not exist yet"
+                );
+            }
+            // Record the wall-clock time of the most recent successful connection.
+            if status == spi::HealthStatus::Connected {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+                    .to_string();
+                let _ = graph.write_slot(
+                    &fleet_path,
+                    "connected_since",
+                    serde_json::Value::String(ts),
+                );
+            }
+        }
+    });
 }
 
 async fn wait_for_termination() {

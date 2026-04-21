@@ -51,6 +51,7 @@ dependencies = [
  "serde_json",
  "spi",
  "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-subscriber",
  "transport-cli",
