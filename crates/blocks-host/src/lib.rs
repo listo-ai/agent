@@ -13,6 +13,7 @@
 
 pub mod host;
 mod manifest;
+pub mod proxy;
 mod registry;
 pub mod supervisor;
 pub mod wasm;

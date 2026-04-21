@@ -131,3 +131,17 @@ unused_must_use = "deny"
 unwrap_used = "warn"
 panic = "warn"
 todo = "warn"
+
+# ---------------------------------------------------------------------------
+# Local-dev overrides — redirect the git URLs above to sibling checkouts
+# when building locally. Ignored by `cargo publish` and downstream consumers.
+[patch."https://github.com/listo-ai/contracts"]
+listo-spi = { path = "../contracts/spi" }
+listo-ui-ir = { path = "../contracts/ui-ir" }
+
+[patch."https://github.com/listo-ai/agent-sdk"]
+listo-blocks-sdk = { path = "../agent-sdk/blocks-sdk" }
+listo-blocks-sdk-macros = { path = "../agent-sdk/blocks-sdk-macros" }
+
+[patch."https://github.com/listo-ai/agent-client-rs"]
+listo-agent-client = { path = "../agent-client-rs" }

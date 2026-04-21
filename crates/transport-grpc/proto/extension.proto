@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package us.spi.extension.v1;
+
+// Extension gRPC contract.
+//
+// An extension is an out-of-process binary the engine supervises over a
+// Unix-domain socket. The engine is the client; the extension serves.
+//
+// Stage 0: schema only — no code generation wired up yet.
+
+service Extension {
+  // Describe the extension: identity, version, declared kinds, capabilities.
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+
+  // Discover instances the extension knows about (e.g. BACnet Who-Is).
+  rpc Discover(DiscoverRequest) returns (stream DiscoverEvent);
+
+  // Subscribe to slot changes on nodes the extension owns.
+  rpc Subscribe(SubscribeRequest) returns (stream SlotEvent);
+
+  // Invoke an operation on a node the extension owns (e.g. write a point).
+  rpc Invoke(InvokeRequest) returns (InvokeResponse);
+
+  // Deliver an incoming Msg to a node's NodeBehavior::on_message. The
+  // engine calls this when a trigger-input slot on a process-backed node
+  // changes. The extension runs the handler and returns any outbound
+  // messages the handler emitted; the engine applies those emits back
+  // to the graph.
+  //
+  // Stateless dispatch: the extension does not hold per-node state —
+  // state lives in the graph's slots. The extension returns quickly.
+  rpc OnMessage(OnMessageRequest) returns (OnMessageResponse);
+
+  // Initialise a node: fires NodeBehavior::on_init. Called on node
+  // creation and whenever the node's `settings` slot changes. Drivers
+  // open connections, schedule timers, or seed output slots here.
+  //
+  // The response carries the same emitted-output shape as OnMessage so
+  // init-time state can be emitted on output ports.
+  rpc OnInit(OnInitRequest) returns (OnInitResponse);
+
+  // Liveness + readiness. Supervisor pings on a cadence.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message DescribeRequest {}
+
+message DescribeResponse {
+  string extension_id = 1;   // reverse-DNS, e.g. "com.example.mqtt"
+  string version = 2;        // semver
+  repeated KindDeclaration kinds = 3;
+  repeated string capabilities = 4; // declared manifest capabilities
+}
+
+message KindDeclaration {
+  string kind_id = 1;        // "com.example.mqtt.topic"
+  repeated string facets = 2;// "isProtocol", "isPoint", ...
+  // Containment + slot schemas travel as JSON so schema evolution doesn't
+  // require a proto rev. Validated against node.schema.json.
+  string containment_schema_json = 3;
+  string slot_schema_json = 4;
+}
+
+message DiscoverRequest {
+  string driver_node_path = 1; // NodePath, e.g. "/site/floor1/bacnet-a"
+}
+
+message DiscoverEvent {
+  string node_path = 1;
+  string kind_id = 2;
+  // Initial slot values, JSON-encoded per slot schema.
+  map<string, string> slot_values_json = 3;
+}
+
+message SubscribeRequest {
+  repeated string node_paths = 1;
+  repeated string slots = 2; // empty = all slots
+}
+
+message SlotEvent {
+  string node_path = 1;
+  string slot = 2;
+  string value_json = 3;
+  int64 timestamp_unix_ms = 4;
+}
+
+message InvokeRequest {
+  string node_path = 1;
+  string operation = 2;      // kind-specific, e.g. "write_slot"
+  map<string, string> args_json = 3;
+}
+
+message InvokeResponse {
+  bool ok = 1;
+  string error = 2;          // empty iff ok
+  string result_json = 3;    // operation-specific
+}
+
+message OnMessageRequest {
+  string node_path = 1;      // "/flow-1/greeter"
+  string kind_id = 2;        // "com.acme.hello.greeter"
+  string port = 3;           // trigger-input slot name, e.g. "in"
+  string msg_json = 4;       // JSON-encoded `spi::Msg`
+  string config_json = 5;    // JSON-encoded settings blob (from the node's
+                             // `settings` slot); "" if the kind has none.
+}
+
+message OnMessageResponse {
+  bool ok = 1;
+  string error = 2;          // empty iff ok; maps to NodeError::Runtime
+  repeated OutputEmit emitted = 3;
+}
+
+message OutputEmit {
+  string port = 1;           // output slot name the behaviour emitted on
+  string msg_json = 2;       // JSON-encoded `spi::Msg`
+}
+
+message OnInitRequest {
+  string node_path = 1;
+  string kind_id = 2;
+  string config_json = 3;    // JSON-encoded settings blob; "" if kind has none
+}
+
+message OnInitResponse {
+  bool ok = 1;
+  string error = 2;
+  repeated OutputEmit emitted = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  enum Status {
+    UNKNOWN = 0;
+    STARTING = 1;
+    READY = 2;
+    DEGRADED = 3;
+    STOPPING = 4;
+  }
+  Status status = 1;
+  string detail = 2;
+}

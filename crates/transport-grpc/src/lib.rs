@@ -21,7 +21,8 @@ pub use proto::{
     extension_server::{Extension, ExtensionServer},
     health_response::Status as HealthStatus,
     DescribeRequest, DescribeResponse, DiscoverEvent, DiscoverRequest, HealthRequest,
-    HealthResponse, InvokeRequest, InvokeResponse, KindDeclaration, SlotEvent, SubscribeRequest,
+    HealthResponse, InvokeRequest, InvokeResponse, KindDeclaration, OnInitRequest, OnInitResponse,
+    OnMessageRequest, OnMessageResponse, OutputEmit, SlotEvent, SubscribeRequest,
 };
 
 pub use prost;

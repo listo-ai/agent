@@ -243,8 +243,13 @@ async fn run_daemon(
     // <blocks_dir>/.sockets/ so they share the blocks dir's
     // writability guarantees without colliding with block contents.
     let socket_dir = cfg.blocks.dir.join(".sockets");
-    let plugin_host = match BlockHost::start(blocks.clone(), socket_dir, HostPolicy::default())
-        .await
+    let plugin_host = match BlockHost::start(
+        blocks.clone(),
+        socket_dir,
+        HostPolicy::default(),
+        engine.behaviors().clone(),
+    )
+    .await
     {
         Ok(h) => {
             info!("process-block host started");

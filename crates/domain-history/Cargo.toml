@@ -14,7 +14,6 @@ spi = { workspace = true }
 graph = { workspace = true }
 data-repos = { workspace = true }
 data-tsdb = { workspace = true }
-blocks-sdk = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

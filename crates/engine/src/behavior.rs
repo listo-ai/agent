@@ -94,6 +94,13 @@ impl BehaviorRegistry {
         Ok(())
     }
 
+    /// Remove a behaviour for a kind. Used by the process-block host
+    /// when a supervised block shuts down so stale proxies don't
+    /// silently swallow writes. No-op if the kind was never registered.
+    pub fn unregister(&self, kind: &KindId) {
+        self.write_inner().behaviors.remove(kind);
+    }
+
     /// Replace a node's settings blob. Writes to the node's synthesised
     /// `settings` config slot via [`GraphStore::write_slot`], so the
     /// change persists, fires `SlotChanged`, and is visible to every

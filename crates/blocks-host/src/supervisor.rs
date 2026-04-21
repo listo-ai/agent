@@ -255,6 +255,14 @@ impl ProcessSupervisor {
         &self.identity
     }
 
+    /// Clone of the live `ExtensionClient`. Tonic clients wrap an `Arc`
+    /// internally so cloning is cheap. The proxy behaviour holds a
+    /// clone for the lifetime of this supervisor's current child; on
+    /// restart the host clears and re-seeds the shared slot.
+    pub fn client(&self) -> ExtensionClient<tonic::transport::Channel> {
+        self.client.clone()
+    }
+
     /// Ping the block's `Health` RPC. Call from a supervisor tick.
     pub async fn health(&mut self) -> Result<HealthResponse, SupervisorError> {
         let resp = self

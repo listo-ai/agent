@@ -16,11 +16,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use engine::BehaviorRegistry;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::manifest::{BlockId, ProcessBinContribution};
+use crate::proxy::{ClientSlot, ProcessProxyBehavior};
 use crate::registry::{BlockRegistry, PluginLifecycle};
 use crate::supervisor::{ProcessSupervisor, SupervisorError};
 
@@ -106,6 +108,11 @@ struct HostInner {
     socket_dir: PathBuf,
     policy: HostPolicy,
     supervised: Mutex<HashMap<BlockId, Supervised>>,
+    /// Hook for registering proxy behaviours for supervised kinds. The
+    /// engine owns the real registry; the host holds a clone so every
+    /// supervisor task can register its kinds on spawn and unregister
+    /// on final cancel. Cheap to clone — `Arc` inside.
+    behaviors: BehaviorRegistry,
 }
 
 impl BlockHost {
@@ -120,6 +127,7 @@ impl BlockHost {
         registry: BlockRegistry,
         socket_dir: PathBuf,
         policy: HostPolicy,
+        behaviors: BehaviorRegistry,
     ) -> std::io::Result<Self> {
         std::fs::create_dir_all(&socket_dir)?;
         let host = Self {
@@ -128,6 +136,7 @@ impl BlockHost {
                 socket_dir,
                 policy,
                 supervised: Mutex::new(HashMap::new()),
+                behaviors,
             }),
         };
         host.reconcile().await;
@@ -237,6 +246,9 @@ impl BlockHost {
         let policy = self.inner.policy.clone();
         let args = bin.args.clone();
 
+        let client_slot: ClientSlot = Arc::new(RwLock::new(None));
+        let behaviors = self.inner.behaviors.clone();
+
         let handle = tokio::spawn(supervise_loop(
             task_id,
             bin_path,
@@ -245,6 +257,8 @@ impl BlockHost {
             policy,
             task_state,
             task_cancel,
+            client_slot,
+            behaviors,
         ));
         sup.insert(
             id.clone(),
@@ -289,9 +303,14 @@ async fn supervise_loop(
     policy: HostPolicy,
     state: Arc<RwLock<PluginRuntimeState>>,
     cancel: CancellationToken,
+    client_slot: ClientSlot,
+    behaviors: BehaviorRegistry,
 ) {
     let mut attempt: u32 = 0;
     let mut failure_times: Vec<Instant> = Vec::new();
+    // Kinds we've registered proxies for. Populated once on first
+    // successful `Describe`; unregistered on final cancel.
+    let mut registered_kinds: Vec<spi::KindId> = Vec::new();
 
     loop {
         if cancel.is_cancelled() {
@@ -345,13 +364,45 @@ async fn supervise_loop(
         set_state(&state, PluginRuntimeState::Ready).await;
         attempt = 0; // successful start resets attempt counter
 
+        // Publish the live client so proxies can route `on_message`
+        // RPCs. Register proxies once — on restart the Arc slot is
+        // updated in place so proxies keep pointing at the right
+        // supervisor without re-registration.
+        *client_slot.write().await = Some(sup.client());
+        if registered_kinds.is_empty() {
+            for kind in &sup.identity().kinds {
+                let kind_id = spi::KindId::from(kind.kind_id.as_str());
+                let proxy = ProcessProxyBehavior::new(
+                    id.clone(),
+                    kind_id.clone(),
+                    client_slot.clone(),
+                );
+                match behaviors.register(kind_id.clone(), Arc::new(proxy)) {
+                    Ok(()) => {
+                        tracing::info!(block = %id, kind = %kind_id, "registered process proxy behaviour");
+                        registered_kinds.push(kind_id);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            block = %id, kind = %kind_id, error = %e,
+                            "could not register process proxy — kind missing from graph registry?",
+                        );
+                    }
+                }
+            }
+        }
+
         // Drive the block until it fails or we're cancelled.
         let reason = run_until_failure(&mut sup, &policy, &state, &cancel).await;
+        // Clear the client slot so in-flight messages drop rather than
+        // hit a dead channel during the restart / shutdown window.
+        *client_slot.write().await = None;
         sup.shutdown().await;
 
         match reason {
             RunReason::Cancelled => {
                 set_state(&state, PluginRuntimeState::Stopped).await;
+                // Fall through to unregister below.
                 break;
             }
             RunReason::Failure(msg) => {
@@ -385,6 +436,14 @@ async fn supervise_loop(
                 }
             }
         }
+    }
+
+    // Final teardown: block is going away for good. Unregister every
+    // proxy we installed so the engine stops routing traffic through a
+    // dead channel.
+    for kind_id in &registered_kinds {
+        behaviors.unregister(kind_id);
+        tracing::info!(block = %id, kind = %kind_id, "unregistered process proxy behaviour");
     }
 }
 

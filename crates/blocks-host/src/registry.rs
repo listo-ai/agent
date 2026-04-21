@@ -194,6 +194,12 @@ impl BlockRegistry {
                 Some(n) => n.to_string(),
                 None => continue,
             };
+            // Skip dotfiles/dotdirs — the runtime plants `.sockets/` here for
+            // per-block UDS endpoints, and users' editors drop `.DS_Store`
+            // etc. None of these are blocks.
+            if dir_name.starts_with('.') {
+                continue;
+            }
 
             let (block, kinds_for) =
                 validate_one(&path, &dir_name, self.host_caps.as_ref(), &mut seen_ids);
