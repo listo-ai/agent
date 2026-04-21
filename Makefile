@@ -18,7 +18,7 @@ export PATH := $(HOME)/.local/bin:$(HOME)/.bun/bin:$(HOME)/.npm-global/bin:$(HOM
 
 PNPM          := pnpm
 CLIENT_PKG    := @listo/agent-client
-FRONTEND_DIR  := frontend
+FRONTEND_DIR  := ../../listo-repos/studio
 AGENT_CLI_MANIFEST := ../agent-cli/Cargo.toml
 
 # ── release flag ──────────────────────────────────────────────────────────────
@@ -64,11 +64,11 @@ run: ## Run edge agent on :8080 using dev/edge.yaml + dev/edge.db (RELEASE=1 for
 
 .PHONY: frontend
 frontend: build-client ## Start the Rsbuild dev server (builds client first)
-	$(PNPM) --filter @sys/studio dev
+	$(PNPM) --filter @listo/studio dev
 
 .PHONY: frontend-build
 frontend-build: build-client ## Production web build of the Studio UI
-	$(PNPM) --filter @sys/studio build:web
+	$(PNPM) --filter @listo/studio build:web
 
 # ── two-agent dev env (cloud + edge side-by-side) ────────────────────────────
 # See dev/README.md for the full port map and rationale.
@@ -88,12 +88,12 @@ run-edge: ## Run the edge agent on 127.0.0.1:8082 (config: dev/edge.yaml)
 .PHONY: studio-cloud
 studio-cloud: build-client ## Start Studio pointed at the cloud agent (http://localhost:3001)
 	PUBLIC_AGENT_URL=http://localhost:8081 \
-	  $(PNPM) --filter @sys/studio dev --port 3001
+	  $(PNPM) --filter @listo/studio dev --port 3001
 
 .PHONY: studio-edge
 studio-edge: build-client ## Start Studio pointed at the edge agent (http://localhost:3002)
 	PUBLIC_AGENT_URL=http://localhost:8082 \
-	  $(PNPM) --filter @sys/studio dev --port 3002
+	  $(PNPM) --filter @listo/studio dev --port 3002
 
 .PHONY: kill
 kill: ## Kill anything running on agent/studio ports (8080-8082, 3000-3002)

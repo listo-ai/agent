@@ -1,5 +1,5 @@
 packages:
-  - "frontend"
+  - "../../listo-repos/studio"
   - "examples/block-hello"
   - "../../listo-repos/agent-client-ts"
   - "../../listo-repos/ui-kit"
