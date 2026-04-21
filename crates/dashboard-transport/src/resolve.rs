@@ -63,6 +63,12 @@ pub enum ResolveResponse {
     Ok {
         render: ComponentTree,
         subscriptions: Vec<SubscriptionPlan>,
+        /// Write plan — one entry per two-way bound control (`toggle`,
+        /// `slider`) in the resolved tree. Keyed on `component_id`.
+        /// Absent entries mean the control is read-only for this caller
+        /// (ACL-denied write or binding error).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        writes: Vec<WritePlanEntry>,
         meta: ResolveMeta,
     },
     DryRun {
@@ -98,6 +104,41 @@ pub struct SubscriptionPlan {
     /// extraction the initial fetch applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
+}
+
+/// One entry in the write plan emitted alongside a resolved tree.
+///
+/// Clients look up the entry by `component_id` when a bound control
+/// changes and POST `{path, slot, value[, expected_generation]}` to
+/// `POST /api/v1/slots`. A missing entry (ACL-denied, binding error)
+/// means the control renders disabled.
+///
+/// **LWW** entries omit `generation` (send write without
+/// `expected_generation`). **OCC** entries carry `generation` baked
+/// from the current slot at resolve time; the client updates it on
+/// every `slot_changed` SSE echo before the next write.
+///
+/// NOTE: per-slot generation baking (OCC, S5) requires `NodeSnapshot`
+/// to expose `slot_generations: HashMap<String, u64>`. That field is
+/// not yet present — OCC entries carry `generation: None` until the
+/// graph reader is extended (see SDUI-WRITE-PATH.md § S5 flag).
+#[derive(Debug, Clone, Serialize)]
+pub struct WritePlanEntry {
+    /// The IR component's `id` field — used by the client as the lookup key.
+    pub component_id: String,
+    /// Absolute node path (e.g. `/buildings/building-1`).
+    pub path: String,
+    /// Slot name (e.g. `"enabled"`, `"brightness"`).
+    pub slot: String,
+    /// Concurrency mode. `"lww"` omits `expected_generation` on
+    /// writes; `"occ"` requires it.
+    pub concurrency: ui_ir::Concurrency,
+    /// For `"occ"` entries: current slot generation baked at resolve
+    /// time. Client updates this on every `slot_changed` SSE echo.
+    /// `None` for `"lww"` entries and until per-slot generation is
+    /// available in `NodeSnapshot`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -184,6 +225,18 @@ pub async fn handler(
     let subscriptions = crate::render::derive_subscriptions_for_layout(&layout, &*state.reader);
     enforce_subscription_cap(&subscriptions)?;
 
+    // Resolve the target node for write-plan derivation. In an authored
+    // page, $target is the first stack frame when one is provided.
+    let target_for_writes = req.stack.first().and_then(|id| state.reader.get(id));
+    let writes = crate::render::derive_write_plan_for_layout(
+        &layout,
+        target_for_writes.as_ref(),
+        &*state.reader,
+        &*state.acl,
+        req.auth_subject.as_deref(),
+        &*state.audit,
+    );
+
     let meta = ResolveMeta {
         cache_key: page.version,
         widget_count: count_components(&render.root),
@@ -195,6 +248,7 @@ pub async fn handler(
     Ok(Json(ResolveResponse::Ok {
         render,
         subscriptions,
+        writes,
         meta,
     }))
 }
@@ -365,7 +419,113 @@ fn collect_binding_issues(
         );
     });
 
+    // Validate `bind` fields on two-way bound controls (toggle, slider).
+    // These carry bare binding expressions (not wrapped in `{{...}}`),
+    // so the general walk above doesn't reach them. We walk the tree
+    // separately and validate that:
+    //   1. The expression is syntactically valid.
+    //   2. For `$target.*` expressions: a target frame is available and
+    //      the slot name is not a meta field (id, path, name, kind).
+    //   3. The expression resolves to *something* — not a missing slot.
+    let target_node = req.stack.first().and_then(|id| reader.get(id));
+    collect_write_binding_issues(layout, target_node.as_ref(), &issues_cell);
+
     issues_cell.into_inner()
+}
+
+/// Walk the JSON tree and validate `bind` fields on `toggle` / `slider`
+/// components. Issues are pushed into `cells`.
+fn collect_write_binding_issues(
+    v: &JsonValue,
+    target: Option<&dashboard_runtime::NodeSnapshot>,
+    issues: &std::cell::RefCell<Vec<ResolveIssue>>,
+) {
+    match v {
+        JsonValue::Array(a) => {
+            for item in a {
+                collect_write_binding_issues(item, target, issues);
+            }
+        }
+        JsonValue::Object(m) => {
+            let kind = m.get("type").and_then(|v| v.as_str());
+            if matches!(kind, Some("toggle") | Some("slider")) {
+                let component_id = m.get("id").and_then(|v| v.as_str()).unwrap_or("<unnamed>");
+                let loc = format!("{kind}.{component_id}.bind", kind = kind.unwrap_or("?"));
+
+                if let Some(bind_val) = m.get("bind") {
+                    // Extract the raw slot expression.
+                    let expr: std::borrow::Cow<str> = match bind_val {
+                        JsonValue::String(s) => std::borrow::Cow::Borrowed(s.as_str()),
+                        JsonValue::Object(obj) => obj
+                            .get("slot")
+                            .and_then(|v| v.as_str())
+                            .map(std::borrow::Cow::Borrowed)
+                            .unwrap_or(std::borrow::Cow::Borrowed("")),
+                        _ => std::borrow::Cow::Borrowed(""),
+                    };
+
+                    if expr.is_empty() {
+                        issues.borrow_mut().push(ResolveIssue {
+                            location: loc.clone(),
+                            message: "bind.slot is empty or missing".into(),
+                        });
+                    } else if let Some(tail) = expr.strip_prefix("$target.") {
+                        // $target.<slot> — most common case.
+                        let slot = tail.split('.').next().unwrap_or(tail);
+                        if matches!(slot, "id" | "path" | "name" | "kind") {
+                            issues.borrow_mut().push(ResolveIssue {
+                                location: loc.clone(),
+                                message: format!(
+                                    "bind `{expr}` resolves to a meta field `{slot}`, \
+                                     not a writable slot"
+                                ),
+                            });
+                        } else if target.is_none() {
+                            issues.borrow_mut().push(ResolveIssue {
+                                location: loc.clone(),
+                                message: format!(
+                                    "bind `{expr}` requires a $target context \
+                                     but no stack frame was provided"
+                                ),
+                            });
+                        } else if let Some(t) = target {
+                            // Slot exists check — warn if the slot is absent
+                            // in the current snapshot (may be a new slot not
+                            // yet written, so this is a warning, not an error).
+                            if !t.slots.contains_key(slot) {
+                                issues.borrow_mut().push(ResolveIssue {
+                                    location: loc.clone(),
+                                    message: format!(
+                                        "bind `{expr}`: slot `{slot}` not found on \
+                                         target node (node may not have written it yet)"
+                                    ),
+                                });
+                            }
+                        }
+                    } else {
+                        // Not a recognised write-binding pattern.
+                        issues.borrow_mut().push(ResolveIssue {
+                            location: loc.clone(),
+                            message: format!(
+                                "bind `{expr}` is not a supported write-binding \
+                                 expression (expected `$target.<slot>` form)"
+                            ),
+                        });
+                    }
+                } else {
+                    issues.borrow_mut().push(ResolveIssue {
+                        location: loc.clone(),
+                        message: "bound control missing required `bind` field".into(),
+                    });
+                }
+            }
+            // Always recurse.
+            for val in m.values() {
+                collect_write_binding_issues(val, target, issues);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn enforce_subscription_cap(subs: &[SubscriptionPlan]) -> Result<(), TransportError> {
@@ -491,6 +651,8 @@ fn variant_name(c: &Component) -> &'static str {
         Component::Drawer { .. } => "drawer",
         Component::Button { .. } => "button",
         Component::Form { .. } => "form",
+        Component::Toggle { .. } => "toggle",
+        Component::Slider { .. } => "slider",
         Component::Forbidden { .. } => "forbidden",
         Component::Dangling { .. } => "dangling",
         Component::Custom { .. } => "custom",

@@ -6,6 +6,10 @@
 //!
 //! See docs/sessions/UNDO-REDO.md for the full design.
 
+mod scope;
+
+pub use scope::{flows_query_schema, FlowDto, FlowsQuery, FlowsScope};
+
 use std::sync::Arc;
 
 use data_entities::{FlowDocument, FlowId, FlowRevision, RevisionId, RevisionOp};

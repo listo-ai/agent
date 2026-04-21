@@ -471,6 +471,7 @@ dependencies = [
  "listo-blocks-sdk",
  "listo-spi",
  "process-wrap",
+ "query",
  "semver",
  "serde",
  "serde_json",
@@ -1284,6 +1285,8 @@ version = "0.0.1"
 dependencies = [
  "data-entities",
  "data-repos",
+ "graph",
+ "query",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

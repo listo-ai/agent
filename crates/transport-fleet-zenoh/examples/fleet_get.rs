@@ -2,9 +2,11 @@
 //!
 //! Usage:
 //!   cargo run --release -p transport-fleet-zenoh --example fleet_get -- \
-//!       tcp/127.0.0.1:17447 sys edge-1 api.v1.nodes.list
+//!       tcp/127.0.0.1:17447 sys edge-1 api.v1.search '{"scope":"nodes"}'
 //!
-//! Prints the reply as JSON.
+//! Prints the reply as JSON. The fifth arg is the optional JSON payload
+//! forwarded as the request body; `api.v1.search` requires a `scope`
+//! field.
 
 use std::env;
 use std::time::Duration;
@@ -24,7 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let kind = args
         .get(4)
         .cloned()
-        .unwrap_or_else(|| "api.v1.nodes.list".to_string());
+        .unwrap_or_else(|| "api.v1.search".to_string());
+    let payload_raw = args.get(5).cloned().unwrap_or_else(|| {
+        // Default: search nodes. The `api.v1.search` handler requires
+        // a `scope` field.
+        r#"{"scope":"nodes"}"#.to_string()
+    });
 
     eprintln!("connecting to {connect}, querying fleet.{tenant}.{agent_id}.{kind}...");
 
@@ -41,7 +48,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .kind(&kind)
         .build();
 
-    let reply = t.request(&subj, vec![], Duration::from_secs(3)).await?;
+    let payload = payload_raw.into_bytes();
+    let reply = t.request(&subj, payload, Duration::from_secs(3)).await?;
     let v: serde_json::Value = serde_json::from_slice(&reply)?;
     println!("{}", serde_json::to_string_pretty(&v)?);
     Ok(())

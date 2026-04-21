@@ -26,7 +26,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/blocks", get(list))
+        // Listing goes through `/api/v1/search?scope=blocks`.
         // `reload` + `runtime` must come before the `:id` route;
         // otherwise axum matches them as an :id.
         .route("/api/v1/blocks/reload", post(reload))
@@ -36,10 +36,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/blocks/:id/disable", post(disable))
         .route("/api/v1/blocks/:id/runtime", get(runtime_one))
         .route("/blocks/:id/*path", get(serve_ui))
-}
-
-async fn list(State(s): State<AppState>) -> Json<Vec<LoadedPluginSummary>> {
-    Json(s.blocks.list())
 }
 
 fn parse_id(raw: &str) -> Result<BlockId, ApiError> {

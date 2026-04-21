@@ -36,7 +36,9 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/flows", get(list_flows).post(create_flow))
+        // Listing goes through `/api/v1/search?scope=flows`; POST keeps
+        // its dedicated route for the create.
+        .route("/api/v1/flows", post(create_flow))
         .route("/api/v1/flows/:id", get(get_flow).delete(delete_flow))
         .route("/api/v1/flows/:id/edit", post(edit_flow))
         .route("/api/v1/flows/:id/undo", post(undo_flow))
@@ -218,20 +220,6 @@ fn require_flows(state: &AppState) -> Result<&FlowService, Response> {
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
-
-async fn list_flows(State(state): State<AppState>, Query(q): Query<PaginationQuery>) -> Response {
-    let svc = match require_flows(&state) {
-        Ok(s) => s,
-        Err(r) => return r,
-    };
-    match svc.list_flows(q.limit, q.offset) {
-        Ok(flows) => {
-            let dtos: Vec<FlowDto> = flows.into_iter().map(flow_to_dto).collect();
-            Json(dtos).into_response()
-        }
-        Err(e) => flow_err_to_response(e),
-    }
-}
 
 async fn create_flow(State(state): State<AppState>, Json(body): Json<CreateFlowBody>) -> Response {
     let svc = match require_flows(&state) {

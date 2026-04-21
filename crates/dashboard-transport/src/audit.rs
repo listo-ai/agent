@@ -25,6 +25,19 @@ pub enum AuditEvent<'a> {
         widget_type: &'a str,
         subject: Option<&'a str>,
     },
+    /// A two-way bound control was stripped from the write plan because
+    /// the caller lacks write permission on the target slot. The
+    /// component remains visible (read ACL is unaffected); only the
+    /// write entry is dropped. One event per redacted component.
+    WriteRedacted {
+        /// IR component id of the control (`toggle` / `slider`).
+        component_id: &'a str,
+        /// Absolute path of the node whose slot was redacted.
+        path: &'a str,
+        /// Slot name that was write-denied.
+        slot: &'a str,
+        subject: Option<&'a str>,
+    },
 }
 
 pub trait AuditSink: Send + Sync {
@@ -71,6 +84,19 @@ impl AuditSink for TracingAudit {
                 subject = subject.unwrap_or("<anon>"),
                 "widget has unknown type",
             ),
+            AuditEvent::WriteRedacted {
+                component_id,
+                path,
+                slot,
+                subject,
+            } => tracing::info!(
+                target: "dashboard.audit",
+                component_id = component_id,
+                path = path,
+                slot = slot,
+                subject = subject.unwrap_or("<anon>"),
+                "write-plan entry redacted (acl write-deny)",
+            ),
         }
     }
 }
@@ -98,6 +124,12 @@ pub enum OwnedAuditEvent {
     UnknownWidgetType {
         widget: NodeId,
         widget_type: String,
+        subject: Option<String>,
+    },
+    WriteRedacted {
+        component_id: String,
+        path: String,
+        slot: String,
         subject: Option<String>,
     },
 }
@@ -141,6 +173,17 @@ impl AuditSink for RecordingAudit {
             } => OwnedAuditEvent::UnknownWidgetType {
                 widget,
                 widget_type: widget_type.to_string(),
+                subject: subject.map(String::from),
+            },
+            AuditEvent::WriteRedacted {
+                component_id,
+                path,
+                slot,
+                subject,
+            } => OwnedAuditEvent::WriteRedacted {
+                component_id: component_id.to_string(),
+                path: path.to_string(),
+                slot: slot.to_string(),
                 subject: subject.map(String::from),
             },
         };

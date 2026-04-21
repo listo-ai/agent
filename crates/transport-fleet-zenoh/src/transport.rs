@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn zenoh_key_round_trip_dotted() {
         let subj = Subject::for_agent(&spi::TenantId::new("sys"), "edge-42")
-            .kind("api.v1.nodes.list")
+            .kind("api.v1.search")
             .build();
         let rendered = subj.render('/');
         let back = zenoh_key_to_subject(&rendered);

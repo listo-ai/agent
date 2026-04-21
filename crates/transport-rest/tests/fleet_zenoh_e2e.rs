@@ -1,6 +1,6 @@
 //! End-to-end: two Zenoh peers in one process, one serves the agent's
 //! fleet surface, the other issues a real `request` for
-//! `api.v1.nodes.list` and validates the reply.
+//! `api.v1.search` (scope=nodes) and validates the reply.
 //!
 //! This is the "edge → cloud over the wire" smoke test for the whole
 //! seam:
@@ -9,7 +9,7 @@
 //!                    ↓  real zenoh query
 //!            ZenohTransport (peer A) queryable
 //!                    ↓  FleetHandler dispatch
-//!            list_nodes_core(&AppState, ListNodesQuery)
+//!            NodesScope::query_page(NodesQuery)
 //!                    ↓  JSON encode
 //!   reply   ←  back down the wire
 
@@ -42,10 +42,11 @@ fn make_state_with_fleet(fleet: Arc<dyn FleetTransport>) -> AppState {
 }
 
 /// Run two Zenoh peers on loopback: `edge` mounts the fleet handlers,
-/// `cloud` requests `api.v1.nodes.list` and checks the reply.
+/// `cloud` requests `api.v1.search` with `scope=nodes` and checks the
+/// reply.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "opens real zenoh sessions on loopback; run with `cargo test --test fleet_zenoh_e2e -- --ignored`"]
-async fn list_nodes_roundtrip_over_zenoh() {
+async fn search_nodes_roundtrip_over_zenoh() {
     let tenant = TenantId::new("sys");
     let agent_id = "edge-1";
 
@@ -60,8 +61,8 @@ async fn list_nodes_roundtrip_over_zenoh() {
     );
     let edge_state = make_state_with_fleet(edge.clone());
 
-    // Mount the fleet surface — at least `api.v1.nodes.list` should be
-    // live on `fleet.sys.edge-1.api.v1.nodes.list`.
+    // Mount the fleet surface — `api.v1.search` handles the unified
+    // search RPC on `fleet.sys.edge-1.api.v1.search`.
     let _servers = transport_rest::fleet::mount(edge_state.clone(), &tenant, agent_id)
         .await
         .expect("mount edge fleet handlers");
@@ -77,21 +78,25 @@ async fn list_nodes_roundtrip_over_zenoh() {
     // Zenoh discovery takes a moment to propagate a queryable.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Cloud asks the edge for its node list. Empty payload = default query.
+    // Cloud asks the edge for its node list via the generic search
+    // subject. Payload carries the scope and any filter/sort params.
     let subj = Subject::for_agent(&tenant, agent_id)
-        .kind("api.v1.nodes.list")
+        .kind("api.v1.search")
         .build();
+    let payload = serde_json::to_vec(&serde_json::json!({ "scope": "nodes" }))
+        .expect("encode search payload");
     let reply = cloud
-        .request(&subj, vec![], Duration::from_secs(3))
+        .request(&subj, payload, Duration::from_secs(3))
         .await
         .expect("round-trip reply");
 
     let parsed: serde_json::Value = serde_json::from_slice(&reply).expect("reply is json");
 
-    // Shape check — list envelope `{ data, meta }` with 3 nodes (root +
-    // alpha + beta) that `make_state_with_fleet` seeds.
-    let data = parsed.get("data").expect("reply has data");
-    let arr = data.as_array().expect("data is an array");
+    // Shape check — search envelope `{ scope, hits, meta }` with 3
+    // nodes (root + alpha + beta) that `make_state_with_fleet` seeds.
+    assert_eq!(parsed.get("scope").and_then(|s| s.as_str()), Some("nodes"));
+    let hits = parsed.get("hits").expect("reply has hits");
+    let arr = hits.as_array().expect("hits is an array");
     let paths: Vec<&str> = arr
         .iter()
         .filter_map(|n| n.get("path").and_then(|p| p.as_str()))

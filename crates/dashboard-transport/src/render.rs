@@ -24,8 +24,10 @@ use query::{execute, parse_only, QueryRequest};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use spi::{KindView, NodeId};
-use ui_ir::ComponentTree;
+use ui_ir::{ComponentTree, Concurrency};
 
+use crate::acl::{AclCheck, AclSubject};
+use crate::audit::{AuditEvent, AuditSink};
 use crate::error::TransportError;
 use crate::resolve::{ResolveMeta, ResolveResponse, SubscriptionPlan};
 use crate::state::DashboardState;
@@ -37,6 +39,9 @@ pub struct RenderParams {
     /// Optional view id. If absent, the highest-priority view wins.
     #[serde(default)]
     pub view: Option<String>,
+    /// Opaque auth subject threaded into ACL write checks and audit events.
+    #[serde(default)]
+    pub auth_subject: Option<String>,
 }
 
 pub async fn handler(
@@ -66,7 +71,14 @@ pub async fn handler(
     if target.kind.as_str() == "ui.page" {
         if let Some(layout) = target.slots.get("layout") {
             if !layout.is_null() {
-                return render_layout_slot(layout.clone(), &target, &*state.reader);
+                return render_layout_slot(
+                    layout.clone(),
+                    &target,
+                    &*state.reader,
+                    &*state.acl,
+                    params.auth_subject.as_deref(),
+                    &*state.audit,
+                );
             }
         }
     }
@@ -90,6 +102,14 @@ pub async fn handler(
         })?;
 
     let subscriptions = derive_subscriptions(&view.template, Some(&target), &*state.reader);
+    let writes = derive_write_plan_for_layout(
+        &view.template,
+        Some(&target),
+        &*state.reader,
+        &*state.acl,
+        params.auth_subject.as_deref(),
+        &*state.audit,
+    );
 
     let meta = ResolveMeta {
         cache_key: target.version,
@@ -101,6 +121,7 @@ pub async fn handler(
     Ok(Json(ResolveResponse::Ok {
         render,
         subscriptions,
+        writes,
         meta,
     }))
 }
@@ -109,6 +130,9 @@ fn render_layout_slot(
     mut layout: JsonValue,
     target: &dashboard_runtime::NodeSnapshot,
     reader: &(dyn NodeReader + Send + Sync),
+    acl: &(dyn AclCheck + Send + Sync),
+    auth_subject: Option<&str>,
+    audit: &(dyn AuditSink + Send + Sync),
 ) -> Result<Json<ResolveResponse>, TransportError> {
     assign_synthetic_ids(&mut layout);
     let render: ComponentTree = serde_json::from_value(layout.clone()).map_err(|e| {
@@ -118,6 +142,8 @@ fn render_layout_slot(
         )
     })?;
     let subscriptions = derive_subscriptions(&layout, Some(target), reader);
+    let writes =
+        derive_write_plan_for_layout(&layout, Some(target), reader, acl, auth_subject, audit);
     let meta = ResolveMeta {
         cache_key: target.version,
         widget_count: 1,
@@ -128,6 +154,7 @@ fn render_layout_slot(
     Ok(Json(ResolveResponse::Ok {
         render,
         subscriptions,
+        writes,
         meta,
     }))
 }
@@ -264,6 +291,176 @@ pub(crate) fn derive_subscriptions_for_layout(
     reader: &(dyn NodeReader + Send + Sync),
 ) -> Vec<SubscriptionPlan> {
     derive_subscriptions(layout, None, reader)
+}
+
+/// Walk the layout tree and collect a write plan for every `toggle` /
+/// `slider` component that carries a `bind` field.
+///
+/// `target` is the node bound to `$target` in the binding expression —
+/// for `/ui/render` this is the rendered node; for `/ui/resolve` it is
+/// the first stack frame (if any). Bindings that don't resolve to a
+/// target path (e.g. `$target.*` with no target node provided) are
+/// silently dropped from the plan — the client treats a missing entry
+/// as "read-only".
+///
+/// ACL-denied entries are dropped and an `AuditEvent::WriteRedacted`
+/// is emitted per redacted component — one event per entry, same
+/// pattern as read-ACL widget redaction.
+pub(crate) fn derive_write_plan_for_layout(
+    layout: &JsonValue,
+    target: Option<&dashboard_runtime::NodeSnapshot>,
+    _reader: &(dyn NodeReader + Send + Sync),
+    acl: &(dyn AclCheck + Send + Sync),
+    auth_subject: Option<&str>,
+    audit: &(dyn AuditSink + Send + Sync),
+) -> Vec<crate::resolve::WritePlanEntry> {
+    let mut raw: Vec<crate::resolve::WritePlanEntry> = Vec::new();
+    collect_write_plan_entries(layout, target, &mut raw);
+
+    let subject = AclSubject { subject: auth_subject };
+
+    raw.into_iter()
+        .filter(|entry| {
+            if acl.can_write_slot(subject, &entry.path, &entry.slot) {
+                true
+            } else {
+                audit.emit(AuditEvent::WriteRedacted {
+                    component_id: &entry.component_id,
+                    path: &entry.path,
+                    slot: &entry.slot,
+                    subject: auth_subject,
+                });
+                false
+            }
+        })
+        .collect()
+}
+
+fn collect_write_plan_entries(
+    v: &JsonValue,
+    target: Option<&dashboard_runtime::NodeSnapshot>,
+    acc: &mut Vec<crate::resolve::WritePlanEntry>,
+) {
+    match v {
+        JsonValue::Array(a) => {
+            for item in a {
+                collect_write_plan_entries(item, target, acc);
+            }
+        }
+        JsonValue::Object(m) => {
+            let kind = m.get("type").and_then(|v| v.as_str());
+            if matches!(kind, Some("toggle") | Some("slider")) {
+                if let (Some(component_id), Some(bind_val)) =
+                    (m.get("id").and_then(|v| v.as_str()), m.get("bind"))
+                {
+                    let (slot_expr, concurrency, debounce_override) =
+                        parse_bind_field(bind_val, kind.unwrap_or("toggle"));
+
+                    // Resolve $target.<slot> → (path, slot_name)
+                    if let Some((path, slot_name)) =
+                        resolve_bind_to_path_slot(&slot_expr, target)
+                    {
+                        // Override debounce: slider authored debounce_ms
+                        // can be carried in BindingSpec::Full. The write
+                        // plan entry doesn't carry debounce — it's encoded
+                        // in the IR component already, the renderer reads
+                        // it from there. We just need concurrency here.
+                        let _ = debounce_override; // future use
+
+                        // For OCC entries bake the current slot generation
+                        // so the client can send `expected_generation` and
+                        // the server can reject stale writes with 409.
+                        // LWW entries pass `None` — the server ignores it.
+                        let generation = match concurrency {
+                            Concurrency::Occ => target
+                                .and_then(|t| t.slot_generations.get(&slot_name))
+                                .copied(),
+                            Concurrency::Lww => None,
+                        };
+
+                        acc.push(crate::resolve::WritePlanEntry {
+                            component_id: component_id.to_string(),
+                            path,
+                            slot: slot_name,
+                            concurrency,
+                            generation,
+                        });
+                    }
+                }
+            }
+            // Always recurse into children regardless of component type.
+            for val in m.values() {
+                collect_write_plan_entries(val, target, acc);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Parse a `bind` JSON field value into (slot_expr, Concurrency,
+/// Option<debounce_ms>).
+///
+/// Handles both the short form (`"$target.enabled"`) and the full
+/// object form (`{ "slot": "…", "concurrency": "occ" }`).
+fn parse_bind_field(
+    bind: &JsonValue,
+    _component_type: &str,
+) -> (String, Concurrency, Option<u32>) {
+    match bind {
+        JsonValue::String(s) => (s.clone(), Concurrency::Lww, None),
+        JsonValue::Object(m) => {
+            let slot = m
+                .get("slot")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let concurrency =
+                m.get("concurrency")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| match s {
+                        "occ" => Some(Concurrency::Occ),
+                        "lww" => Some(Concurrency::Lww),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+            let debounce_ms = m
+                .get("debounce_ms")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32);
+            (slot, concurrency, debounce_ms)
+        }
+        _ => (String::new(), Concurrency::Lww, None),
+    }
+}
+
+/// Resolve a binding expression like `"$target.enabled"` to a
+/// concrete `(path, slot_name)` pair. Returns `None` if the expression
+/// doesn't match a supported pattern or if the required context
+/// (target node) is not available.
+///
+/// Supported patterns (extendable):
+/// - `$target.<slot>` — the named slot on the target node. Requires a
+///   target node with a `path` set.
+fn resolve_bind_to_path_slot(
+    expr: &str,
+    target: Option<&dashboard_runtime::NodeSnapshot>,
+) -> Option<(String, String)> {
+    if let Some(tail) = expr.strip_prefix("$target.") {
+        let slot_name = tail.split('.').next().unwrap_or(tail).to_string();
+        if slot_name.is_empty()
+            || matches!(slot_name.as_str(), "id" | "path" | "name" | "kind")
+        {
+            return None;
+        }
+        let t = target?;
+        let path = t.path.as_deref().unwrap_or_default();
+        if path.is_empty() {
+            return None;
+        }
+        return Some((path.to_string(), slot_name));
+    }
+    // Future: $self.*, $stack[n].*, /child/path patterns.
+    None
 }
 
 /// Walk the layout tree and inject deterministic ids on `chart`,

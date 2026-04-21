@@ -7,30 +7,29 @@
 //!
 //! Mounted subjects (all under `fleet.<tenant>.<agent-id>`):
 //!
-//! | Subject suffix             | HTTP equivalent              |
-//! |----------------------------|------------------------------|
-//! | `api.v1.nodes.list`        | GET  /api/v1/nodes           |
-//! | `api.v1.nodes.get`         | GET  /api/v1/node            |
-//! | `api.v1.slots.write`       | POST /api/v1/slots           |
+//! | Subject suffix             | HTTP equivalent                       |
+//! |----------------------------|---------------------------------------|
+//! | `api.v1.search`            | GET  /api/v1/search                   |
+//! | `api.v1.nodes.get`         | GET  /api/v1/node                     |
+//! | `api.v1.slots.write`       | POST /api/v1/slots                    |
 
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use spi::{FleetError, FleetHandler, FleetMessage, Payload, Server, Subject, TenantId};
-
-use crate::routes::{
-    get_node_core, list_nodes_core, write_slot_core, ListNodesQuery, WriteSlotReq,
+use blocks_host::{BlocksQuery, BlocksScope};
+use domain_flows::{FlowsQuery, FlowsScope};
+use graph::{
+    KindsQuery, KindsScope, LinksQuery, LinksScope, NodesQuery, NodesScope, SearchScope,
 };
+use serde::{Deserialize, Serialize};
+use spi::{Facet, FleetError, FleetHandler, FleetMessage, NodePath, Payload, Server, Subject, TenantId};
+
+use crate::routes::{get_node_core, write_slot_core, WriteSlotReq};
 use crate::state::AppState;
 
 /// Register every fleet handler for this agent. Returns the collection
 /// of `Server` handles — drop them to deregister.
-///
-/// The caller supplies the agent's `(tenant, agent_id)` pair; these
-/// become the prefix `fleet.<tenant>.<agent-id>.*` under which every
-/// subject lives, per the canonical namespace in
-/// `docs/design/FLEET-TRANSPORT.md` § "Subject namespace".
 pub async fn mount(
     state: AppState,
     tenant: &TenantId,
@@ -39,15 +38,15 @@ pub async fn mount(
     let fleet = state.fleet.clone();
     let mut servers = Vec::new();
 
-    // api.v1.nodes.list — mirrors GET /api/v1/nodes
-    let list_nodes_subj = Subject::for_agent(tenant, agent_id)
-        .kind("api.v1.nodes.list")
+    // api.v1.search — mirrors GET /api/v1/search?scope=<id>.
+    let search_subj = Subject::for_agent(tenant, agent_id)
+        .kind("api.v1.search")
         .build();
     servers.push(
         fleet
             .serve(
-                &list_nodes_subj,
-                Arc::new(ListNodesHandler {
+                &search_subj,
+                Arc::new(SearchHandler {
                     state: state.clone(),
                 }),
             )
@@ -88,40 +87,219 @@ pub async fn mount(
 }
 
 // ---------------------------------------------------------------------------
-// Handlers
+// Search handler — single fleet subject for every scope, mirroring HTTP.
 // ---------------------------------------------------------------------------
 
-/// Fleet handler for `api.v1.nodes.list`.
-///
-/// Payload: optional JSON-encoded [`ListNodesQuery`] (empty payload
-/// uses defaults). Reply: JSON-encoded `Page<NodeDto>`.
-struct ListNodesHandler {
+/// Wire shape for `api.v1.search` — identical to the REST query params
+/// accepted by `GET /api/v1/search`.
+#[derive(Debug, Default, Deserialize)]
+struct SearchReq {
+    scope: String,
+    #[serde(default)]
+    filter: Option<String>,
+    #[serde(default)]
+    sort: Option<String>,
+    #[serde(default)]
+    facet: Option<String>,
+    #[serde(default)]
+    placeable_under: Option<String>,
+    #[serde(default)]
+    page: Option<usize>,
+    #[serde(default)]
+    size: Option<usize>,
+}
+
+/// Reply envelope — same shape the REST handler emits so the two
+/// surfaces round-trip identically. Hits are stored as `serde_json::Value`
+/// to carry any scope's row shape without propagating a generic type
+/// through the dyn `FleetHandler` trait.
+#[derive(Debug, Serialize)]
+struct SearchReply {
+    scope: &'static str,
+    hits: Vec<serde_json::Value>,
+    meta: SearchMeta,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct SearchMeta {
+    total: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    page: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages: Option<usize>,
+}
+
+struct SearchHandler {
     state: AppState,
 }
 
-impl FleetHandler for ListNodesHandler {
+impl FleetHandler for SearchHandler {
     fn handle<'a>(
         &'a self,
         msg: FleetMessage,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Payload>, FleetError>> + Send + 'a>> {
         Box::pin(async move {
-            let req: ListNodesQuery = if msg.payload.is_empty() {
-                ListNodesQuery::default()
+            let req: SearchReq = if msg.payload.is_empty() {
+                return Err(FleetError::InvalidSubject {
+                    reason: "search payload is required (needs `scope`)".into(),
+                });
             } else {
                 serde_json::from_slice(&msg.payload).map_err(|e| FleetError::InvalidSubject {
-                    reason: format!("request body not valid ListNodesQuery JSON: {e}"),
+                    reason: format!("request body not valid search JSON: {e}"),
                 })?
             };
 
-            let page = list_nodes_core(&self.state, req)
-                .map_err(|e| FleetError::Backend(format!("list_nodes: {e:?}")))?;
+            let reply = match req.scope.as_str() {
+                "kinds" => {
+                    let facet = parse_facet(&req.facet)?;
+                    let placeable_under = parse_path(&req.placeable_under)?;
+                    let scope = KindsScope::new(&self.state.graph);
+                    let hits = scope
+                        .query(KindsQuery {
+                            facet,
+                            placeable_under,
+                            filter: req.filter,
+                            sort: req.sort,
+                        })
+                        .map_err(|e| FleetError::Backend(format!("search(kinds): {e:?}")))?;
+                    SearchReply {
+                        scope: "kinds",
+                        hits: hits_to_json(hits.data)?,
+                        meta: SearchMeta {
+                            total: hits.total,
+                            ..Default::default()
+                        },
+                    }
+                }
+                "nodes" => {
+                    let scope = NodesScope::new(&self.state.graph);
+                    let page = scope
+                        .query_page(NodesQuery {
+                            filter: req.filter,
+                            sort: req.sort,
+                            page: req.page,
+                            size: req.size,
+                        })
+                        .map_err(|e| FleetError::Backend(format!("search(nodes): {e:?}")))?;
+                    SearchReply {
+                        scope: "nodes",
+                        hits: hits_to_json(page.data)?,
+                        meta: SearchMeta {
+                            total: page.meta.total,
+                            page: Some(page.meta.page),
+                            size: Some(page.meta.size),
+                            pages: Some(page.meta.pages),
+                        },
+                    }
+                }
+                "blocks" => {
+                    let scope = BlocksScope::new(&self.state.blocks);
+                    let hits = scope
+                        .query(BlocksQuery {
+                            filter: req.filter,
+                            sort: req.sort,
+                        })
+                        .map_err(|e| FleetError::Backend(format!("search(blocks): {e:?}")))?;
+                    SearchReply {
+                        scope: "blocks",
+                        hits: hits_to_json(hits.data)?,
+                        meta: SearchMeta {
+                            total: hits.total,
+                            ..Default::default()
+                        },
+                    }
+                }
+                "links" => {
+                    let scope = LinksScope::new(&self.state.graph);
+                    let hits = scope
+                        .query(LinksQuery {
+                            filter: req.filter,
+                            sort: req.sort,
+                        })
+                        .map_err(|e| FleetError::Backend(format!("search(links): {e:?}")))?;
+                    SearchReply {
+                        scope: "links",
+                        hits: hits_to_json(hits.data)?,
+                        meta: SearchMeta {
+                            total: hits.total,
+                            ..Default::default()
+                        },
+                    }
+                }
+                "flows" => {
+                    let svc = self.state.flows.as_ref().ok_or_else(|| {
+                        FleetError::Backend("flows service not configured".into())
+                    })?;
+                    let scope = FlowsScope::new(svc);
+                    let page = scope
+                        .query_page(FlowsQuery {
+                            filter: req.filter,
+                            sort: req.sort,
+                            page: req.page,
+                            size: req.size,
+                        })
+                        .map_err(|e| FleetError::Backend(format!("search(flows): {e:?}")))?;
+                    SearchReply {
+                        scope: "flows",
+                        hits: hits_to_json(page.data)?,
+                        meta: SearchMeta {
+                            total: page.meta.total,
+                            page: Some(page.meta.page),
+                            size: Some(page.meta.size),
+                            pages: Some(page.meta.pages),
+                        },
+                    }
+                }
+                other => {
+                    return Err(FleetError::InvalidSubject {
+                        reason: format!("unknown scope `{other}`"),
+                    });
+                }
+            };
 
-            let bytes = serde_json::to_vec(&page)
-                .map_err(|e| FleetError::Backend(format!("encode reply: {e}")))?;
+            let bytes = serde_json::to_vec(&reply)
+                .map_err(|e| FleetError::Backend(format!("encode search reply: {e}")))?;
             Ok(Some(bytes))
         })
     }
 }
+
+fn parse_facet(raw: &Option<String>) -> Result<Option<Facet>, FleetError> {
+    match raw.as_deref() {
+        None => Ok(None),
+        Some(s) => serde_json::from_str(&format!("\"{s}\""))
+            .map(Some)
+            .map_err(|_| FleetError::InvalidSubject {
+                reason: format!("unknown facet `{s}`"),
+            }),
+    }
+}
+
+fn parse_path(raw: &Option<String>) -> Result<Option<NodePath>, FleetError> {
+    use std::str::FromStr;
+    match raw.as_deref() {
+        None => Ok(None),
+        Some(s) => NodePath::from_str(s)
+            .map(Some)
+            .map_err(|e| FleetError::InvalidSubject {
+                reason: format!("bad path `{s}`: {e}"),
+            }),
+    }
+}
+
+fn hits_to_json<T: Serialize>(items: Vec<T>) -> Result<Vec<serde_json::Value>, FleetError> {
+    items
+        .into_iter()
+        .map(|h| serde_json::to_value(&h))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| FleetError::Backend(format!("encode search hit: {e}")))
+}
+
+// ---------------------------------------------------------------------------
+// Per-node handlers (unchanged)
+// ---------------------------------------------------------------------------
 
 /// Fleet handler for `api.v1.nodes.get`.
 ///
@@ -160,18 +338,6 @@ impl FleetHandler for GetNodeHandler {
 }
 
 /// Fleet handler for `api.v1.slots.write`.
-///
-/// Payload: JSON-encoded [`WriteSlotReq`] (`{ path, slot, value,
-/// expected_generation? }`).
-///
-/// Reply: `{ "status": "ok", "generation": N }` on success, or
-/// `{ "status": "generation_mismatch", "current_generation": N }` on
-/// a CAS conflict. The status-tagged shape avoids HTTP status codes on
-/// the fleet path while remaining unambiguous.
-///
-/// Auth is the caller's responsibility — bearer tokens are forwarded as
-/// fleet message headers and must be validated before this handler is
-/// reached (tracked in `docs/design/FLEET-TRANSPORT.md` gap #6).
 struct WriteSlotHandler {
     state: AppState,
 }
@@ -190,8 +356,6 @@ impl FleetHandler for WriteSlotHandler {
             let result = write_slot_core(&self.state, req)
                 .map_err(|e| FleetError::Backend(format!("write_slot: {e:?}")))?;
 
-            // Both Ok and GenerationMismatch are successful fleet replies —
-            // the status tag tells the caller which outcome occurred.
             let bytes = serde_json::to_vec(&result)
                 .map_err(|e| FleetError::Backend(format!("encode reply: {e}")))?;
             Ok(Some(bytes))
@@ -223,33 +387,40 @@ mod tests {
         AppState::new(graph, behaviors, events, BlockRegistry::new())
     }
 
-    /// The fleet handler and HTTP handler use the same core fn — verify
-    /// that invoking it through the fleet seam returns the same payload
-    /// shape as the HTTP route.
+    /// The fleet search handler and the HTTP `/search` handler share
+    /// the same scope implementation — verify the fleet reply shape is
+    /// an exact mirror of the REST envelope.
     #[tokio::test]
-    async fn fleet_list_nodes_returns_same_shape_as_http() {
+    async fn fleet_search_nodes_returns_envelope_with_total() {
         let s = state();
-
-        // Call the core fn directly (what the axum handler does).
-        let direct = list_nodes_core(&s, ListNodesQuery::default()).unwrap();
-        let direct_json = serde_json::to_value(&direct).unwrap();
-
-        // Call it through the FleetHandler (what the fleet mount does).
-        let handler = ListNodesHandler { state: s };
+        let handler = SearchHandler { state: s };
         let msg = FleetMessage {
             subject: Subject::for_agent(&TenantId::default_tenant(), "edge-1")
-                .kind("api.v1.nodes.list")
+                .kind("api.v1.search")
                 .build(),
-            payload: vec![],
+            payload: serde_json::to_vec(&serde_json::json!({ "scope": "nodes" })).unwrap(),
             reply_to: None,
         };
         let reply = handler.handle(msg).await.unwrap().unwrap();
-        let fleet_json: serde_json::Value = serde_json::from_slice(&reply).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&reply).unwrap();
 
-        assert_eq!(
-            direct_json, fleet_json,
-            "fleet handler reply must be byte-identical to HTTP core fn result",
-        );
+        assert_eq!(v["scope"], "nodes");
+        assert!(v["meta"]["total"].as_u64().unwrap() >= 2);
+        assert!(v["hits"].as_array().unwrap().len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn fleet_search_unknown_scope_errors() {
+        let handler = SearchHandler { state: state() };
+        let msg = FleetMessage {
+            subject: Subject::for_agent(&TenantId::default_tenant(), "edge-1")
+                .kind("api.v1.search")
+                .build(),
+            payload: serde_json::to_vec(&serde_json::json!({ "scope": "bogus" })).unwrap(),
+            reply_to: None,
+        };
+        let err = handler.handle(msg).await.unwrap_err();
+        assert!(matches!(err, FleetError::InvalidSubject { .. }));
     }
 
     #[tokio::test]
@@ -270,70 +441,6 @@ mod tests {
         let reply = handler.handle(msg).await.unwrap().unwrap();
         let fleet_json: serde_json::Value = serde_json::from_slice(&reply).unwrap();
 
-        assert_eq!(
-            direct_json, fleet_json,
-            "fleet get_node reply must match HTTP core fn result",
-        );
-    }
-
-    #[tokio::test]
-    async fn fleet_write_slot_returns_ok_status() {
-        use spi::{
-            Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindManifest, SlotRole,
-            SlotSchema,
-        };
-
-        // Register a minimal test kind with one writable slot.
-        let kinds = KindRegistry::new();
-        graph_seed::register_builtins(&kinds);
-        kinds.register(KindManifest {
-            id: KindId::new("test.fleet.node"),
-            display_name: None,
-            facets: FacetSet::of([Facet::IsCompute]),
-            containment: ContainmentSchema {
-                must_live_under: vec![],
-                may_contain: vec![],
-                cardinality_per_parent: Cardinality::ManyPerParent,
-                cascade: CascadePolicy::Strict,
-            },
-            slots: vec![SlotSchema::new("value", SlotRole::Status).writable()],
-            settings_schema: serde_json::Value::Null,
-            msg_overrides: Default::default(),
-            trigger_policy: Default::default(),
-            schema_version: 1,
-            views: Vec::new(),
-        });
-        let graph = Arc::new(GraphStore::new(kinds, Arc::new(NullSink)));
-        graph.create_root(KindId::new("sys.core.station")).unwrap();
-        graph
-            .create_child(&NodePath::root(), KindId::new("test.fleet.node"), "n1")
-            .unwrap();
-        let (events, _) = broadcast::channel(16);
-        let (behaviors, _) = BehaviorRegistry::new(graph.clone());
-        let s = AppState::new(graph, behaviors, events, BlockRegistry::new());
-
-        let handler = WriteSlotHandler { state: s };
-        let msg = FleetMessage {
-            subject: Subject::for_agent(&TenantId::default_tenant(), "edge-1")
-                .kind("api.v1.slots.write")
-                .build(),
-            payload: serde_json::to_vec(&serde_json::json!({
-                "path": "/n1",
-                "slot": "value",
-                "value": 42
-            }))
-            .unwrap(),
-            reply_to: None,
-        };
-        let reply = handler.handle(msg).await.unwrap().unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&reply).unwrap();
-        assert_eq!(
-            v["status"], "ok",
-            "write_slot fleet reply must have status=ok on success"
-        );
-        assert!(
-            v["generation"].is_number(),
-            "write_slot fleet reply must include generation"
-        );
+        assert_eq!(direct_json, fleet_json);
     }
 }

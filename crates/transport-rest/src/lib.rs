@@ -9,8 +9,12 @@
 //! Routes (versioned per `docs/design/VERSIONING.md` § "Public API"):
 //! * `GET  /healthz`                              → liveness (unversioned)
 //! * `GET  /api/v1/capabilities`                  → host capability manifest
-//! * `GET  /api/v1/nodes`                         → node snapshots via the
-//!                                                  generic query surface
+//! * `GET  /api/v1/search?scope=<id>`             → unified search over
+//!                                                  `kinds`, `nodes`, …
+//! * `POST /api/v1/analyze`                       → ad-hoc analytical
+//!                                                  compute (shim; 503
+//!                                                  until analytics-engine
+//!                                                  sidecar lands)
 //! * `GET  /api/v1/node?path=/a/b`                → one node snapshot
 //! * `POST /api/v1/nodes`   `{parent,kind,name}`  → create child
 //! * `POST /api/v1/slots`   `{path,slot,value}`   → write a slot (fires
@@ -20,11 +24,11 @@
 //! * `GET  /api/v1/events`                        → SSE stream of `GraphEvent`s
 //! * `GET  /`                                     → built-in manual-test UI
 //!
-//! `GET /api/v1/nodes` accepts the first generic query params slice:
-//! `filter`, `sort`, `page`, `size`. Response shape is the list
-//! envelope `{ data, meta }`; the higher-level Rust/TS clients unwrap
-//! `data` for the simple `list()` helpers so existing callers stay
-//! stable.
+//! `/api/v1/search` accepts `filter`, `sort`, `page`, `size`, plus
+//! scope-specific shortcuts (e.g. `facet`, `placeable_under` for
+//! `scope=kinds`). Response shape is the envelope `{ scope, hits, meta }`;
+//! the higher-level Rust/TS clients wrap the envelope and expose
+//! ergonomic per-scope `list()` helpers so existing callers stay stable.
 //!
 //! All paths in request bodies / query strings are the canonical
 //! `/station/floor1/ahu-5` form — no percent-encoding required in JSON
@@ -38,6 +42,7 @@ use graph::{EventSink, GraphEvent};
 use tokio::sync::{broadcast, mpsc};
 
 pub mod ai;
+pub mod analyze;
 pub mod auth;
 pub mod auth_routes;
 pub mod blocks;

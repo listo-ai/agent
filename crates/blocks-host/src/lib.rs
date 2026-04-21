@@ -15,6 +15,7 @@ pub mod host;
 mod manifest;
 pub mod proxy;
 mod registry;
+mod scope;
 pub mod supervisor;
 pub mod wasm;
 
@@ -26,4 +27,5 @@ pub use manifest::{
     UiContribution, UiExpose, WasmContribution,
 };
 pub use registry::{BlockError, BlockRegistry, LoadedPlugin, LoadedPluginSummary, PluginLifecycle};
+pub use scope::{blocks_query_schema, BlockDto, BlocksQuery, BlocksScope};
 pub use supervisor::{ProcessSupervisor, SupervisorError, SOCKET_ENV};

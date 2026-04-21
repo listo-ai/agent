@@ -359,12 +359,16 @@ Unit and quantity metadata are declared **per series / per column**, not per val
 
 Single-value reads (a single slot, not a timeseries) use the inline form `{ "value": 72.4, "unit": "fahrenheit", "quantity": "temperature" }` since there's nothing to hoist. The rule: **unit/quantity are declared once at the tightest scope that covers homogeneous values.**
 
+If a slot's stored unit ever changes mid-history (rare — only possible via `SlotSchema::unit` opt-out flips), the read path normalises all points to a single display unit before emitting the series. A series always reports exactly one `unit`; storage-unit boundaries are handled on the server, never exposed to clients.
+
 ## Decisions (previously open)
 
 **Preferences delivery: hybrid, claims for stable fields only.**
 Embed `timezone`, `locale`, `language` in the JWT (they change rarely and every response needs them). Everything else (`unit_system`, per-unit overrides, formats, theme) is fetched once per session via `GET /v1/me/preferences` and cached client-side with an ETag. Mutations invalidate the cache. This avoids the stale-JWT problem for the volatile fields while keeping the hot path (every telemetry read) free of an extra fetch.
 
-JWT TTL is **15 minutes** with silent refresh. When a user mutates any of the JWT-embedded prefs (`timezone`, `locale`, `language`), the server issues a fresh token immediately as part of the `PATCH` response (`Set-Cookie` / response body depending on the auth transport). The client must replace its current token before the next request. On conflict (stale JWT claim vs. fetched session pref), **the fetched session pref wins** — clients should always populate the preference context from `GET /v1/me/preferences`, treating the JWT claims only as a fast-path hint for the server side (e.g. email rendering, audit exports) where no session fetch is possible.
+JWT TTL is **15 minutes** with silent refresh. When a user mutates any of the JWT-embedded prefs (`timezone`, `locale`, `language`), the server issues a fresh token immediately as part of the `PATCH` response (`Set-Cookie` / response body depending on the auth transport). The client must replace its current token before the next request. On conflict (stale JWT claim vs. fetched session pref), **the fetched session pref wins** — clients should always populate the preference context from `GET /v1/me/preferences`, treating the JWT claims only as a fast-path hint for synchronous request-path rendering where no session fetch is possible.
+
+**Server-originated renders (emails, scheduled exports, audit PDFs) MUST re-resolve from the DB at send time** — they never trust a cached JWT claim. A queued email can easily outlive a token; resolving fresh guarantees the three-layer resolution isn't bypassed asymmetrically on the async path.
 
 **Per-device timezone: client-side only.**
 Studio reads the OS timezone and may override the profile TZ for display purposes, persisted in local storage. The server never sees this — the user's profile TZ stays authoritative for anything the server renders (emails, notifications, audit exports). Rationale: a traveller on a laptop shouldn't have their scheduled reports shift, but their live dashboards should reflect local time. Splitting at the client is the clean seam.
@@ -448,7 +452,7 @@ Functions (all take the resolved `ResolvedPreferences` as a parameter):
 Design rules:
 - **Pure functions, no hooks, no state.** Components call `formatDate(ts, prefs)` where `prefs` comes from `usePreferences()`. This keeps the formatters testable without React.
 - **All existing bare `toLocaleString()` calls** in `ui-core` (charts, KPIs, history tables, recent-changes popover) are replaced with these formatters so the entire UI responds to preference changes.
-- **Client-side unit conversion** for the display path is a lightweight lookup table (not a full physics library). Covers the units in the `Unit` enum. The server already does the authoritative conversion for `Accept-Units: preferred` — the client table is for instant re-render when prefs change without re-fetching data.
+- **Client-side unit conversion** for the display path is driven by the `GET /v1/units` response (cached with its ETag), **not a hardcoded TS table**. The server is the single source of truth for conversion factors; a hardcoded client table drifts the moment the registry changes. The client uses this data for instant re-render when prefs flip without re-fetching the underlying telemetry. The server already does the authoritative conversion for `Accept-Units: preferred` on initial load.
 
 ### Layer 4 — `ui-core`: SettingsPage
 
@@ -513,7 +517,7 @@ Blocks need the same formatting pipeline. Add to `block-ui-sdk`:
 
 - **`usePreferences()`** — re-export from `ui-core` (or a thin wrapper that reads from the MF shared scope).
 - **`formatDate`, `formatTime`, `formatDateTime`, `formatRelativeTime`, `formatNumber`, `formatUnit`** — re-export the pure functions from `ui-core/src/lib/formatters.ts`.
-- **`useIntl()`** — re-export from `react-intl` so blocks can translate their own strings.
+- **`useTranslate()`** — a thin `ui-core` wrapper over `react-intl`'s `useIntl()`, re-exported here. Blocks do **not** see `react-intl` directly: the facade must insulate them from the choice of i18n library (per HOW-TO-ADD-CODE.md §4a). If we ever swap `react-intl` for Lingui/Tolgee, blocks keep compiling.
 
 This keeps the "blocks depend only on `block-ui-sdk`" invariant intact while giving them full access to the preference-aware formatting pipeline.
 

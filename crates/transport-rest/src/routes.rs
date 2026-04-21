@@ -10,8 +10,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use graph::{Lifecycle, LinkId, NodeSnapshot, SlotRef};
-use query::{FieldType, Operator, QueryRequest, QuerySchema, SortField};
+use graph::{Lifecycle, LinkId, NodeDto, SlotRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use spi::{AuthContext, KindId, NodeId, NodePath, Scope};
@@ -37,13 +36,17 @@ pub fn mount(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         // Versioned API.
         .route("/api/v1/capabilities", get(capabilities))
-        .route("/api/v1/nodes", get(list_nodes).post(create_node))
+        // `POST /nodes` creates a node. Listing is served by
+        // `GET /api/v1/search?scope=nodes` (see `crate::search`).
+        .route("/api/v1/nodes", post(create_node))
         .route("/api/v1/node", get(get_node).delete(delete_node))
         .route("/api/v1/node/schema", get(get_node_schema))
         .route("/api/v1/slots", post(write_slot))
         .route("/api/v1/config", post(set_config))
         .route("/api/v1/events", get(stream_events))
-        .route("/api/v1/links", get(list_links).post(create_link))
+        // Listing goes through `/api/v1/search?scope=links`; POST keeps
+        // its dedicated route for the create.
+        .route("/api/v1/links", post(create_link))
         .route("/api/v1/links/:id", delete(remove_link))
         .route("/api/v1/lifecycle", post(transition_lifecycle))
         .route("/api/v1/seed", post(seed_preset))
@@ -52,6 +55,7 @@ pub fn mount(state: AppState) -> Router {
         // Block REST + MF bundle serving — contributed by the blocks
         // module, merged in so the tower layers below apply uniformly.
         .merge(crate::ai::routes())
+        .merge(crate::analyze::routes())
         .merge(crate::blocks::routes())
         .merge(crate::search::routes())
         .merge(crate::auth_routes::routes())
@@ -69,128 +73,6 @@ async fn capabilities() -> Json<crate::capabilities::CapabilityManifest> {
 
 async fn healthz() -> &'static str {
     "ok"
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub(crate) struct NodeDto {
-    id: String,
-    kind: String,
-    path: String,
-    /// Materialised parent path (`"/"` for depth-1 nodes, `null` for the
-    /// root). Exposed so tree UIs can filter direct children with
-    /// `?filter=parent_path==/station/floor1` in a single query,
-    /// without walking the full subtree + filtering client-side.
-    parent_path: Option<String>,
-    parent_id: Option<String>,
-    /// Whether the node has at least one child. Computed server-side so
-    /// tree UIs can show expand chevrons without a speculative child query.
-    has_children: bool,
-    lifecycle: Lifecycle,
-    slots: Vec<SlotDto>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub(crate) struct SlotDto {
-    name: String,
-    value: JsonValue,
-    generation: u64,
-}
-
-impl From<NodeSnapshot> for NodeDto {
-    fn from(s: NodeSnapshot) -> Self {
-        Self {
-            id: s.id.to_string(),
-            kind: s.kind.as_str().to_string(),
-            parent_path: s.path.parent().map(|p| p.to_string()),
-            path: s.path.to_string(),
-            parent_id: s.parent.map(|p| p.to_string()),
-            has_children: s.has_children,
-            lifecycle: s.lifecycle,
-            slots: s
-                .slot_values
-                .into_iter()
-                .map(|(name, sv)| SlotDto {
-                    name,
-                    value: sv.value,
-                    generation: sv.generation,
-                })
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub(crate) struct ListNodesQuery {
-    pub filter: Option<String>,
-    pub sort: Option<String>,
-    pub page: Option<usize>,
-    pub size: Option<usize>,
-}
-
-fn node_query_schema() -> QuerySchema {
-    QuerySchema::new(100, 1000)
-        .field(
-            "id",
-            FieldType::Text,
-            [Operator::Eq, Operator::Ne, Operator::Prefix, Operator::In],
-        )
-        .field(
-            "kind",
-            FieldType::Text,
-            [Operator::Eq, Operator::Ne, Operator::Prefix],
-        )
-        .field(
-            "path",
-            FieldType::Text,
-            [Operator::Eq, Operator::Ne, Operator::Prefix],
-        )
-        .field(
-            "parent_id",
-            FieldType::Text,
-            [Operator::Eq, Operator::Ne, Operator::Prefix],
-        )
-        .field(
-            "parent_path",
-            FieldType::Text,
-            [Operator::Eq, Operator::Ne, Operator::Prefix],
-        )
-        .field("lifecycle", FieldType::Text, [Operator::Eq, Operator::Ne])
-        .default_sort([SortField::asc("path")])
-}
-
-/// Core logic for `GET /api/v1/nodes`. Shared by the axum handler and
-/// the fleet `api.v1.nodes.list` handler — one function, two surfaces.
-pub(crate) fn list_nodes_core(
-    state: &AppState,
-    raw: ListNodesQuery,
-) -> Result<query::Page<NodeDto>, ApiError> {
-    let mut out: Vec<NodeDto> = state
-        .graph
-        .snapshots()
-        .into_iter()
-        .map(NodeDto::from)
-        .collect();
-    out.sort_by(|a, b| a.path.cmp(&b.path));
-    let query = query::validate(
-        &node_query_schema(),
-        QueryRequest {
-            filter: raw.filter,
-            sort: raw.sort,
-            page: raw.page,
-            size: raw.size,
-        },
-    )
-    .map_err(|e| ApiError::bad_request(e.to_string()))?;
-    query::execute(out, &query).map_err(|e| ApiError::bad_request(e.to_string()))
-}
-
-async fn list_nodes(
-    ctx: AuthContext,
-    State(s): State<AppState>,
-    Query(raw): Query<ListNodesQuery>,
-) -> Result<Json<query::Page<NodeDto>>, ApiError> {
-    ctx.require(Scope::ReadNodes).map_err(ApiError::from_auth)?;
-    list_nodes_core(&s, raw).map(Json)
 }
 
 #[derive(Deserialize)]
@@ -540,57 +422,10 @@ struct EventsQuery {
 }
 
 // ---- links ----------------------------------------------------------------
-
-#[derive(Serialize)]
-struct LinkDto {
-    id: String,
-    source: EndpointDto,
-    target: EndpointDto,
-}
-
-#[derive(Serialize)]
-struct EndpointDto {
-    node_id: String,
-    path: Option<String>,
-    slot: String,
-}
-
-impl LinkDto {
-    fn from_link(s: &AppState, link: graph::Link) -> Self {
-        let source_path = s
-            .graph
-            .get_by_id(link.source.node)
-            .map(|n| n.path.to_string());
-        let target_path = s
-            .graph
-            .get_by_id(link.target.node)
-            .map(|n| n.path.to_string());
-        Self {
-            id: link.id.to_string(),
-            source: EndpointDto {
-                node_id: link.source.node.to_string(),
-                path: source_path,
-                slot: link.source.slot,
-            },
-            target: EndpointDto {
-                node_id: link.target.node.to_string(),
-                path: target_path,
-                slot: link.target.slot,
-            },
-        }
-    }
-}
-
-async fn list_links(State(s): State<AppState>) -> Json<Vec<LinkDto>> {
-    let mut out: Vec<LinkDto> = s
-        .graph
-        .links()
-        .into_iter()
-        .map(|l| LinkDto::from_link(&s, l))
-        .collect();
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    Json(out)
-}
+//
+// `LinkDto` / `EndpointDto` / listing logic live in `graph::links`
+// (consumed by every transport via `/api/v1/search?scope=links`).
+// This module keeps only the create/delete routes.
 
 /// Endpoint addressed by path for ergonomics; `node_id` accepted as a
 /// fallback when the caller only has ids (e.g. event-log consumers).
@@ -796,27 +631,8 @@ mod tests {
         AppState::new(graph, behaviors, events, BlockRegistry::new())
     }
 
-    #[tokio::test]
-    async fn list_nodes_applies_filter_sort_and_paging() {
-        let state = test_state();
-        let page = list_nodes_core(
-            &state,
-            ListNodesQuery {
-                filter: Some("kind==sys.core.folder".into()),
-                sort: Some("-path".into()),
-                page: Some(1),
-                size: Some(1),
-            },
-        )
-        .unwrap();
-
-        assert_eq!(page.meta.total, 2);
-        assert_eq!(page.meta.page, 1);
-        assert_eq!(page.meta.size, 1);
-        assert_eq!(page.meta.pages, 2);
-        assert_eq!(page.data.len(), 1);
-        assert_eq!(page.data[0].path, "/beta");
-    }
+    // List-nodes behaviour lives in `graph::nodes::scope::tests` — the
+    // transport no longer owns that logic after the /search migration.
 
     #[tokio::test]
     async fn get_node_filters_internal_slots_by_default() {
@@ -948,20 +764,6 @@ mod tests {
         assert_eq!(err.status, StatusCode::NOT_FOUND);
     }
 
-    #[tokio::test]
-    async fn list_nodes_rejects_unknown_query_fields() {
-        let err = list_nodes_core(
-            &test_state(),
-            ListNodesQuery {
-                filter: Some("nope==x".into()),
-                sort: None,
-                page: None,
-                size: None,
-            },
-        )
-        .unwrap_err();
-
-        assert_eq!(err.status, StatusCode::BAD_REQUEST);
-        assert!(err.error.contains("unknown field"));
-    }
+    // `list_nodes_rejects_unknown_query_fields` lives in
+    // `graph::nodes::scope::tests::rejects_unknown_rsql_field` now.
 }

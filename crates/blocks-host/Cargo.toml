@@ -13,6 +13,7 @@ workspace = true
 spi = { workspace = true }
 graph = { workspace = true }
 engine = { workspace = true }
+query = { workspace = true }
 blocks-sdk = { workspace = true }
 transport-grpc = { workspace = true }
 serde = { workspace = true }

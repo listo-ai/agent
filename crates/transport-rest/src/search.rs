@@ -15,7 +15,11 @@ use std::str::FromStr;
 use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
-use graph::{KindsQuery, KindsScope, ScopeError, SearchScope};
+use blocks_host::{BlocksQuery, BlocksScope};
+use domain_flows::{FlowsQuery, FlowsScope};
+use graph::{
+    KindsQuery, KindsScope, LinksQuery, LinksScope, NodesQuery, NodesScope, ScopeError, SearchScope,
+};
 use serde::{Deserialize, Serialize};
 use spi::{Facet, NodePath};
 
@@ -52,6 +56,13 @@ pub struct SearchParams {
     /// `scope=kinds`.
     #[serde(default)]
     pub placeable_under: Option<String>,
+
+    /// Pagination (currently honoured by `scope=nodes`; other scopes
+    /// ignore pagination for now).
+    #[serde(default)]
+    pub page: Option<usize>,
+    #[serde(default)]
+    pub size: Option<usize>,
 }
 
 /// Uniform envelope every scope emits. `hits` is the scope-specific
@@ -64,9 +75,17 @@ pub struct SearchResponse<T: Serialize> {
     pub meta: SearchMeta,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct SearchMeta {
     pub total: usize,
+    /// Pagination metadata — emitted by scopes that paginate (e.g.
+    /// `nodes`). Scopes that return every hit leave these `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pages: Option<usize>,
 }
 
 async fn search(
@@ -103,11 +122,99 @@ async fn search(
             Ok(Json(SearchResponse {
                 scope: "kinds",
                 hits: hits.data,
-                meta: SearchMeta { total: hits.total },
+                meta: SearchMeta {
+                    total: hits.total,
+                    ..Default::default()
+                },
+            })
+            .into_response())
+        }
+        "nodes" => {
+            let scope = NodesScope::new(&s.graph);
+            let page = scope
+                .query_page(NodesQuery {
+                    filter: p.filter,
+                    sort: p.sort,
+                    page: p.page,
+                    size: p.size,
+                })
+                .map_err(ApiError::from_scope)?;
+            Ok(Json(SearchResponse {
+                scope: "nodes",
+                hits: page.data,
+                meta: page_meta(&page.meta),
+            })
+            .into_response())
+        }
+        "blocks" => {
+            let scope = BlocksScope::new(&s.blocks);
+            let hits = scope
+                .query(BlocksQuery {
+                    filter: p.filter,
+                    sort: p.sort,
+                })
+                .map_err(ApiError::from_scope)?;
+            Ok(Json(SearchResponse {
+                scope: "blocks",
+                hits: hits.data,
+                meta: SearchMeta {
+                    total: hits.total,
+                    ..Default::default()
+                },
+            })
+            .into_response())
+        }
+        "links" => {
+            let scope = LinksScope::new(&s.graph);
+            let hits = scope
+                .query(LinksQuery {
+                    filter: p.filter,
+                    sort: p.sort,
+                })
+                .map_err(ApiError::from_scope)?;
+            Ok(Json(SearchResponse {
+                scope: "links",
+                hits: hits.data,
+                meta: SearchMeta {
+                    total: hits.total,
+                    ..Default::default()
+                },
+            })
+            .into_response())
+        }
+        "flows" => {
+            let svc = s.flows.as_ref().ok_or_else(|| {
+                ApiError::new(
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "flows service not configured",
+                )
+            })?;
+            let scope = FlowsScope::new(svc);
+            let page = scope
+                .query_page(FlowsQuery {
+                    filter: p.filter,
+                    sort: p.sort,
+                    page: p.page,
+                    size: p.size,
+                })
+                .map_err(ApiError::from_scope)?;
+            Ok(Json(SearchResponse {
+                scope: "flows",
+                hits: page.data,
+                meta: page_meta(&page.meta),
             })
             .into_response())
         }
         other => Err(ApiError::bad_request(format!("unknown scope `{other}`"))),
+    }
+}
+
+fn page_meta(m: &query::PageMeta) -> SearchMeta {
+    SearchMeta {
+        total: m.total,
+        page: Some(m.page),
+        size: Some(m.size),
+        pages: Some(m.pages),
     }
 }
 

@@ -17,6 +17,13 @@ pub struct NodeSnapshot {
     pub kind: KindId,
     pub version: u64,
     pub slots: HashMap<String, JsonValue>,
+    /// Per-slot generation counters. Populated by [`GraphReader`] from
+    /// `SlotValue.generation`. Used by the write-plan builder to bake
+    /// OCC `generation` into resolved write plan entries.
+    ///
+    /// `InMemoryReader` fixtures default to empty (all generations `0`
+    /// unless set via [`NodeSnapshot::with_slot_generation`]).
+    pub slot_generations: HashMap<String, u64>,
     /// Absolute node path — populated by [`GraphReader`]. `None` for
     /// test fixtures created without an explicit path.
     pub path: Option<String>,
@@ -32,6 +39,7 @@ impl NodeSnapshot {
             kind: kind.into(),
             version: 1,
             slots: HashMap::new(),
+            slot_generations: HashMap::new(),
             path: None,
             parent_id: None,
         }
@@ -39,6 +47,14 @@ impl NodeSnapshot {
 
     pub fn with_slot(mut self, name: impl Into<String>, value: JsonValue) -> Self {
         self.slots.insert(name.into(), value);
+        self
+    }
+
+    /// Set the generation for a named slot. Use in tests that exercise
+    /// OCC write-plan baking so the resolved entry carries a non-`None`
+    /// `generation`.
+    pub fn with_slot_generation(mut self, name: impl Into<String>, generation: u64) -> Self {
+        self.slot_generations.insert(name.into(), generation);
         self
     }
 

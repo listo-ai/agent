@@ -27,9 +27,11 @@ impl NodeReader for GraphReader {
     fn get(&self, id: &NodeId) -> Option<RuntimeSnapshot> {
         let snap = self.store.get_by_id(*id)?;
         let mut slots = HashMap::new();
+        let mut slot_generations = HashMap::new();
         let mut version: u64 = 0;
         for (name, sv) in &snap.slot_values {
             slots.insert(name.clone(), sv.value.clone());
+            slot_generations.insert(name.clone(), sv.generation);
             if sv.generation > version {
                 version = sv.generation;
             }
@@ -39,6 +41,7 @@ impl NodeReader for GraphReader {
             kind: snap.kind,
             version,
             slots,
+            slot_generations,
             path: Some(snap.path.to_string()),
             parent_id: snap.parent.map(|p| p.to_string()),
         })
@@ -62,11 +65,13 @@ impl NodeReader for GraphReader {
             .into_iter()
             .map(|snap| {
                 let mut slots = HashMap::new();
+                let mut slot_generations = HashMap::new();
                 let mut version: u64 = 0;
                 for (name, sv) in snap.slot_values {
                     if sv.generation > version {
                         version = sv.generation;
                     }
+                    slot_generations.insert(name.clone(), sv.generation);
                     slots.insert(name, sv.value.clone());
                 }
                 RuntimeSnapshot {
@@ -74,6 +79,7 @@ impl NodeReader for GraphReader {
                     kind: snap.kind,
                     version,
                     slots,
+                    slot_generations,
                     path: Some(snap.path.to_string()),
                     parent_id: snap.parent.map(|p| p.to_string()),
                 }
