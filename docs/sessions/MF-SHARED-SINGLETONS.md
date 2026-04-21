@@ -1,287 +1,383 @@
-# Module Federation shared singletons — unresolved
+# Module Federation shared singletons — work in progress, NOT FINISHED
 
-Status: **broken in dev**. Studio + block MF bundles cannot agree on shared
-modules (`react-router-dom`, `@listo/ui-core`, `@listo/block-ui-sdk`).
-Runtime fails with `factory is undefined` on load.
+> **READ FIRST, NEW SESSION:** the previous session declared this
+> "done" twice without testing end-to-end in a real browser. Both
+> times it was still broken. **DO NOT repeat that mistake.** The only
+> acceptable definition of done is:
+>
+> 1. Studio loads in a real browser at http://localhost:3010
+> 2. React actually mounts (`<div id="root">` is NOT empty)
+> 3. Navigating to a block panel (mqtt-client) renders its UI
+> 4. A block panel write (e.g. settings slot) hits agent :8082 and
+>    returns success within 10 s
+> 5. Console has ZERO errors (no `factory is undefined`, no
+>    unhandled rejections)
+> 6. `window.__FEDERATION__.__INSTANCES__[0].shareScopeMap.default`
+>    shows ALL `@listo/*` entries with `loaded: true` AND `hasLib: true`
+>
+> Playwright is installed and a smoke script lives at
+> [/home/user/code/workspace/studio-smoke.mjs](../../../studio-smoke.mjs).
+> Use it. Static manifest inspection is NOT sufficient — it missed a
+> factory-evaluation deadlock that only surfaces in-browser.
 
-## Summary
+## Current status at handoff
 
-Listo ships one MF host (Studio) and N MF remotes (one per block). Both
-need to share at least React, react-router, zustand, react-query, and
-the Listo packages that hold singleton state (most importantly
-`@listo/ui-core`, which owns the module-level `agentPromise`). Without
-sharing, every block ships its own copy of ui-core → its own
-`AgentClient` instance → its own baseUrl → every REST call from a block
-panel hangs on the wrong port.
+**Partial working state.** The chain Studio → agent now works end-to-end
+for Studio's own UI: React mounts, API calls hit :8082. **Block panel
+loading has not been verified yet.**
 
-**The current state does not work.** Browser console shows:
+**What I observed in the last Playwright run (before handoff interrupt):**
+
+- Studio root mounts — React alive, making real HTTP requests to the
+  agent
+- Shared singletons show `loaded: true` for react, react-dom,
+  react-router-dom, zustand, @tanstack/react-query, @listo/agent-client
+- Agent was killed mid-session; last log showed `ERR_CONNECTION_REFUSED`
+  for `/api/v1/events` — expected, just means restart the agent
+- **NOT yet verified:** `@listo/ui-core` and `@listo/ui-kit` status
+  after the fix. The earlier problem was they sat `loaded: false`
+  forever. Need to re-run smoke with the agent alive to confirm.
+- **NOT yet verified:** block panel mounts + writes succeed.
+
+## The full story — what was wrong, in order of discovery
+
+### Layer 1 — `requiredVersion: "^undefined"` in manifest
+
+`@module-federation/enhanced@0.6.16` can't parse `workspace:*` pnpm
+specifiers. Poisoned share-scope entries leave neighboring factories
+uninitialised; surfaces as `factory is undefined` for unrelated
+packages (react-router-dom was the usual suspect).
+
+**Fixed by:**
+
+1. Bumped `@module-federation/enhanced` `^0.6.0` → `^2.3.3` in:
+   - `studio/package.json`
+   - `ui-core/package.json`
+   - `blocks/com.acme.hello/ui-src/package.json`
+   - `blocks/com.listo.bacnet/ui-src/package.json`
+   - `blocks/com.listo.mqtt-client/ui-src/package.json`
+
+   **Gotcha:** forgot the first two blocks the first time. Old
+   version's DTS worker spawned via `npx tsc` kept running as a
+   zombie process (pid 2089197) spamming `dts-plugin@0.6.16` errors
+   across dev sessions. If you see `0.6.16` anywhere in a log after
+   bumping, `pgrep -af dts-plugin` and kill the zombie first.
+
+2. Replaced the static `MF_SHARED_SINGLETONS` object with a factory
+   `createSharedSingletons()` in [ui-core/src/mf.ts](../../../ui-core/src/mf.ts).
+   The factory reads each workspace package's real semver from its own
+   `package.json` via `createRequire(import.meta.url)` and hands MF a
+   plain semver string — MF never sees a `workspace:*` specifier.
+   Each `@listo/*` entry pins BOTH `version` AND `requiredVersion`.
+
+3. `block-ui-sdk/src/mf.ts` re-exports `createSharedSingletons`
+   (upstream API change).
+
+### Layer 2 — DTS plugin noise + crash
+
+MF DTS plugin spawns tsc via `npx` to generate federated type zips.
+`npx` isn't on PATH in this environment (`which npx` → not found).
+Spams `#TYPE-001` on every HMR rebuild; eventually the IPC channel
+crashes with `ERR_IPC_CHANNEL_CLOSED` → `ELIFECYCLE 137` → dev server
+dies silently.
+
+**Fixed by:** `dts: false` in Studio's and the mqtt-client block's
+`rsbuild.config.ts`. Monorepo = types flow through workspace symlinks,
+not through MF type zips. MF DTS is pointless here.
+
+**TODO (new session):** apply `dts: false` to the other two blocks
+too. They still have the old `dts: { generateTypes: ... }` config:
+
+- `blocks/com.acme.hello/ui-src/rsbuild.config.ts`
+- `blocks/com.listo.bacnet/ui-src/rsbuild.config.ts`
+
+I didn't touch these because they weren't part of the active test
+loop, but they will break the same way the moment you `pnpm dev`
+against them.
+
+### Layer 3 — `dev.lazyCompilation` default is MF-incompatible
+
+Rsbuild 1.7 defaults to `dev: { lazyCompilation: { imports: true,
+entries: false } }`. This wraps every dynamic import in a
+compile-on-demand proxy. The proxy uses an XHR callback to trigger
+actual module evaluation.
+
+**The proxy is incompatible with MF shared consume.** When a chunk is
+fetched for a shared factory, the proxy fires the XHR but the MF
+runtime doesn't wait for it. Chunks return 200, factories NEVER run.
+`@listo/ui-core` and `@listo/ui-kit` show `loaded: false` forever, React
+never mounts, and there is ZERO console output to indicate the
+problem. Silent hang.
+
+**Fixed by:** `dev: { lazyCompilation: false }` in
+[studio/rsbuild.config.ts](../../../studio/rsbuild.config.ts).
+Block configs use `rsbuild build` not `rsbuild dev`, so they don't
+need this.
+
+### Layer 4 — ui-core and ui-kit self-import by package name
+
+The hidden killer. Files inside `ui-core/src/` import from
+`"@listo/ui-core"` (barrel path), not relative paths. 29 files in
+ui-core, 2 in ui-kit.
+
+When ui-core is compiled to `ui-core/dist/*.js`, those imports stay as
+literal `from "@listo/ui-core"` strings. When Studio then bundles
+ui-core's dist AND registers ui-core as an MF shared singleton, rspack's
+ConsumeSharedPlugin rewrites every `"@listo/ui-core"` import inside
+the shared module **into a consume of itself** — share-scope asks for
+ui-core, which needs the factory, which needs the consumer. Deadlock.
+
+This is a **documented MF footgun:** a shared module MUST NOT import
+itself by package name. All internal imports must be relative.
+
+**Fix (applied, needs verification):** use `tsc-alias` to rewrite
+self-imports to relative paths at build time, without touching 31
+source files.
+
+- `ui-core/tsconfig.json` `compilerOptions.paths` now includes:
+  `"@listo/ui-core": ["src/index.ts"]`
+- `ui-kit/tsconfig.json` `compilerOptions.paths` now includes:
+  `"@listo/ui-kit": ["src/index.ts"]`
+
+`tsc-alias` is already in the build pipeline (`tsc --project &&
+tsc-alias -p tsconfig.json`), so it rewrites both `@/*` and
+`@listo/<self>` imports in the emitted `dist/*.js` to relative paths.
+Verified the output no longer contains self-imports:
+`grep '@listo/ui-core' ui-core/dist/` only shows comments and the
+intentional reference in `dist/mf.js`.
+
+**Alternative considered, rejected:** refactoring the 31 source files
+to use relative imports. More invasive for the same outcome; the path
+mapping gets us there without touching product code.
+
+### Layer 5 — agent module-load throw
+
+Earlier session made `ui-core/src/lib/agent/index.ts` throw on module
+load if `PUBLIC_AGENT_URL` wasn't baked. That turned out to be
+dangerous because every MF remote *compiles in* a copy of ui-core
+even though only the host's copy is evaluated. A module-load throw
+inside a shared consumer leaves share-scope init in a weird state.
+
+**Fixed by:** `agentPromise` is now constructed lazily via
+`Promise.resolve().then(...)`. Module init always succeeds; rejection
+surfaces only when a caller `await`s the promise and the URL is
+missing.
+
+## Current repo state (files touched this session)
 
 ```
-undefined factory webpack/sharing/consume/default/react-router-dom/react-router-dom
-Error: RuntimeError: factory is undefined (webpack/sharing/consume/default/react-router-dom/react-router-dom)
-    at __webpack_require__
-    at ../ui-core/dist/lib/fleet/ScopeContext.js
-    at ../ui-core/dist/lib/fleet/index.js
-    at ../ui-core/dist/index.js
-    at ./src/providers/index.tsx   ← Studio itself
+studio/rsbuild.config.ts                              dts: false, lazyCompilation: false, createSharedSingletons()
+studio/package.json                                   enhanced ^2.3.3
+studio/src/components/layout/SiteHeader.tsx          breadcrumb <li> nesting fix (unrelated)
+ui-core/tsconfig.json                                 path mapping @listo/ui-core → src/index.ts
+ui-core/package.json                                  enhanced ^2.3.3, @types/node dev dep
+ui-core/src/mf.ts                                     createSharedSingletons() factory
+ui-core/src/lib/agent/index.ts                        lazy agentPromise
+ui-kit/tsconfig.json                                  path mapping @listo/ui-kit → src/index.ts
+block-ui-sdk/src/mf.ts                                re-export createSharedSingletons
+blocks/com.acme.hello/ui-src/package.json             enhanced ^2.3.3
+blocks/com.listo.bacnet/ui-src/package.json           enhanced ^2.3.3
+blocks/com.listo.mqtt-client/ui-src/package.json      enhanced ^2.3.3, comment updated
+blocks/com.listo.mqtt-client/ui-src/rsbuild.config.ts dts: false, createSharedSingletons(), no PUBLIC_AGENT_URL plumbing
+blocks/com.listo.mqtt-client/Makefile                 no PUBLIC_AGENT_URL plumbing
+<root>/package.json                                   playwright ^1.59.1 dev dep
+<root>/studio-smoke.mjs                               Playwright smoke test (see below)
 ```
 
-It breaks inside Studio's *own* bootstrap, not just the block.
+## End-to-end test recipe (DO THIS — do not skip)
 
-## Where the shared config lives
-
-- Authoritative list: [ui-core/src/mf.ts](../../../ui-core/src/mf.ts) →
-  `export const MF_SHARED_SINGLETONS`.
-- Studio's [rsbuild.config.ts](../../../studio/rsbuild.config.ts) imports
-  it and passes to `ModuleFederationPlugin({ shared: MF_SHARED_SINGLETONS })`.
-- Each block's rsbuild.config.ts imports the same list via
-  `@listo/block-ui-sdk/mf` (a re-export) and uses it identically.
-- block-ui-sdk's [src/mf.ts](../../../block-ui-sdk/src/mf.ts) is a
-  one-line re-export from ui-core: `export { MF_SHARED_SINGLETONS } from "@listo/ui-core/mf";`
-
-## The original symptom (which is what we were trying to fix)
-
-Block panel writes time out after 10 s with `AbortSignal.timeout`:
-
-```
-Error: signal timed out
-{"path":"/iot/broker","slot":"settings","value":{...}}
-```
-
-Root cause: block bundles its own `@listo/ui-core`; ui-core's
-`agentPromise` reads `PUBLIC_AGENT_URL` at module load; the block was
-built without that env var, so its `AgentClient` defaults to
-`http://localhost:8080`. Edge agent is on :8082 — nothing on :8080 —
-fetch hangs → timeout.
-
-Two fixes, either one works on its own:
-
-1. **Share `@listo/ui-core` as an MF singleton.** The block defers to
-   Studio's instance, which was built with `PUBLIC_AGENT_URL=:8082`.
-2. **Bake `PUBLIC_AGENT_URL` into the block at build time.** The
-   block's own AgentClient now points at the right URL. No sharing
-   needed.
-
-We attempted (1) first, which broke things; then (2) which works for
-the block's Panel **but Studio itself still crashes** on the new
-shared config because HMR state doesn't cleanly re-initialise the
-share scope. Restarting the dev server SHOULD recover, but in our
-sessions it didn't reliably — the browser cached bundles reference
-the old share scope and the new ones reference the modified one.
-
-## Chronology of attempts (all shipped in this branch — revert if needed)
-
-1. Added `@listo/agent-client`, `@listo/ui-core`, `@listo/ui-kit`,
-   `@listo/block-ui-sdk` to `MF_SHARED_SINGLETONS` with `singleton: true`
-   only.
-   - **Failure mode:** the block's MF manifest ends up with
-     `requiredVersion: "^undefined"` because rspack's plugin infers
-     `requiredVersion` from the *consuming* package's `package.json`
-     dependencies — and the block's package.json doesn't list these
-     packages directly (only `@listo/block-ui-sdk`).
-   - Verification command:
-     ```
-     curl -s http://localhost:8082/blocks/com.listo.mqtt-client/mf-manifest.json \
-       | python3 -c "import sys,json;[print(s['name'],s['requiredVersion']) for s in json.load(sys.stdin)['shared']]"
-     ```
-
-2. Added the transitive listo packages to the block's `devDependencies`
-   and `dependencies` (with `workspace:^0.1.0` specifier).
-   - **Failure mode:** still emitted `^undefined`. rspack likely can't
-     parse the `workspace:*` protocol, or it reads `package.json`
-     subpath access (`@listo/ui-core/package.json`) which is blocked
-     by ESM `exports` on newer packages.
-
-3. Added `"./package.json": "./package.json"` to the `exports` field
-   of all four listo packages so rspack can resolve the version via
-   `require.resolve('@listo/ui-core/package.json')`.
-   - **Failure mode:** no change — still `^undefined`. The MF plugin
-     probably isn't using `require.resolve` for this.
-
-4. Tried `requiredVersion: false` + `strictVersion: false` on each
-   shared entry.
-   - **Failure mode:** rspack **overrides** these in the emitted
-     manifest. For `react` (which IS in package.json), the explicit
-     `^19.0.0` we supplied was replaced with `^19.2.5` (installed
-     version). For listo packages not in package.json, still
-     `^undefined`.
-
-5. Tried `eager: true` + explicit `version: "0.1.0"`.
-   - **Failure mode:** bundle size doubled (3 MB → 5.4 MB) because
-     eager means "inline all deps"; `requiredVersion` still
-     `^undefined`.
-
-6. **Switched strategy — build-time injection of `PUBLIC_AGENT_URL`.**
-   Removed the listo packages from shared entirely. Updated
-   [ui-core/src/lib/agent/index.ts](../../../ui-core/src/lib/agent/index.ts)
-   to **throw** on module load if the URL wasn't baked in.
-   [blocks/com.listo.mqtt-client/ui-src/rsbuild.config.ts](../../../blocks/com.listo.mqtt-client/ui-src/rsbuild.config.ts)
-   requires the env var and fails the build without it.
-   - **Partial win:** the block's panel now builds with the right URL.
-     But Studio also needs `PUBLIC_AGENT_URL` at dev-server start (fine
-     — mani's `dev-edge` already sets it).
-   - **New failure:** restarting rsbuild during an HMR cycle leaves the
-     browser holding a mix of old and new chunks → `react-router-dom`
-     factory-undefined panic in Studio's own bootstrap.
-
-## Where the code currently is
-
-- `MF_SHARED_SINGLETONS` contains: `react`, `react-dom`, `react-router-dom`,
-  `zustand`, `@tanstack/react-query`. NO listo packages.
-- [ui-core/src/lib/agent/index.ts](../../../ui-core/src/lib/agent/index.ts)
-  throws if `PUBLIC_AGENT_URL` isn't baked in. This is a **no-fallback**
-  rule per user preference — no silent `?? "http://localhost:8080"`.
-- [blocks/com.listo.mqtt-client/ui-src/rsbuild.config.ts](../../../blocks/com.listo.mqtt-client/ui-src/rsbuild.config.ts)
-  `require`'s `PUBLIC_AGENT_URL` via `requireEnv()`. Throws at build if
-  missing.
-- [blocks/com.listo.mqtt-client/Makefile](../../../blocks/com.listo.mqtt-client/Makefile)
-  targets `edge` / `cloud` pass `PUBLIC_AGENT_URL` explicitly. `make ui`
-  on its own fails by design.
-- `./package.json` was added to the `exports` field of `ui-core`,
-  `ui-kit`, `block-ui-sdk`, `agent-client-ts` — harmless but didn't
-  help what it was supposed to.
-- The block's `ui-src/package.json` still carries the listo packages
-  as explicit deps with `workspace:^0.1.0`. Revert if we abandon option
-  (1) entirely; keep if we later revisit shared-singleton sharing with
-  the version resolution fixed.
-
-## What the next session needs to decide
-
-### Option A — abandon MF singleton sharing of listo packages entirely
-
-**Accept:** every block ships its own `@listo/ui-core` bundle (~3 MB).
-**Rely on:** `PUBLIC_AGENT_URL` baked at build time.
-
-Tasks:
-1. Revert the per-block `@listo/*` deps in `ui-src/package.json`
-   (we added them while debugging the shared route).
-2. Remove the MF shared entries that were experimental (done for
-   listo packages, but double-check).
-3. Debug the `react-router-dom` factory-undefined crash. This is
-   either HMR cache stale, or rsbuild dev-server state pollution.
-   Reproduce from a clean tree:
-   ```
-   pkill -f rsbuild
-   rm -rf studio/dist studio/.rsbuild blocks/*/ui studio/node_modules/.federation
-   cd studio && PUBLIC_AGENT_URL=http://localhost:8082 pnpm dev --port 3010
-   # then in another terminal:
-   cd blocks/com.listo.mqtt-client && make edge
-   ```
-   Open **private browsing** window at http://localhost:3010 to
-   bypass HMR caching.
-4. If the crash persists, suspect the `ui-core/dist/lib/fleet/ScopeContext.js`
-   chain specifically — pin down whether it's a Studio-local bug or
-   an MF runtime ordering issue.
-
-### Option B — fix MF shared singletons properly
-
-**Accept:** learn rspack's `@module-federation/enhanced` plugin internals.
-**Benefit:** one copy of ui-core, shared agent client, proper MF
-model matching the original design intent.
-
-The question is: **why does rspack's shared plugin refuse to honour
-our explicit `requiredVersion`?** Answers to find:
-1. Check `@module-federation/enhanced` source for where it computes
-   `requiredVersion`. File: `node_modules/.pnpm/@module-federation+enhanced@0.6.16/.../dist/...`
-2. Look for an option like `automaticRequiredVersion: false` or similar.
-3. Try `import: false` on the shared entry — this tells MF "this
-   is a consume-only share" and may disable some heuristics.
-4. Try switching to a newer `@module-federation/enhanced` (0.6.16 is
-   old; 0.9+ may have fixed this).
-5. If all else fails, post-process the mf-manifest.json in the block's
-   Makefile to rewrite `^undefined` → `*`.
-
-### Option C — neither. Use runtime sharing via window globals.
-
-Studio sets `window.__LISTO_AGENT_CLIENT__ = agentClient` before loading
-any block. Blocks read from there. Ugly but bypasses MF entirely for
-the singleton concern. Keep MF only for React/router (which ARE sharing
-correctly today — the failure is only for the listo packages).
-
-## Tools / commands the next session should know
-
-### Inspect an MF remote's shared manifest
+### Step 0 — sanity
 
 ```bash
-curl -s http://localhost:8082/blocks/com.listo.mqtt-client/mf-manifest.json \
-  | python3 -c "import sys,json
-d=json.load(sys.stdin)
+cd /home/user/code/workspace
+pgrep -af "rsbuild\|dts-plugin\|start-broker"   # should be empty
+```
+
+If any zombies, `kill -9 <pid>` them. Zombies from the 0.6.16 era
+keep spewing stale `factory is undefined` and `dts-plugin@0.6.16`
+errors into logs and will make you think the fix didn't land.
+
+### Step 1 — rebuild workspace packages
+
+```bash
+rm -rf ui-core/dist ui-kit/dist block-ui-sdk/dist agent-client-ts/dist
+pnpm install
+pnpm --filter @listo/agent-client --filter @listo/ui-kit \
+     --filter @listo/ui-core --filter @listo/block-ui-sdk run build
+```
+
+Verify self-imports are gone from dist:
+
+```bash
+grep -rn '@listo/ui-core' ui-core/dist/ | grep -v sourceMap | grep -v '\.map' | grep -v '\.d\.ts' | grep -v 'dist/mf.js'
+# should be EMPTY
+```
+
+### Step 2 — rebuild block UI
+
+```bash
+rm -rf blocks/com.listo.mqtt-client/ui
+cd blocks/com.listo.mqtt-client && make edge
+cd -
+```
+
+### Step 3 — launch dev-edge fresh
+
+```bash
+mani run kill-dev --projects agent
+rm -rf studio/dist-web studio/node_modules/.federation studio/node_modules/.cache
+rm -f /tmp/dev-edge.log
+nohup mani run dev-edge --projects agent > /tmp/dev-edge.log 2>&1 &
+disown
+until ss -tln | grep -qE ':(3010|8082)'; do sleep 2; done
+```
+
+### Step 4 — STATIC manifest check (quick sanity, NOT sufficient)
+
+```bash
+curl -s http://localhost:3010/mf-manifest.json | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
 for s in d['shared']:
-    print(f\"{s['name']:40s} v={s.get('version','?'):10s} req={s.get('requiredVersion','?'):15s} singleton={s.get('singleton')}\")
-"
+    v = s.get('version', '?'); r = s.get('requiredVersion', '?')
+    print(f\"{s['name']:32s} v={v:12s} req={r:14s}\")"
+
+curl -s http://localhost:8082/blocks/com.listo.mqtt-client/mf-manifest.json | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for s in d['shared']:
+    v = s.get('version', '?'); r = s.get('requiredVersion', '?')
+    print(f\"{s['name']:32s} v={v:12s} req={r:14s}\")"
 ```
 
-If any line shows `req=^undefined`, rspack couldn't infer the version →
-shared runtime will fail.
+Expected: every row shows real semver (no `^undefined`), all listo
+packages at `0.1.0`.
 
-### Inspect Studio's providing manifest
+### Step 5 — ACTUAL end-to-end test in a real browser
 
 ```bash
-curl -s http://localhost:3010/mf-manifest.json | python3 -m json.tool | less
+cd /home/user/code/workspace
+node ./studio-smoke.mjs
 ```
 
-The `shared[]` list is what Studio PROVIDES. Missing entries here mean
-Studio won't satisfy a block's consume side.
+Expected:
+- `rootKids > 0`
+- `scopeSummary` shows ALL `@listo/*` with `loaded: true, hasLib: true`
+- `=== logs ===` has ZERO `[pageerror]` lines
+- ZERO `factory is undefined` occurrences
 
-### Which URL is baked into a bundle
+If `@listo/ui-core` or `@listo/ui-kit` still shows `loaded: false`,
+the self-import deadlock is back — check that `dist/` doesn't contain
+`@listo/ui-core` / `@listo/ui-kit` string literals in its JS output.
+`tsc-alias` may not have run; rebuild ui-core/ui-kit.
+
+### Step 6 — navigate to a block panel
+
+The smoke script only tests Studio's own root. Extend it (or manually
+via Playwright) to:
+
+1. `page.goto(STUDIO + "/blocks")` — block list renders
+2. Click into mqtt-client — panel loads
+3. Trigger a settings write — verify `POST /api/v1/nodes/.../settings`
+   returns 200 within 10 s (the old bug timed out after 10 s)
+
+This is the scenario that originally surfaced the entire saga. If
+this doesn't work, this doc is still not done.
+
+## Debug tooling
+
+### window.__FEDERATION__ inspection
+
+```js
+const inst = window.__FEDERATION__.__INSTANCES__[0];
+Object.fromEntries(
+  Object.entries(inst.shareScopeMap.default).map(([name, versions]) => [
+    name,
+    Object.fromEntries(
+      Object.entries(versions).map(([v, slot]) => [v, {
+        loaded: !!slot.loaded, hasLib: !!slot.lib, from: slot.from
+      }])
+    )
+  ])
+)
+```
+
+`loaded: true` AND `hasLib: true` means the factory ran and a real
+module object exists. `loaded: false` means the factory never
+completed — that's the deadlock state.
+
+### Zombie hunting
 
 ```bash
-grep -rEho '"http://localhost:808[0-9]"' blocks/com.listo.mqtt-client/ui/static/js/ | sort -u
+pgrep -af "dts-plugin\|rsbuild\|start-broker\|@module-federation"
 ```
 
-Should show exactly one URL — the one matching the `PUBLIC_AGENT_URL`
-you built with.
+The 0.6.16 DTS broker has specifically shown up as
+`start-broker.js` from the old path. If you see it, kill it. If you
+see any `0.6.16` path in a log, a zombie is still alive.
 
-### Clean restart (nuke all dev-server caches)
+### Orphan pnpm folders
+
+After bumping MF, pnpm may leave `.pnpm/@module-federation+*@0.6.16*`
+directories. They're not linked from anywhere, but scripts and logs
+sometimes still reference paths inside them (zombies, cached
+`NODE_PATH`, etc). Nuke:
 
 ```bash
-pkill -f rsbuild
-rm -rf \
-  studio/dist studio/.rsbuild \
-  studio/node_modules/.federation \
-  studio/node_modules/.cache \
-  blocks/*/ui \
-  blocks/*/ui-src/.rsbuild
+rm -rf node_modules/.pnpm/*0.6.16*
+pnpm install
 ```
 
-### Browser-side
+### Check baked PUBLIC_AGENT_URL
 
-- Always **hard refresh** (Cmd/Ctrl+Shift+R) — regular refresh keeps
-  MF chunks cached.
-- Better: open the Network tab with "Disable cache" checked, or use a
-  private window.
-- The MF runtime registers shared modules in `window.__FEDERATION__`.
-  Inspect at runtime:
-  ```js
-  window.__FEDERATION__.__INSTANCES__[0].shareScopeMap
-  ```
-
-## Files changed in this branch (for revert reference)
-
+```bash
+curl -s http://localhost:3010/static/js/async/ui-core_dist_index_js.js \
+  | grep -oE '"http://localhost:80[0-9]+"' | sort -u
 ```
-ui-core/src/mf.ts                            — singleton list
-ui-core/src/lib/agent/index.ts               — throws if PUBLIC_AGENT_URL unset
-ui-core/package.json                         — added ./package.json export
-ui-kit/package.json                          — added ./package.json export
-block-ui-sdk/package.json                    — added ./package.json export
-block-ui-sdk/src/index.ts                    — re-exported useKinds + useNodeSettings
-block-ui-sdk/src/mf.ts                       — re-export of ui-core's mf
-agent-client-ts/package.json                 — added ./package.json export
-blocks/com.listo.mqtt-client/ui-src/package.json — added @listo/* deps
-blocks/com.listo.mqtt-client/ui-src/rsbuild.config.ts — requireEnv(PUBLIC_AGENT_URL)
-blocks/com.listo.mqtt-client/Makefile         — edge/cloud pass env
-```
+
+Should show only the URL you started dev-edge with (`http://localhost:8082`).
+
+## What the next session MUST NOT do
+
+- **Must not say "done" based on static manifest checks alone.** The
+  manifest can be perfect while the app fails to mount (that is
+  literally what happened twice this session).
+- **Must not ignore "no console errors" as proof of success.** The
+  lazyCompilation deadlock produced zero errors; it just silently
+  hung. Visual confirmation of the mounted UI is mandatory.
+- **Must not paper over DTS errors.** If `#TYPE-001` shows up, dev
+  server is unstable. Disable DTS (`dts: false`) everywhere it's on.
+- **Must not leave zombie processes.** Always grep for
+  `dts-plugin@0.6.16` in a fresh log — its presence proves a stale
+  process is feeding you old output.
+
+## Remaining work
+
+1. **Run the full end-to-end test recipe above.** If any step fails,
+   stop and fix the root cause before claiming success.
+2. **Apply `dts: false` to the two other blocks'
+   `rsbuild.config.ts`** (com.acme.hello, com.listo.bacnet).
+3. **Extend `studio-smoke.mjs` to exercise a block panel write** —
+   Step 6 above. Block panel writes were the original bug; without
+   verifying that path, the fix is speculative.
+4. **Remove the `@types/node` devDep workaround** if a cleaner place
+   exists — right now it's in `ui-core/package.json` because
+   `src/mf.ts` uses `node:module`, which TS needs types for. Moving
+   mf.ts into a separate build target (e.g. `ui-core/build-tools/`)
+   would be cleaner.
+5. **Consider moving `createSharedSingletons` out of the runtime
+   package entirely.** It's only consumed by build config files; a
+   separate `@listo/mf-config` workspace package would prevent
+   accidental browser-side import.
 
 ## References
 
-- Module Federation docs: https://module-federation.io/configure/shared.html
-- The rspack plugin source: `node_modules/.pnpm/@module-federation+enhanced@0.6.16/node_modules/@module-federation/enhanced/`
-- Relevant upstream issue (search): "rspack shared requiredVersion undefined workspace"
-
-## One-line summary
-
-**MF shared-singleton sharing of workspace packages is broken in
-`@module-federation/enhanced@0.6.16` because the plugin can't resolve
-versions from `workspace:*` specs; until that's fixed, use build-time
-`PUBLIC_AGENT_URL` injection as the source of truth for each bundle's
-agent URL, and don't try to share `@listo/*` via MF.**
+- Upstream fix for the version-inference bug:
+  [module-federation/core#4614](https://github.com/module-federation/core/pull/4614)
+- Related issues: [#3101](https://github.com/module-federation/core/issues/3101),
+  [#1310](https://github.com/module-federation/core/issues/1310)
+- MF shared docs: https://module-federation.io/configure/shared.html
+- The self-import rule (well-known footgun, not well-documented):
+  the shared-module bundle must resolve its internal imports without
+  going through the consume plugin. The usual workaround is relative
+  imports; our `tsc-alias` mapping is equivalent.

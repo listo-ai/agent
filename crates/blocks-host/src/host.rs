@@ -392,6 +392,27 @@ async fn supervise_loop(
             }
         }
 
+        // Open the async slot-event back-channel (block → agent). The
+        // block's `Subscribe` RPC streams `SlotEvent`s every time it
+        // needs to write a slot from outside a dispatch tick — an MQTT
+        // sub's on-receive path, a driver's telemetry push, a long
+        // timer's tick. Without this stream those emits would have
+        // nowhere to go: `on_message` / `on_init` responses only carry
+        // emits captured synchronously during dispatch.
+        //
+        // The stream is scoped to one child lifetime; on crash/restart
+        // the supervisor re-enters `spawn_with_cancel`, lands here
+        // again, and opens a fresh stream. Failures inside the task
+        // log and the task exits; the next child-start reopens it.
+        let stream_client = sup.client();
+        let stream_behaviors = behaviors.clone();
+        let stream_block = id.clone();
+        let stream_cancel = cancel.clone();
+        tokio::spawn(async move {
+            run_slot_event_consumer(stream_block, stream_client, stream_behaviors, stream_cancel)
+                .await;
+        });
+
         // Drive the block until it fails or we're cancelled.
         let reason = run_until_failure(&mut sup, &policy, &state, &cancel).await;
         // Clear the client slot so in-flight messages drop rather than
@@ -444,6 +465,82 @@ async fn supervise_loop(
     for kind_id in &registered_kinds {
         behaviors.unregister(kind_id);
         tracing::info!(block = %id, kind = %kind_id, "unregistered process proxy behaviour");
+    }
+}
+
+/// Consume the block's async `Subscribe` stream and forward each
+/// `SlotEvent` onto the graph. One call = one child lifetime; on child
+/// crash this task exits and the supervise_loop spawns a fresh one
+/// after restart.
+async fn run_slot_event_consumer(
+    block_id: BlockId,
+    mut client: transport_grpc::ExtensionClient<tonic::transport::Channel>,
+    behaviors: BehaviorRegistry,
+    cancel: CancellationToken,
+) {
+    use std::str::FromStr;
+    use transport_grpc::SubscribeRequest;
+
+    let req = SubscribeRequest {
+        node_paths: Vec::new(),
+        slots: Vec::new(),
+    };
+    let mut stream = tokio::select! {
+        _ = cancel.cancelled() => return,
+        r = client.subscribe(req) => match r {
+            Ok(s) => s.into_inner(),
+            Err(status) => {
+                tracing::warn!(
+                    block = %block_id, error = %status,
+                    "slot-event Subscribe RPC failed — async emits from this block will be lost",
+                );
+                return;
+            }
+        },
+    };
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            item = stream.message() => {
+                let ev = match item {
+                    Ok(Some(ev)) => ev,
+                    Ok(None) => break, // stream closed cleanly
+                    Err(status) => {
+                        tracing::warn!(
+                            block = %block_id, error = %status,
+                            "slot-event stream dropped",
+                        );
+                        break;
+                    }
+                };
+                let path = match spi::NodePath::from_str(&ev.node_path) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::warn!(
+                            block = %block_id, node_path = %ev.node_path, error = %e,
+                            "slot-event: invalid node_path",
+                        );
+                        continue;
+                    }
+                };
+                let value: serde_json::Value = match serde_json::from_str(&ev.value_json) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!(
+                            block = %block_id, node_path = %ev.node_path, slot = %ev.slot, error = %e,
+                            "slot-event: value_json parse failed",
+                        );
+                        continue;
+                    }
+                };
+                if let Err(e) = behaviors.graph_write_slot(&path, &ev.slot, value) {
+                    tracing::warn!(
+                        block = %block_id, node_path = %ev.node_path, slot = %ev.slot, error = %e,
+                        "slot-event: graph write failed",
+                    );
+                }
+            }
+        }
     }
 }
 

@@ -73,6 +73,17 @@ impl BehaviorRegistry {
     /// Register a behaviour for a kind. The manifest must already be
     /// registered with the graph's [`KindRegistry`] — it's looked up
     /// here so dispatch doesn't pay for it on every message.
+    ///
+    /// **Late-arrival back-fill.** Process-block supervisors register
+    /// their proxy behaviours *after* the engine has already booted and
+    /// run [`Self::boot_init_all`]. Pre-existing nodes of those kinds
+    /// were skipped there (no behaviour → `lookup().is_none() → continue`)
+    /// and the graph-restore path emits no `NodeCreated`, so without
+    /// back-fill they'd sit uninitialised until a user poked settings.
+    /// On a *new* kind registration we rerun `dispatch_init` for every
+    /// existing node of that kind to close the gap. Re-registrations of
+    /// the same kind (e.g. `POST /api/v1/blocks/reload` replacing a
+    /// supervisor) do NOT back-fill, so live sessions aren't stomped.
     pub fn register(
         &self,
         kind: KindId,
@@ -83,15 +94,53 @@ impl BehaviorRegistry {
             .kinds()
             .get(&kind)
             .ok_or_else(|| EngineError::UnknownKind(kind.clone()))?;
-        let mut g = self.write_inner();
-        g.behaviors.insert(
-            kind,
-            BehaviorEntry {
-                behavior,
-                manifest: Arc::new(manifest),
-            },
-        );
+        let is_new_kind = {
+            let mut g = self.write_inner();
+            let is_new = !g.behaviors.contains_key(&kind);
+            g.behaviors.insert(
+                kind.clone(),
+                BehaviorEntry {
+                    behavior,
+                    manifest: Arc::new(manifest),
+                },
+            );
+            is_new
+        };
+
+        if is_new_kind {
+            for snap in self.graph.snapshots() {
+                if snap.kind != kind {
+                    continue;
+                }
+                if let Err(err) = self.dispatch_init(snap.id) {
+                    tracing::warn!(
+                        node = %snap.id, kind = %kind, error = %err,
+                        "late-arrival on_init failed during behaviour registration",
+                    );
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// Apply a block-initiated slot write.
+    ///
+    /// Process-block supervisors call this from the Subscribe-stream
+    /// consumer task to forward async `SlotEvent`s (e.g. an MQTT sub's
+    /// on-receive path emitting on its `out` port) onto the graph. A
+    /// direct `GraphStore::write_slot` analogue behind a method kept
+    /// here so callers don't need to reach into the private graph
+    /// handle.
+    pub fn graph_write_slot(
+        &self,
+        path: &NodePath,
+        slot: &str,
+        value: JsonValue,
+    ) -> Result<(), EngineError> {
+        self.graph
+            .write_slot(path, slot, value)
+            .map(|_| ())
+            .map_err(|e| EngineError::Behavior(format!("write slot `{slot}`: {e}")))
     }
 
     /// Remove a behaviour for a kind. Used by the process-block host
