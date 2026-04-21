@@ -384,6 +384,181 @@ This lands incrementally, not as a big-bang greenfield change.
 
 Each phase is independently deployable and reversible. No client is forced to upgrade to keep working.
 
+## UI implementation scope
+
+The backend (entities, repo, service, REST) is complete. This section defines the concrete frontend work to make preferences user-facing in Studio.
+
+### Current state (what exists)
+
+| Layer | Status |
+|---|---|
+| Backend entities + repo + service + REST | **Done.** 4 endpoints, 12 preference fields, three-layer resolution. |
+| `agent-client-ts` | **Missing.** No preferences domain module. |
+| `ui-core` preferences store / hook | **Missing.** Only a local-only theme toggle in zustand. |
+| `ui-core` formatting utilities | **Missing.** Scattered bare `toLocaleString()` calls with no locale parameter. |
+| Settings page | **Stub.** Theme toggle only, two "Milestone 4+" placeholder cards. |
+| i18n | **Non-existent.** All UI strings are hardcoded English. |
+| `block-ui-sdk` | **No preferences access.** Blocks cannot read user prefs or use formatters. |
+
+### Layer 1 — `agent-client-ts`: preferences domain module
+
+Add `agent-client-ts/src/domain/preferences.ts`:
+
+- Zod schemas: `ResolvedPreferencesSchema`, `PreferencesPatchSchema` matching the backend entities.
+- Methods: `getMyPreferences(orgId?)`, `patchMyPreferences(orgId, patch)`, `getOrgPreferences(orgId)`, `patchOrgPreferences(orgId, patch)`.
+- Re-export from `agent-client-ts/src/index.ts`.
+
+No React. No hooks. Plain HTTP client methods — usable from Node, Bun, tests, anything.
+
+### Layer 2 — `ui-core`: PreferencesProvider + store
+
+A React context that owns the resolved preferences for the session:
+
+```
+ui-core/src/providers/PreferencesProvider.tsx
+ui-core/src/hooks/usePreferences.ts
+ui-core/src/hooks/useUpdatePreferences.ts
+```
+
+- **`PreferencesProvider`** — wraps the app (inside `AuthProvider`, outside `IntlProvider`). On mount fetches `GET /v1/me/preferences` via the agent client, caches in React Query with ETag. Exposes resolved prefs via context.
+- **`usePreferences()`** — returns the resolved `ResolvedPreferences` object. Every formatting call reads from this.
+- **`useUpdatePreferences()`** — returns a mutation that PATCHes user prefs, invalidates the query cache, and triggers a re-render of every consumer. Optimistic update for instant UI feedback.
+
+The existing `useUiStore` theme state migrates into this provider. Theme is written to both the backend (`PATCH`) and local storage (so the correct theme applies before the network round-trip on cold start).
+
+### Layer 3 — `ui-core`: formatting library
+
+A pure-function module with no React dependency, powered entirely by the browser's built-in `Intl` APIs (zero extra npm deps):
+
+```
+ui-core/src/lib/formatters.ts
+```
+
+Functions (all take the resolved `ResolvedPreferences` as a parameter):
+
+| Function | What it does | Intl API |
+|---|---|---|
+| `formatDate(ts, prefs)` | Renders a UTC epoch-ms timestamp as a date string in the user's timezone and date format (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`). | `Intl.DateTimeFormat` |
+| `formatTime(ts, prefs)` | Renders the time portion, respecting `time_format` (12h / 24h). | `Intl.DateTimeFormat` |
+| `formatDateTime(ts, prefs)` | Combined date + time. | `Intl.DateTimeFormat` |
+| `formatRelativeTime(ts, prefs)` | "Pretty time" — "2 hours ago", "just now", "yesterday". Locale-aware. Falls back to `formatDateTime` for anything older than 7 days. | `Intl.RelativeTimeFormat` |
+| `formatNumber(n, prefs)` | Number with correct decimal/thousands separators (`1,234.56` vs `1.234,56` vs `1 234,56`). | `Intl.NumberFormat` |
+| `formatUnit(value, quantity, unit, prefs)` | Converts + formats a physical quantity. If the user's preferred unit for that quantity differs from the supplied unit, converts (client-side conversion table for the common units). Appends the localised unit symbol. | `Intl.NumberFormat` + lookup table |
+
+Design rules:
+- **Pure functions, no hooks, no state.** Components call `formatDate(ts, prefs)` where `prefs` comes from `usePreferences()`. This keeps the formatters testable without React.
+- **All existing bare `toLocaleString()` calls** in `ui-core` (charts, KPIs, history tables, recent-changes popover) are replaced with these formatters so the entire UI responds to preference changes.
+- **Client-side unit conversion** for the display path is a lightweight lookup table (not a full physics library). Covers the units in the `Unit` enum. The server already does the authoritative conversion for `Accept-Units: preferred` — the client table is for instant re-render when prefs change without re-fetching data.
+
+### Layer 4 — `ui-core`: SettingsPage
+
+Replace the stub cards with real controls. The page is already mounted at `/settings` in Studio.
+
+**Sections:**
+
+1. **Language** — `<Select>` with options: English (`en`), Español (`es`). Changing this switches the `<IntlProvider>` locale, reloads the message bundle, and PATCHes `language` to the backend.
+
+2. **Timezone** — searchable `<Combobox>` over the IANA timezone list (generated from `Intl.supportedValuesOf('timeZone')`). Shows current time in the selected zone as a live preview. PATCHes `timezone`.
+
+3. **Date & time format**
+   - Date format: `<Select>` — `YYYY-MM-DD` (International), `DD/MM/YYYY` (EU/AU), `MM/DD/YYYY` (US). Live preview showing today's date in each format.
+   - Time format: `<Select>` — 24-hour, 12-hour. Live preview.
+   - Pretty time: `<Switch>` — when on, timestamps < 7 days old show as relative ("2 hours ago"). When off, always absolute. This is a client-side display preference stored in local storage (not a backend field — it's purely a rendering choice).
+   - Week start: `<Select>` — Monday, Sunday.
+
+4. **Units**
+   - Unit system: `<Select>` — Metric, Imperial.
+   - Per-unit overrides (shown as an expandable "Advanced" section): Temperature (°C / °F), Pressure (kPa / psi / bar). Each defaults to "Auto (follow unit system)" but can be pinned.
+   - Live preview: shows a sample value (e.g. `22.4 °C` → `72.3 °F`) that updates as you change the selection.
+
+5. **Number format** — `<Select>` — `1,234.56` (US/UK), `1.234,56` (EU), `1 234,56` (FR/RU). Live preview.
+
+6. **Theme** — existing light/dark/system toggle, migrated from the standalone zustand store into the preferences context.
+
+Every control is wired to `useUpdatePreferences()` with optimistic updates. The page uses `ui-kit` primitives only (Select, Combobox, Switch, Card, Label) — no custom components.
+
+### Layer 5 — i18n: English + Spanish
+
+Lightweight start using `react-intl` (ICU MessageFormat, browser-native `Intl` under the hood):
+
+```
+ui-core/src/i18n/
+  en.json          — English message bundle (source of truth)
+  es.json          — Spanish translations
+  IntlProvider.tsx  — wrapper that loads the correct bundle based on prefs.language
+```
+
+- `<IntlProvider>` sits inside `PreferencesProvider` (needs prefs to know which language). Studio wraps its app root with it.
+- Start with: settings page labels, sidebar navigation, common chrome (page titles, buttons, empty states). ~100–150 message keys for the initial pass.
+- All new UI strings use `<FormattedMessage id="..." defaultMessage="..." />` or `intl.formatMessage()`. Existing hardcoded strings migrate incrementally — no big-bang rewrite.
+- Fallback chain: requested language → `en`. Missing keys render the `defaultMessage` (English), never error.
+- **Not Fluent** (as the backend section suggests) — the browser already has ICU via `Intl`, and `react-intl` is the de-facto React standard for it. Fluent stays on the backend/CLI/Rust side. This is a pragmatic split: Rust services use Fluent, TS clients use `react-intl`, both consume ICU MessageFormat syntax.
+
+### Layer 6 — demo: unit conversion on a real node
+
+To prove the pipeline end-to-end, annotate an existing node's slots with `quantity` and verify the display path:
+
+- **Candidate:** the MQTT client block (`com.listo.mqtt-client`) or any node that publishes numeric telemetry. Alternatively, create a minimal `sys.demo.sensor` test kind with two slots: `temperature` (quantity: Temperature, sensor_unit: Celsius) and `pressure` (quantity: Pressure, sensor_unit: Kilopascal).
+- **Verification scenario:** 
+  1. Node publishes `22.4` (°C) and `101.3` (kPa).
+  2. User opens Settings → Units → switches to Imperial.
+  3. Dashboard / node detail re-renders: `72.3 °F`, `14.7 psi`.
+  4. User switches timezone to `Australia/Sydney` — all timestamps shift.
+  5. User switches language to `es` — UI labels switch to Spanish.
+  6. User switches date format to `DD/MM/YYYY` — dates re-render.
+
+### `block-ui-sdk` additions
+
+Blocks need the same formatting pipeline. Add to `block-ui-sdk`:
+
+- **`usePreferences()`** — re-export from `ui-core` (or a thin wrapper that reads from the MF shared scope).
+- **`formatDate`, `formatTime`, `formatDateTime`, `formatRelativeTime`, `formatNumber`, `formatUnit`** — re-export the pure functions from `ui-core/src/lib/formatters.ts`.
+- **`useIntl()`** — re-export from `react-intl` so blocks can translate their own strings.
+
+This keeps the "blocks depend only on `block-ui-sdk`" invariant intact while giving them full access to the preference-aware formatting pipeline.
+
+### Wiring order (implementation sequence)
+
+Each step is independently deployable:
+
+1. **`agent-client-ts` preferences module** — unblocks everything else.
+2. **`ui-core` PreferencesProvider + store** — the plumbing.
+3. **`ui-core` formatters.ts** — the pure functions.
+4. **`ui-core` SettingsPage** — the user-facing controls.
+5. **Replace bare `toLocaleString()` calls** across `ui-core` — charts, KPIs, history tables.
+6. **i18n setup** — `react-intl` provider + `en.json` + `es.json` bundles.
+7. **`block-ui-sdk` re-exports** — blocks get formatters + prefs.
+8. **Demo node annotation** — prove the full pipeline.
+
+### Date & time format details
+
+The `date_format` preference maps to `Intl.DateTimeFormat` options:
+
+| Preference value | Display example | `Intl.DateTimeFormat` options |
+|---|---|---|
+| `YYYY-MM-DD` | `2026-04-22` | `{ year: 'numeric', month: '2-digit', day: '2-digit' }` + manual reorder |
+| `DD/MM/YYYY` | `22/04/2026` | locale `en-GB` pattern |
+| `MM/DD/YYYY` | `04/22/2026` | locale `en-US` pattern |
+
+The `time_format` preference:
+
+| Preference value | Display example | `Intl.DateTimeFormat` option |
+|---|---|---|
+| `24h` | `14:30` | `{ hour12: false }` |
+| `12h` | `2:30 PM` | `{ hour12: true }` |
+
+"Pretty time" (relative display) thresholds:
+
+| Age | Display |
+|---|---|
+| < 1 minute | "just now" |
+| < 1 hour | "X minutes ago" |
+| < 24 hours | "X hours ago" |
+| < 7 days | "X days ago" / "yesterday" |
+| ≥ 7 days | falls back to `formatDateTime()` |
+
+All relative strings are locale-aware via `Intl.RelativeTimeFormat` — Spanish users see "hace 2 horas", not "2 hours ago".
+
 ## Future
 
 - **User-authored content translation** — translations sidecar table keyed by `(entity_id, lang)`, authored language as canonical. Surface a "translate this" affordance in Studio once multi-language customers exist.

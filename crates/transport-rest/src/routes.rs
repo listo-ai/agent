@@ -53,7 +53,7 @@ pub fn mount(state: AppState) -> Router {
         // module, merged in so the tower layers below apply uniformly.
         .merge(crate::ai::routes())
         .merge(crate::blocks::routes())
-        .merge(crate::kinds::routes())
+        .merge(crate::search::routes())
         .merge(crate::auth_routes::routes())
         .merge(crate::flows::routes())
         .merge(crate::preferences::routes())

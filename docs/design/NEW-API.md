@@ -148,17 +148,19 @@ Studio depends on this package.
 
 ## Worked examples
 
-### `kinds` endpoint (existing reference)
+### `search` endpoint + `kinds` scope (existing reference)
 
-Concrete reference to copy (the `GET /api/v1/kinds` endpoint):
+Concrete reference to copy — the generic `GET /api/v1/search?scope=<id>` endpoint plus the first scope (`kinds`). This is the template for every future lookup: transport stays thin, the scope owns DTO + schema + filter logic, and every caller (REST, CLI, MCP, fleet) shares the same domain function.
 
-- Handler: [`crates/transport-rest/src/kinds.rs`](../../crates/transport-rest/src/kinds.rs)
-- Route registration: `.merge(crate::kinds::routes())` in [`routes.rs`](../../crates/transport-rest/src/routes.rs)
-- Rust client: [`clients/rs/src/kinds.rs`](../../clients/rs/src/kinds.rs) + `KindDto` in [`types.rs`](../../clients/rs/src/types.rs)
-- TS client: [`clients/ts/src/schemas/kind.ts`](../../clients/ts/src/schemas/kind.ts) + [`clients/ts/src/domain/kinds.ts`](../../clients/ts/src/domain/kinds.ts)
-- CLI: [`crates/transport-cli/src/commands/kinds.rs`](../../crates/transport-cli/src/commands/kinds.rs)
+- Handler (thin): [`crates/transport-rest/src/search.rs`](../../crates/transport-rest/src/search.rs)
+- Scope trait + types: [`crates/graph/src/search.rs`](../../crates/graph/src/search.rs)
+- `KindsScope` implementation: [`crates/graph/src/kinds/`](../../crates/graph/src/kinds/) — `dto.rs`, `schema.rs`, `scope.rs`
+- Route registration: `.merge(crate::search::routes())` in [`routes.rs`](../../crates/transport-rest/src/routes.rs)
+- Rust client: [`clients/rs/src/kinds.rs`](../../clients/rs/src/kinds.rs) — wraps `/search?scope=kinds` so callers keep `client.kinds().list(…)` DX
+- TS client: [`clients/ts/src/domain/kinds.ts`](../../clients/ts/src/domain/kinds.ts) — same pattern
+- CLI: [`crates/transport-cli/src/commands/kinds.rs`](../../crates/transport-cli/src/commands/kinds.rs) — calls through `agent-client-rs`, no direct HTTP
 
-Use it as the template for the next endpoint.
+Adding a new searchable scope = implement [`graph::SearchScope`](../../crates/graph/src/search.rs), add one `match` arm in `transport-rest/src/search.rs`. No new routes, no new DTO glue.
 
 ### `users` endpoints — tags on users + grant wire shape
 

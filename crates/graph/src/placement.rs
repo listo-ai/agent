@@ -5,8 +5,9 @@
 //!
 //! 1. [`crate::GraphStore::create_child`] — enforces the rule at write
 //!    time; a placement violation is a `PlacementRejected` error.
-//! 2. `transport-rest`'s `/api/v1/kinds?placeable_under=<path>` — uses
-//!    the same predicate to filter the palette the Studio offers.
+//! 2. [`crate::kinds::KindsScope`] — reached by every transport via
+//!    `/api/v1/search?scope=kinds&placeable_under=<path>`. The palette
+//!    filter the Studio offers and the write path share this predicate.
 //!
 //! Keeping the rule as a pure function in this module means the two
 //! surfaces can never drift. If you find yourself copying the loop
