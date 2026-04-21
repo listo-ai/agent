@@ -3,9 +3,9 @@ import { Check, Copy } from "lucide-react";
 import type { Kind, NodeSnapshot, Slot } from "@sys/agent-client";
 import { cn, compactUuid } from "@/lib/utils";
 import { useSlotWriter } from "@/lib/slots";
-import { useNodeSettings, NodeSettingsForm } from "@/lib/node-settings";
-import { TagsEditor, useNodeTags } from "@/lib/tags";
-import { AppearanceEditor, useNodeAppearance } from "@/lib/appearance";
+import { useNodeSettings, NodeSettingsForm } from "@/lib/node/settings";
+import { TagsEditor, useNodeTags } from "@/lib/node/tags";
+import { AppearanceEditor, useNodeAppearance } from "@/lib/node/appearance";
 import { mergedSlots } from "../flow-model";
 
 /** Slot names managed by the canvas — hide from the live slots list. */

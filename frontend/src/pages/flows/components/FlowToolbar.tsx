@@ -5,6 +5,8 @@ import {
   ZoomOut,
   Map,
   Grid3x3,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import {
   Button,
@@ -17,6 +19,11 @@ import {
 interface FlowToolbarProps {
   selectedFlowPath: string | null;
   nodeCount: number;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoRedoPending: boolean;
   onAutoLayout: () => void;
   onFitView: () => void;
   onZoomIn: () => void;
@@ -30,6 +37,11 @@ interface FlowToolbarProps {
 export function FlowToolbar({
   selectedFlowPath,
   nodeCount,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  undoRedoPending,
   onAutoLayout,
   onFitView,
   onZoomIn,
@@ -50,6 +62,37 @@ export function FlowToolbar({
         </p>
       </div>
       <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={onUndo}
+              disabled={!canUndo || undoRedoPending}
+              aria-label="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={13} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={onRedo}
+              disabled={!canRedo || undoRedoPending}
+              aria-label="Redo (Ctrl+Y)"
+            >
+              <Redo2 size={13} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Redo (Ctrl+Y)</TooltipContent>
+        </Tooltip>
+
+        <Separator orientation="vertical" className="mx-1 h-4" />
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="outline" size="xs" onClick={onAutoLayout} disabled={noNodes}>

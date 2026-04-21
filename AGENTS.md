@@ -38,6 +38,12 @@ Welcome! This file provides essential context, rules, and instructions for any A
 2. **Incremental Development**: Do not rewrite massive files at once. Make targeted edits.
 3. **Run Checks Frequently**: After changing Rust code, always run `make check` or `make lint`. After changing TS, ensure no type errors remain.
 
+## 📚 Companion Stack Guides
+- `docs/agents/rust/README.md` for Rust project rules and review checks.
+- `docs/agents/typescript/README.md` for shared TypeScript conventions.
+- `docs/agents/react/README.md` for React component and hook guidance.
+- `docs/agents/shadcn/README.md` for shadcn/ui usage patterns.
+
 ## 🔧 Agent CLI
 
 The MCP bootstrap tooling now lives in the standalone `agent-cli` repo (`github.com/NubeDev/agent-cli`), not inside this workspace. It stays agent-agnostic and handles both MCP config sync and stack-specific skills/docs installs.

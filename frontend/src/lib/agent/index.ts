@@ -2,7 +2,7 @@
  * Module-level singleton `AgentClient` instance used by React hooks.
  *
  * Exposed as a promise so callers consume it via `useQuery` (see
- * [`useAgent`](../hooks/useAgent.ts)) — that way the connect flow, once
+ * [`useAgent`](../../hooks/useAgent.ts)) — that way the connect flow, once
  * the capability handshake goes live, automatically surfaces as a
  * Query error instead of a thrown top-level render.
  *

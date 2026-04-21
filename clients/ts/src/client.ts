@@ -16,6 +16,8 @@ import { createUiApi } from "./domain/ui.js";
 import { createHistoryApi } from "./domain/history.js";
 import { createAiApi } from "./domain/ai.js";
 import { createUsersApi } from "./domain/users.js";
+import { createFlowsApi } from "./domain/flows.js";
+import { createNodeSettingsApi } from "./domain/node-settings.js";
 import type { NodesApi } from "./domain/nodes.js";
 import type { SlotsApi } from "./domain/slots.js";
 import type { HistoryApi } from "./domain/history.js";
@@ -30,6 +32,8 @@ import type { AuthApi } from "./domain/auth.js";
 import type { UiApi } from "./domain/ui.js";
 import type { AiApi } from "./domain/ai.js";
 import type { UsersApi } from "./domain/users.js";
+import type { FlowsApi } from "./domain/flows.js";
+import type { NodeSettingsApi } from "./domain/node-settings.js";
 import { REST_API_VERSION } from "./version.js";
 import { FleetScope } from "./schemas/fleet.js";
 import type { FleetScope as FleetScopeType } from "./schemas/fleet.js";
@@ -103,6 +107,8 @@ export class AgentClient {
   readonly history: HistoryApi;
   readonly ai: AiApi;
   readonly users: UsersApi;
+  readonly flows: FlowsApi;
+  readonly nodeSettings: NodeSettingsApi;
 
   private constructor(
     transport: RequestTransport,
@@ -132,6 +138,8 @@ export class AgentClient {
         : undefined,
     );
     this.users = createUsersApi(transport, REST_API_VERSION);
+    this.flows = createFlowsApi(transport, REST_API_VERSION);
+    this.nodeSettings = createNodeSettingsApi(transport, REST_API_VERSION);
 
     if (FleetScope.isLocal(scope)) {
       // Local: real SSE stream against baseUrl.

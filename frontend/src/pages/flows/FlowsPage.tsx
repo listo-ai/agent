@@ -12,6 +12,9 @@ import { FlowToolbar } from "./components/FlowToolbar";
 import { AddChildNodeDialog } from "@/components/AddChildNodeDialog";
 import { useFlowPageActions } from "./useFlowPageActions";
 import { useFlowPageData } from "./useFlowPageData";
+import { useFlowId } from "./useFlowId";
+import { useFlowUndoRedo } from "./useFlowUndoRedo";
+import { useUndoRedoKeyboard } from "@/lib/keyboard";
 
 export function FlowsPage() {
   const navigate = useNavigate();
@@ -25,6 +28,8 @@ export function FlowsPage() {
   const [historyPath, setHistoryPath] = useState<string | null>(null);
   // Tags & appearance dialog: path of the right-clicked node.
   const [appearancePath, setAppearancePath] = useState<string | null>(null);
+  // OCC guard: track the latest known head revision id for undo/redo.
+  const [headRevisionId, setHeadRevisionId] = useState<string | undefined>(undefined);
 
   const {
     nodesQuery,
@@ -50,6 +55,24 @@ export function FlowsPage() {
     selectedKind,
     selectedLive,
   } = useFlowPageData({ pathFromUrl, navigate });
+
+  const flowId = useFlowId(nodesQuery.data ?? [], openFlowPath);
+  const {
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    isPending: undoRedoPending,
+    errorMessage: undoRedoError,
+  } = useFlowUndoRedo({
+    flowId,
+    headRevisionId,
+    onHeadChange: setHeadRevisionId,
+  });
+
+  // Disable keyboard shortcuts when a dialog is open to avoid
+  // accidentally undoing while the user types inside a dialog.
+  // NOTE: computed AFTER useFlowPageActions so addChildPath is in scope.
 
   const {
     flowRef,
@@ -80,6 +103,10 @@ export function FlowsPage() {
     setSelectedEdges,
   });
 
+  // Must come after useFlowPageActions so addChildPath is defined.
+  const anyDialogOpen = !!(addChildPath || appearancePath || historyPath);
+  useUndoRedoKeyboard({ onUndo: undo, onRedo: redo, enabled: !anyDialogOpen });
+
   if (nodesQuery.isPending || linksQuery.isPending || kindsQuery.isPending) {
     return <CenteredMessage title="Loading flows…" detail={AGENT_BASE_URL} />;
   }
@@ -101,6 +128,11 @@ export function FlowsPage() {
         <FlowToolbar
           selectedFlowPath={openFlowPath}
           nodeCount={visibleNodes.length}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          undoRedoPending={undoRedoPending}
           onAutoLayout={() => void autoLayoutNodes()}
           onFitView={() => flowRef.current?.fitView({ duration: 250, padding: 0.18 })}
           onZoomIn={() => flowRef.current?.zoomIn({ duration: 180 })}
@@ -111,9 +143,9 @@ export function FlowsPage() {
           showGrid={showGrid}
         />
 
-        {errorMessage ? (
+        {(errorMessage ?? undoRedoError) ? (
           <div className="border-b border-destructive/20 bg-destructive/8 px-4 py-2 text-sm text-destructive">
-            {errorMessage}
+            {errorMessage ?? undoRedoError}
           </div>
         ) : null}
 

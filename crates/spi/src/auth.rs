@@ -119,7 +119,7 @@ impl ScopeSet {
         (self.0 & Scope::Admin.bit()) != 0 || (self.0 & scope.bit()) != 0
     }
 
-    pub fn from_iter<I: IntoIterator<Item = Scope>>(iter: I) -> Self {
+    pub fn from_scopes<I: IntoIterator<Item = Scope>>(iter: I) -> Self {
         iter.into_iter().fold(Self::empty(), Self::with)
     }
 }

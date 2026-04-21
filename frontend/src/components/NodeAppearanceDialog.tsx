@@ -12,8 +12,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSlotWriter } from "@/lib/slots";
-import { TagsEditor, useNodeTags } from "@/lib/tags";
-import { AppearanceEditor, useNodeAppearance } from "@/lib/appearance";
+import { TagsEditor, useNodeTags } from "@/lib/node/tags";
+import { AppearanceEditor, useNodeAppearance } from "@/lib/node/appearance";
 
 interface NodeAppearanceDialogProps {
   open: boolean;

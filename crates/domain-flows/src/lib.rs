@@ -410,10 +410,8 @@ impl FlowService {
                     if redo_credits > 0 {
                         redo_credits -= 1;
                         // This undo is cancelled by an earlier redo; skip.
-                    } else {
-                        if let Some(t) = current.target_rev_id {
-                            stack.push(t);
-                        }
+                    } else if let Some(t) = current.target_rev_id {
+                        stack.push(t);
                     }
                 }
                 RevisionOp::Redo => {

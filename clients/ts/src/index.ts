@@ -103,3 +103,19 @@ export type { SeedPreset } from "./domain/seed.js";
 export type { NodeConfig } from "./domain/config.js";
 export type { User, UserTags, UserListResponse, GrantRoleReq, GrantRoleResp } from "./schemas/user.js";
 export type { UsersApi } from "./domain/users.js";
+export type {
+  FlowDto,
+  FlowRevisionDto,
+  FlowMutationResult,
+  FlowRevisionListResponse,
+  FlowListResponse,
+  FlowRevisionOp,
+} from "./schemas/flow.js";
+export type { FlowsApi } from "./domain/flows.js";
+export type {
+  NodeSettingRevisionDto,
+  NodeSettingRevisionListResponse,
+  NodeSettingsAtRevision,
+  NodeSettingsMutationResult,
+} from "./schemas/node-settings.js";
+export type { NodeSettingsApi } from "./domain/node-settings.js";

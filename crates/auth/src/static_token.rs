@@ -23,7 +23,7 @@ impl StaticTokenEntry {
         let ctx = AuthContext {
             actor: self.actor,
             tenant: self.tenant,
-            scopes: ScopeSet::from_iter(self.scopes),
+            scopes: ScopeSet::from_scopes(self.scopes),
         };
         (self.token, ctx)
     }
