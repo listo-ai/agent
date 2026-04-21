@@ -11,7 +11,7 @@
 import { useMemo } from "react";
 import { create, useStore } from "zustand";
 import type { NodeSnapshot } from "@listo/agent-client";
-import type { GraphStore } from "@/store/graph-hooks";
+import type { GraphStore } from "@listo/ui-core";
 import { slotMap, type LiveNodeState } from "./flow-model";
 
 /** Stable empty store used when GraphStore hasn't connected yet. */

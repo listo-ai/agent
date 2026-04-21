@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useUiStore } from "@/store/ui";
-import { useAuthStore } from "@/store/auth";
-import { useAuth } from "@/providers/auth";
+import { useUiStore } from "@listo/ui-core";
+import { useAuthStore } from "@listo/ui-core";
+import { useAuth } from "@listo/ui-core";
 import { ArrowLeft, LogOut, Moon, Sparkles, Sun } from "lucide-react";
 import { useGlobalAiChat } from "@/features/global-ai-chat";
 import {

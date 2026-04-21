@@ -18,7 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@listo/ui-kit";
-import { agentPromise } from "@/lib/agent";
+import { agentPromise } from "@listo/ui-core";
 import type { NodeSnapshot } from "@listo/agent-client";
 
 const UI_PAGE_KIND = "ui.page";

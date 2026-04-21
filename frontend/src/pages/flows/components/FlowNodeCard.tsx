@@ -12,7 +12,7 @@ import * as LucideIcons from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatLiveValue, mergedSlots, titleForKind, type FlowNodeData } from "../flow-model";
 import { LiveDataContext } from "./FlowCanvasContext";
-import { useNodePresentation, type NodeStatus } from "@/store/presentation-store";
+import { useNodePresentation, type NodeStatus } from "@listo/ui-core";
 
 // ---------------------------------------------------------------------------
 // Layout constants — shared with handle positioning in FlowCanvas.tsx

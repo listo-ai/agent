@@ -1,5 +1,5 @@
 import { Settings } from "lucide-react";
-import { useUiStore } from "@/store/ui";
+import { useUiStore } from "@listo/ui-core";
 import {
   Button,
   Card,

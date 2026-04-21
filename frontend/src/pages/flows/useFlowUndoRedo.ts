@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAgent } from "@/hooks/useAgent";
-import { useGraphStoreOptional } from "@/store/graph-hooks";
+import { useAgent } from "@listo/ui-core";
+import { useGraphStoreOptional } from "@listo/ui-core";
 import { formatError } from "@/lib/utils";
 
 export interface UseFlowUndoRedoOptions {

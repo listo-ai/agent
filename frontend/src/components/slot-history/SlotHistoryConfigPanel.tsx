@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 import { Button } from "@listo/ui-kit";
 import { Input } from "@listo/ui-kit";
 import { Label } from "@listo/ui-kit";

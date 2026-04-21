@@ -1,7 +1,7 @@
 import { useCallback, useState, type ComponentType } from "react";
 import { registerRemotes, loadRemote } from "@module-federation/enhanced/runtime";
 
-import { AGENT_BASE_URL } from "@/lib/agent";
+import { AGENT_BASE_URL } from "@listo/ui-core";
 
 /**
  * Load a block's MF-exposed `./Panel` module through the agent.

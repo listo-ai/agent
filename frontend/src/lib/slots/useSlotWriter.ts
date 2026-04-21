@@ -10,7 +10,7 @@
  * `useSlotEditor` (and all domain slot-hooks) expect as their `onSave` prop.
  */
 import { useCallback } from "react";
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 
 export function useSlotWriter(slotName: string): (path: string, value: unknown) => Promise<void> {
   const agentQuery = useAgent();

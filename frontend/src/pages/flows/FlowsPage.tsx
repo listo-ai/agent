@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "@xyflow/react/dist/style.css";
-import { AGENT_BASE_URL } from "@/lib/agent";
+import { AGENT_BASE_URL } from "@listo/ui-core";
 import { NodeAppearanceDialog } from "@/components/NodeAppearanceDialog";
 import { CenteredMessage, formatError } from "./flow-page-shared";
 import { FlowCanvas } from "./components/FlowCanvas";

@@ -2,11 +2,7 @@
 // Add new global providers here — keep the nesting shallow.
 
 import type { ReactNode } from "react";
-import { QueryProvider } from "./query";
-import { AuthProvider } from "./auth";
-import { RegistryProvider } from "./registry";
-import { GraphStoreProvider } from "./graph-store";
-import { ThemeProvider } from "./theme";
+import { QueryProvider, AuthProvider, RegistryProvider, GraphStoreProvider, ThemeProvider } from "@listo/ui-core";
 import { TooltipProvider } from "@listo/ui-kit";
 
 interface ProvidersProps {

@@ -28,7 +28,6 @@ dependencies = [
  "auth",
  "axum",
  "blocks-host",
- "blocks-sdk",
  "clap",
  "config",
  "dashboard-nodes",
@@ -47,9 +46,10 @@ dependencies = [
  "domain-logic",
  "engine",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
  "messaging",
  "serde_json",
- "spi",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -57,19 +57,6 @@ dependencies = [
  "transport-cli",
  "transport-fleet-zenoh",
  "transport-rest",
-]
-
-[[package]]
-name = "agent-client"
-version = "0.0.1"
-dependencies = [
- "futures-util",
- "reqwest",
- "schemars 0.8.22",
- "semver",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -358,9 +345,9 @@ name = "auth"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "listo-spi",
  "query",
  "serde",
- "spi",
  "tokio",
  "tracing",
 ]
@@ -478,12 +465,12 @@ dependencies = [
  "futures-core",
  "graph",
  "hyper-util",
+ "listo-spi",
  "process-wrap",
  "semver",
  "serde",
  "serde_json",
  "serde_yml",
- "spi",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -495,38 +482,6 @@ dependencies = [
  "transport-grpc",
  "wasmtime",
  "wat",
-]
-
-[[package]]
-name = "blocks-sdk"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "blocks-sdk-macros",
- "hyper-util",
- "serde",
- "serde_json",
- "serde_yml",
- "spi",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-stream",
- "tonic",
- "tower 0.5.3",
- "transport-grpc",
-]
-
-[[package]]
-name = "blocks-sdk-macros"
-version = "0.0.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_json",
- "serde_yml",
- "spi",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -691,9 +646,9 @@ name = "config"
 version = "0.0.1"
 dependencies = [
  "auth",
+ "listo-spi",
  "serde",
  "serde_yml",
- "spi",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -1014,11 +969,11 @@ dependencies = [
 name = "dashboard-nodes"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "thiserror 1.0.69",
 ]
 
@@ -1027,9 +982,9 @@ name = "dashboard-runtime"
 version = "0.0.1"
 dependencies = [
  "dashboard-nodes",
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "thiserror 1.0.69",
 ]
 
@@ -1042,16 +997,16 @@ dependencies = [
  "dashboard-runtime",
  "dashboard-transport",
  "graph",
+ "listo-spi",
+ "listo-ui-ir",
  "query",
  "schemars 0.8.22",
  "serde",
  "serde_json",
- "spi",
  "thiserror 1.0.69",
  "tokio",
  "tower-http 0.5.2",
  "tracing",
- "ui-ir",
  "uuid",
 ]
 
@@ -1109,10 +1064,10 @@ name = "data-tsdb"
 version = "0.0.1"
 dependencies = [
  "data-repos",
+ "listo-spi",
  "rusqlite",
  "serde",
  "serde_json",
- "spi",
  "thiserror 1.0.69",
  "tracing",
  "uuid",
@@ -1233,11 +1188,11 @@ name = "domain-ai"
 version = "0.0.1"
 dependencies = [
  "ai-runner",
- "blocks-sdk",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "tokio",
  "tracing",
 ]
@@ -1246,10 +1201,10 @@ dependencies = [
 name = "domain-auth"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "domain-tags",
  "graph",
- "spi",
+ "listo-blocks-sdk",
+ "listo-spi",
  "thiserror 1.0.69",
 ]
 
@@ -1257,22 +1212,22 @@ dependencies = [
 name = "domain-blocks"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "graph",
- "spi",
+ "listo-blocks-sdk",
+ "listo-spi",
 ]
 
 [[package]]
 name = "domain-compute"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "engine",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
  "serde",
  "serde_json",
  "serde_yml",
- "spi",
  "tokio",
 ]
 
@@ -1288,9 +1243,9 @@ dependencies = [
 name = "domain-fleet"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "graph",
- "spi",
+ "listo-blocks-sdk",
+ "listo-spi",
 ]
 
 [[package]]
@@ -1310,15 +1265,15 @@ dependencies = [
 name = "domain-history"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "data-repos",
  "data-sqlite",
  "data-tsdb",
  "engine",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -1330,12 +1285,12 @@ dependencies = [
 name = "domain-logic"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "engine",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "tokio",
 ]
 
@@ -1343,8 +1298,8 @@ dependencies = [
 name = "domain-presentation"
 version = "0.0.1"
 dependencies = [
+ "listo-spi",
  "serde",
- "spi",
  "thiserror 1.0.69",
 ]
 
@@ -1395,11 +1350,11 @@ name = "engine"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "blocks-sdk",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -1741,12 +1696,12 @@ dependencies = [
 name = "graph"
 version = "0.0.1"
 dependencies = [
- "blocks-sdk",
  "data-repos",
  "data-sqlite",
+ "listo-blocks-sdk",
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
@@ -2431,6 +2386,66 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
+name = "listo-agent-client"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "reqwest",
+ "schemars 0.8.22",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "listo-blocks-sdk"
+version = "0.1.0"
+dependencies = [
+ "listo-blocks-sdk-macros",
+ "listo-spi",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "listo-blocks-sdk-macros"
+version = "0.1.0"
+dependencies = [
+ "listo-spi",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "serde_yml",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "listo-spi"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-core",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
+name = "listo-ui-ir"
+version = "0.1.0"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "litemap"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2744,9 +2759,9 @@ dependencies = [
 name = "observability"
 version = "0.0.1"
 dependencies = [
+ "listo-spi",
  "serde",
  "serde_json",
- "spi",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
@@ -4168,21 +4183,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spi"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "futures-core",
- "semver",
- "serde",
- "serde_json",
- "serde_yml",
- "thiserror 1.0.69",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4822,11 +4822,9 @@ dependencies = [
 name = "transport-cli"
 version = "0.0.1"
 dependencies = [
- "agent-client",
  "anyhow",
  "axum",
  "blocks-host",
- "blocks-sdk",
  "clap",
  "dashboard-nodes",
  "dashboard-runtime",
@@ -4839,10 +4837,12 @@ dependencies = [
  "engine",
  "futures-util",
  "graph",
+ "listo-agent-client",
+ "listo-blocks-sdk",
+ "listo-spi",
  "schemars 0.8.22",
  "serde",
  "serde_json",
- "spi",
  "tokio",
  "transport-rest",
  "uuid",
@@ -4856,8 +4856,8 @@ dependencies = [
  "async-trait",
  "futures-core",
  "futures-util",
+ "listo-spi",
  "serde_json",
- "spi",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -4868,8 +4868,8 @@ dependencies = [
 name = "transport-grpc"
 version = "0.0.1"
 dependencies = [
+ "listo-spi",
  "prost",
- "spi",
  "tonic",
  "tonic-build",
 ]
@@ -4894,7 +4894,6 @@ dependencies = [
  "auth",
  "axum",
  "blocks-host",
- "blocks-sdk",
  "data-entities",
  "data-repos",
  "data-sqlite",
@@ -4904,19 +4903,20 @@ dependencies = [
  "engine",
  "futures-util",
  "graph",
+ "listo-blocks-sdk",
+ "listo-spi",
+ "listo-ui-ir",
  "query",
  "rusqlite",
  "semver",
  "serde",
  "serde_json",
- "spi",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
  "tower-http 0.5.2",
  "tracing",
  "transport-fleet-zenoh",
- "ui-ir",
  "uuid",
 ]
 
@@ -4984,16 +4984,6 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "spin 0.10.0",
-]
-
-[[package]]
-name = "ui-ir"
-version = "0.0.1"
-dependencies = [
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]

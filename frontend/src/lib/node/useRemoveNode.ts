@@ -8,7 +8,7 @@
  *   removeNode.mutate("/flows/my-flow/counter-1");
  */
 import { useMutation } from "@tanstack/react-query";
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 import { useInvalidateGraph } from "./useInvalidateGraph";
 
 export function useRemoveNode() {

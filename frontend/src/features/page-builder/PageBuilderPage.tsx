@@ -11,7 +11,7 @@ import { useCallback, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { agentPromise } from "@/lib/agent";
+import { agentPromise } from "@listo/ui-core";
 import { useBuilderStore } from "./store/builder-store";
 import { LivePreview } from "./preview/LivePreview";
 import { EditorPane } from "./panels/EditorPane";

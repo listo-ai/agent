@@ -11,7 +11,7 @@
 //     we record the server's `currentGeneration` and stop writing.
 
 import { useEffect, useRef } from "react";
-import { agentPromise } from "@/lib/agent";
+import { agentPromise } from "@listo/ui-core";
 import { GenerationMismatchError } from "@listo/agent-client";
 import { useBuilderStore } from "../store/builder-store";
 import { validateLayout } from "../model/validate-layout";

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@listo/agent-client";
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 import { formatError } from "@/lib/utils";
 import type { UserNode, UsersListParams, UsersListState } from "./types";
 

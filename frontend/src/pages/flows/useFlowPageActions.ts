@@ -9,10 +9,10 @@ import type {
   ReactFlowInstance,
 } from "@xyflow/react";
 import type { NavigateFunction } from "react-router-dom";
-import { queryClient } from "@/providers/query";
-import { useAgent } from "@/hooks/useAgent";
+import { queryClient } from "@listo/ui-core";
+import { useAgent } from "@listo/ui-core";
 import { useInvalidateGraph } from "@/lib/node";
-import { useGraphStoreOptional } from "@/store/graph-hooks";
+import { useGraphStoreOptional } from "@listo/ui-core";
 import { formatError } from "@/lib/utils";
 import {
   autoLayout,

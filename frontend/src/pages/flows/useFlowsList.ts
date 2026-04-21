@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { create, useStore } from "zustand";
 import type { NodeSnapshot, Link } from "@listo/agent-client";
 
-import { useAgent } from "@/hooks/useAgent";
-import { useGraphStoreOptional } from "@/store/graph-hooks";
-import { AGENT_BASE_URL } from "@/lib/agent";
+import { useAgent } from "@listo/ui-core";
+import { useGraphStoreOptional } from "@listo/ui-core";
+import { AGENT_BASE_URL } from "@listo/ui-core";
 import { formatError } from "@/lib/utils";
 import { useCreateNode, useRemoveNode } from "@/lib/node";
 import {

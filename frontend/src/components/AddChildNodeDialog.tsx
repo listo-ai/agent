@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Kind } from "@listo/agent-client";
 import { cn } from "@/lib/utils";
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 import { useCreateNode } from "@/lib/node";
 
 interface AddChildNodeDialogProps {

@@ -13,7 +13,7 @@
 // burst of keystrokes never stacks up stale validations.
 
 import { useEffect, useRef } from "react";
-import { agentPromise } from "@/lib/agent";
+import { agentPromise } from "@listo/ui-core";
 import { useBuilderStore } from "../store/builder-store";
 import { validateLayout } from "../model/validate-layout";
 import type { ValidationIssue } from "../model/types";

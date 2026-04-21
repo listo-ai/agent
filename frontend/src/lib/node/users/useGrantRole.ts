@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 import { formatError } from "@/lib/utils";
 import type { GrantRoleState } from "./types";
 

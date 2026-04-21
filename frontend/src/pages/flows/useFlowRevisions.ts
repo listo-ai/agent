@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 import type { FlowRevisionDto } from "@listo/agent-client";
 
 export interface UseFlowRevisionsOptions {

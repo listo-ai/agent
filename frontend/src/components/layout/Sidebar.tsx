@@ -12,7 +12,7 @@ import {
   Box,
 } from "lucide-react";
 import type { Link, NodeSnapshot } from "@listo/agent-client";
-import { useGraphStoreOptional } from "@/store/graph-hooks";
+import { useGraphStoreOptional } from "@listo/ui-core";
 import { isFlowNode } from "@/pages/flows/flow-model";
 import { buildNodeContextItems, buildCopyItems, NodeContextMenu } from "@/components/node-context-menu";
 import { useRemoveNode } from "@/lib/node";
@@ -39,7 +39,7 @@ import {
   RemoteAgentsSection,
   ScopeIndicator,
   useRemoteAgents,
-} from "@/lib/fleet";
+} from "@listo/ui-core";
 
 // ---------------------------------------------------------------------------
 // Static nav items (admin mode)

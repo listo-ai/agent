@@ -6,7 +6,7 @@
  * names stay in one place.
  */
 import { useCallback } from "react";
-import { queryClient } from "@/providers/query";
+import { queryClient } from "@listo/ui-core";
 
 export function useInvalidateGraph(): () => Promise<void> {
   return useCallback(

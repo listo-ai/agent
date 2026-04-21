@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PluginSummary } from "@listo/agent-client";
 
-import { useAgent } from "./useAgent";
+import { useAgent } from "@listo/ui-core";
 
 const BLOCKS_KEY = ["blocks"] as const;
 

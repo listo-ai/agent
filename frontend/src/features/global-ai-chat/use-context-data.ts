@@ -11,7 +11,7 @@
  * so the caller renders the minimal strip without a spinner.
  */
 import { useQuery } from '@tanstack/react-query'
-import { useAgent } from '@/hooks/useAgent'
+import { useAgent } from '@listo/ui-core'
 import type { ChatContext } from './context'
 
 export interface ContextChip {

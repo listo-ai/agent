@@ -24,6 +24,21 @@ github.com/listo-ai/
 
 ---
 
+## Starting point — the current `us` monorepo becomes `listo-ai/agent`
+
+The existing monorepo at `/home/user/code/rust/us` is **not abandoned**. It is the future `listo-ai/agent` repo. Git history is preserved.
+
+**Mechanics:**
+1. For each extracted subdir (`clients/ts`, `clients/rs`, `frontend`, `blocks`, `crates/spi`, `crates/ui-ir`, `crates/blocks-sdk*`, etc.), use `git subtree split` to create a history-preserving branch, push that to the new repo, then delete the subdir from `us`.
+2. Once all extractions are done, rename `us` → `agent` locally (`/home/user/code/listo-repos/agent`), change the `origin` remote to `https://github.com/listo-ai/agent`, and force-push to the new repo.
+3. Package name sweeps inside the remaining `us`/`agent` tree: `@sys/*` → `@listo/*`, bare Rust crate names → `listo-*` for any that get published.
+
+**What "stays" in `us`/`agent`:** everything in the "What stays in `listo-ai/agent`" table below — engine, graph, domain-*, dashboard-*, data-*, transport-*, auth, messaging, audit, observability, config, query, blocks-host, ai-runner, apps/agent. These never move out; they just get their path-dep references to extracted crates swapped for git/crates.io deps.
+
+**What leaves `us`:** clients/ts, clients/rs, frontend, blocks, crates/spi, crates/ui-ir, crates/blocks-sdk, crates/blocks-sdk-macros, plus the new crates created during the refactor (block-client, block-domain) that are born in `agent-sdk`.
+
+---
+
 ## Section 1 — Frontend
 
 ### Problem

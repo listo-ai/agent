@@ -12,7 +12,7 @@
  *   );
  */
 import { useMutation } from "@tanstack/react-query";
-import { useAgent } from "@/hooks/useAgent";
+import { useAgent } from "@listo/ui-core";
 import { useInvalidateGraph } from "./useInvalidateGraph";
 
 export interface CreateNodeInput {

@@ -1,1 +1,0 @@
-export { ColComponent } from "./Row";

@@ -9,8 +9,8 @@
  *   removeLink.mutate("link-id-123");
  */
 import { useMutation } from "@tanstack/react-query";
-import { useAgent } from "@/hooks/useAgent";
-import { queryClient } from "@/providers/query";
+import { useAgent } from "@listo/ui-core";
+import { queryClient } from "@listo/ui-core";
 
 export function useRemoveLink() {
   const agentQuery = useAgent();

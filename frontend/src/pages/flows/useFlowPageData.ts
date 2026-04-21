@@ -2,9 +2,9 @@ import { useEffect, useMemo } from "react";
 import { create, useStore } from "zustand";
 import type { Link, NodeSnapshot, Slot } from "@listo/agent-client";
 import type { NavigateFunction } from "react-router-dom";
-import { useAgent, useKinds } from "@/hooks/useAgent";
-import { useFlowStore } from "@/store/flow";
-import { useGraphStoreOptional } from "@/store/graph-hooks";
+import { useAgent, useKinds } from "@listo/ui-core";
+import { useFlowStore } from "@listo/ui-core";
+import { useGraphStoreOptional } from "@listo/ui-core";
 import { isDirectChildOfFlow, toCanvasEdges, toCanvasNodes } from "./flow-model";
 import { useFlowLiveData } from "./useFlowLiveData";
 

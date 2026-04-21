@@ -9,12 +9,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { agentPromise } from "@/lib/agent";
+import { agentPromise } from "@listo/ui-core";
 import { useBuilderStore } from "../store/builder-store.js";
 import { validateLayout } from "../model/validate-layout.js";
-import { SduiProvider, type CustomRegistry } from "@/sdui/context";
-import { Renderer } from "@/sdui/Renderer";
-import { useSubscriptions } from "@/sdui/useSubscriptions";
+import { SduiProvider, type CustomRegistry } from "@listo/ui-core";
+import { Renderer } from "@listo/ui-core";
+import { useSubscriptions } from "@listo/ui-core";
 import type { UiActionResponse, UiResolveResponse } from "@listo/agent-client";
 
 const emptyRegistry: CustomRegistry = new Map();

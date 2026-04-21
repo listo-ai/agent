@@ -9,7 +9,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Cpu, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { useAgent } from '@/hooks/useAgent'
+import { useAgent } from '@listo/ui-core'
 import { useGlobalAiChat, type ThinkingEffort } from './store'
 
 const EFFORTS: { value: ThinkingEffort; label: string }[] = [

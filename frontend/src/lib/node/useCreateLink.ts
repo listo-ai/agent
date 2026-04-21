@@ -13,8 +13,8 @@
  */
 import { useMutation } from "@tanstack/react-query";
 import type { LinkEndpointRef } from "@listo/agent-client";
-import { useAgent } from "@/hooks/useAgent";
-import { queryClient } from "@/providers/query";
+import { useAgent } from "@listo/ui-core";
+import { queryClient } from "@listo/ui-core";
 
 export interface CreateLinkInput {
   source: LinkEndpointRef;

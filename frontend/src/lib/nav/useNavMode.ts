@@ -1,5 +1,5 @@
-import { useUiStore } from "@/store/ui";
-import type { NavMode } from "@/store/ui";
+import { useUiStore } from "@listo/ui-core";
+import type { NavMode } from "@listo/ui-core";
 
 /**
  * Which sidebar mode is active.
