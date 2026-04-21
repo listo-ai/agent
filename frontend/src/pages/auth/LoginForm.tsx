@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@listo/ui-kit";
+import { Card, CardContent } from "@listo/ui-kit";
+import { Input } from "@listo/ui-kit";
+import { Label } from "@listo/ui-kit";
+import { Separator } from "@listo/ui-kit";
 
 interface LoginFormProps extends React.ComponentProps<"div"> {}
 

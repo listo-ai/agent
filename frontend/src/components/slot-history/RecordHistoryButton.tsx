@@ -1,7 +1,7 @@
 import { RotateCcw } from "lucide-react";
 
 import { useRecordHistory } from "@/hooks/useSlotHistory";
-import { Button } from "@/components/ui/button";
+import { Button } from "@listo/ui-kit";
 import { cn } from "@/lib/utils";
 
 interface RecordHistoryButtonProps {

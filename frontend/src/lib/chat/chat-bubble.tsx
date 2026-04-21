@@ -1,5 +1,5 @@
 import { User, Sparkles, AlertCircle, Wrench, Loader2, Zap } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@listo/ui-kit'
 import { CopyButton } from './copy-button'
 import { Markdown } from './markdown'
 import { AttachmentInline } from './attachment-preview'

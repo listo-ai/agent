@@ -9,7 +9,7 @@ import {
   CardTitle,
   Label,
   Separator,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 
 // ---------------------------------------------------------------------------
 // Settings page — presentational shell with theme controls.

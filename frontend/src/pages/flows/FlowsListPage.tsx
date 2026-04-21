@@ -16,7 +16,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 
 import { useFlowsList, type FlowRow } from "./useFlowsList";
 

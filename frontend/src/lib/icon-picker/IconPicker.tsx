@@ -18,10 +18,10 @@ import {
   TrendingUp, Truck, Users, Wifi, Wrench, Zap,
   type LucideIcon,
 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@listo/ui-kit";
+import { ScrollArea } from "@listo/ui-kit";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@listo/ui-kit";
+import { Button } from "@listo/ui-kit";
 import { cn } from "@/lib/utils";
 
 // ─── Curated icon map ────────────────────────────────────────────────────────

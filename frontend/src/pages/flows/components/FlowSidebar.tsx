@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Kind } from "@listo/agent-client";
 import { facetGroup, titleForKind } from "../flow-model";
-import { Badge, Input } from "@/components/ui";
+import { Badge, Input } from "@listo/ui-kit";
 
 interface FlowSidebarProps {
   kinds: Kind[];

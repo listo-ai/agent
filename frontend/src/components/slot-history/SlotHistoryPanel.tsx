@@ -2,7 +2,7 @@ import type { HistoryQueryOptions } from "@listo/agent-client";
 
 import { useSlotHistory } from "@/hooks/useSlotHistory";
 import { SlotHistoryTable } from "./SlotHistoryTable";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@listo/ui-kit";
 
 interface SlotHistoryPanelProps {
   /** Full node path, e.g. `/heartbeat`. */

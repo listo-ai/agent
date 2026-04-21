@@ -12,8 +12,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+} from "@listo/ui-kit";
+import { Button } from "@listo/ui-kit";
 import type { UiTableRow } from "@listo/agent-client";
 import type { TableNode } from "../types";
 import { agentPromise } from "@/lib/agent";

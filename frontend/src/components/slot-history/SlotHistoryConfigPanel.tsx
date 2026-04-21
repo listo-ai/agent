@@ -15,16 +15,16 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAgent } from "@/hooks/useAgent";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@listo/ui-kit";
+import { Input } from "@listo/ui-kit";
+import { Label } from "@listo/ui-kit";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@listo/ui-kit";
 import { cn } from "@/lib/utils";
 
 const HISTORY_CONFIG_KIND = "sys.core.history.config";

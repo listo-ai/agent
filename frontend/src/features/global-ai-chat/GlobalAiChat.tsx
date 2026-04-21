@@ -11,7 +11,7 @@
  */
 import { useRef, useState } from 'react'
 import { Sparkles, MapPin, Loader2, AlertCircle } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@listo/ui-kit'
 import { ChatBubble, ChatInput, ChatSuggestions, useAiChat, useAutoScroll } from '@/lib/chat'
 import { useAgent } from '@/hooks/useAgent'
 import { useGlobalAiChat } from './store'

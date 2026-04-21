@@ -29,7 +29,7 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart";
+} from "@listo/ui-kit";
 import type { ChartHistoryPreset, ChartNode, ChartSeries } from "../types";
 import { useSdui } from "../context";
 import { extractField } from "../field";

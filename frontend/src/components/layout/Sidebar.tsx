@@ -33,7 +33,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 import { NavTreeView, NavModeToggle, useNavTree, useNavMode } from "@/lib/nav";
 import {
   RemoteAgentsSection,

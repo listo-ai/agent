@@ -8,7 +8,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 
 // ---------------------------------------------------------------------------
 // Topbar — pure layout shell. Business logic lives in stores / providers.

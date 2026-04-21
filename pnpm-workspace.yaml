@@ -2,3 +2,4 @@ packages:
   - "frontend"
   - "examples/block-hello"
   - "../../listo-repos/agent-client-ts"
+  - "../../listo-repos/ui-kit"

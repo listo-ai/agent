@@ -6,9 +6,9 @@
  */
 import { User, Mail, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@listo/ui-kit";
+import { Button } from "@listo/ui-kit";
+import { Card, CardContent, CardHeader } from "@listo/ui-kit";
 import type { UserNode } from "./types";
 
 // ---------------------------------------------------------------------------

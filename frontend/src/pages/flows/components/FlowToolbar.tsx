@@ -14,7 +14,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 
 interface FlowToolbarProps {
   selectedFlowPath: string | null;

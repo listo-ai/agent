@@ -9,8 +9,8 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { ChevronRight, ChevronDown, AlertCircle, RefreshCw, LayoutGrid } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+import { Skeleton } from "@listo/ui-kit";
+import { Button } from "@listo/ui-kit";
 import {
   SidebarMenu,
   SidebarMenuItem,
@@ -18,7 +18,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
   SidebarMenuSubButton,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 import type { NavNode, NavTreeState } from "./types";
 
 // ---------------------------------------------------------------------------

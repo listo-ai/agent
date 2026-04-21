@@ -17,7 +17,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 
 // ---------------------------------------------------------------------------
 // Route → breadcrumb segments

@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@listo/ui-kit";
 import { Renderer } from "../Renderer";
 import type { TabsNode, Tab } from "../types";
 

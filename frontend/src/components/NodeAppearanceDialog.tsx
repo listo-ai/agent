@@ -10,7 +10,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@listo/ui-kit";
 import { useSlotWriter } from "@/lib/slots";
 import { TagsEditor, useNodeTags } from "@/lib/node/tags";
 import { AppearanceEditor, useNodeAppearance } from "@/lib/node/appearance";

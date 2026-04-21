@@ -6,9 +6,9 @@
  */
 import { RefreshCw, AlertCircle, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@listo/ui-kit";
+import { Button } from "@listo/ui-kit";
+import { Skeleton } from "@listo/ui-kit";
 import {
   Table,
   TableBody,
@@ -16,7 +16,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@listo/ui-kit";
 import type { UsersListState, UserNode } from "./types";
 
 // ---------------------------------------------------------------------------

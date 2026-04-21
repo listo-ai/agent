@@ -3,7 +3,7 @@ import type { HistoryQueryOptions, HistoryRecord, ScalarRecord } from "@listo/ag
 import { useSlotHistory, useSlotTelemetry } from "@/hooks/useSlotHistory";
 import { SlotHistoryTable } from "./SlotHistoryTable";
 import { ScalarHistoryTable } from "./ScalarHistoryTable";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@listo/ui-kit";
 
 interface SmartSlotHistoryPanelProps {
   nodePath: string;

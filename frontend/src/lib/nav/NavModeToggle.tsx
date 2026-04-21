@@ -6,8 +6,8 @@
  * Pair with `useNavMode` to wire up state.
  */
 import { Settings2, LayoutGrid } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "@listo/ui-kit";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@listo/ui-kit";
 import type { NavMode } from "./useNavMode";
 
 export interface NavModeToggleProps {

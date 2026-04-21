@@ -15,7 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 import type { RemoteAgentNode, RemoteAgentConnection } from "./types";
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { AuthProvider } from "./auth";
 import { RegistryProvider } from "./registry";
 import { GraphStoreProvider } from "./graph-store";
 import { ThemeProvider } from "./theme";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@listo/ui-kit";
 
 interface ProvidersProps {
   children: ReactNode;

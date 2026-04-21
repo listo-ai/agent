@@ -6,8 +6,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from "@listo/ui-kit";
+import { ScrollArea } from "@listo/ui-kit";
 import { SlotHistoryPanel } from "./SlotHistoryPanel";
 import { RecordHistoryButton } from "./RecordHistoryButton";
 

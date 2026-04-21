@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@listo/ui-kit";
 import type { BadgeNode } from "../types";
 import { cn } from "@/lib/utils";
 

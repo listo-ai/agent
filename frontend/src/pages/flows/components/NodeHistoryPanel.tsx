@@ -6,15 +6,15 @@ import type { NodeSnapshot } from "@listo/agent-client";
 import { SmartSlotHistoryPanel } from "@/components/slot-history/SmartSlotHistoryPanel";
 import { RecordHistoryButton } from "@/components/slot-history/RecordHistoryButton";
 import { SlotHistoryConfigPanel } from "@/components/slot-history/SlotHistoryConfigPanel";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@listo/ui-kit";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "@listo/ui-kit";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@listo/ui-kit";
 import { cn } from "@/lib/utils";
 import { mergedSlots } from "../flow-model";
 

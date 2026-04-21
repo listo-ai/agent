@@ -25,6 +25,7 @@
     "@rjsf/core": "^6.5.1",
     "@rjsf/validator-ajv8": "^6.5.1",
     "@listo/agent-client": "workspace:*",
+    "@listo/ui-kit": "workspace:*",
     "@tanstack/react-query": "^5.40.0",
     "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.0",

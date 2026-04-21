@@ -17,7 +17,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui";
+} from "@listo/ui-kit";
 import { agentPromise } from "@/lib/agent";
 import type { NodeSnapshot } from "@listo/agent-client";
 

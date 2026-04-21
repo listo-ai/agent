@@ -2,7 +2,7 @@
  * Series → recharts-row shaping + tick formatters. Extracted from
  * Chart.tsx to keep that file under the 400-line cap.
  */
-import type { ChartConfig } from "@/components/ui/chart";
+import type { ChartConfig } from "@listo/ui-kit";
 import type { ChartSeries } from "../types";
 
 // Shadcn CSS variables — `var(--chart-1)` etc. resolve to theme-aware

@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { SiteHeader } from "./SiteHeader";
 import { AppSidebar } from "./Sidebar";
-import { SidebarProvider, SidebarInset } from "@/components/ui";
+import { SidebarProvider, SidebarInset } from "@listo/ui-kit";
 import { GlobalAiChat, useChatContextSync } from "@/features/global-ai-chat";
 
 // Shell — outermost layout frame using shadcn sidebar-16 pattern.

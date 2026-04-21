@@ -5,7 +5,7 @@
  * display the bound values read-only and offer a Submit button.
  */
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@listo/ui-kit";
 import type { FormNode } from "../types";
 import { useSdui } from "../context";
 import { useActionResponse } from "../useActionResponse";

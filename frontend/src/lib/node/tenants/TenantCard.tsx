@@ -6,8 +6,8 @@
  */
 import { Building2, Users, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@listo/ui-kit";
+import { Card, CardContent, CardHeader } from "@listo/ui-kit";
 import type { TenantNode } from "./types";
 
 // ---------------------------------------------------------------------------
