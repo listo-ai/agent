@@ -9,6 +9,7 @@ containment:
     - facet: isDriver
     - facet: isCompute
     - facet: isFlow
+    - facet: isSystem
   cardinality_per_parent: many_per_parent
   cascade: strict
 slots: []

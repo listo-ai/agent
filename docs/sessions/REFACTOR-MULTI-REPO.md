@@ -361,28 +361,159 @@ Already well-structured. Move as-is, rename from `@sys/agent-client` to `@listo/
 
 Not everything moves at once. Sequence optimised for "unblocks others first":
 
-| Phase | What moves | Unblocks |
-|-------|-----------|----------|
-| **M1** | `crates/spi/` + `crates/ui-ir/` → `listo-ai/contracts` + build TS codegen | Everything — contracts are the dependency root. TS types generated from Rust, eliminating drift from day 1. |
-| **M2** | `clients/ts/` → `listo-ai/agent-client-ts` (consuming generated types from M1) | Frontend packages depend on npm-published client with generated types |
-| **M3** | `crates/blocks-sdk*` + new `block-client` + `block-domain` → `listo-ai/agent-sdk` | Block authors get stable deps |
-| **M4** | `clients/rs/` → `listo-ai/agent-client-rs` | Rust block authors get standalone client |
-| **M5** | Extract `@listo/ui-kit` from `frontend/src/components/ui/` | Any frontend can use the component library |
-| **M6** | Extract `@listo/ui-core` from `frontend/src/{sdui,store,hooks,providers,lib}` | Alternative frontends become possible |
-| **M7** | Extract `@listo/block-ui-sdk` | Block MF bundles get stable deps |
-| **M8** | Move remaining `frontend/` → `listo-ai/studio` | Clean separation |
-| **M9** | Move `blocks/` → `listo-ai/blocks` | Example blocks standalone |
+| Phase | What moves | Status |
+|-------|-----------|--------|
+| **M1** | `crates/spi/` + `crates/ui-ir/` → `listo-ai/contracts` | ✅ Done — pushed to GitHub |
+| **M2** | `clients/ts/` → `listo-ai/agent-client-ts` | ✅ Done — pushed to GitHub |
+| **M3** | `crates/blocks-sdk*` + scaffold `block-client` + `block-domain` → `listo-ai/agent-sdk` | ✅ Done — pushed to GitHub |
+| **M4** | `clients/rs/` → `listo-ai/agent-client-rs` | ✅ Done — pushed to GitHub |
+| **M5** | Extract `@listo/ui-kit` from `frontend/src/components/ui/` | ✅ Done — pushed to GitHub |
+| **M6** | Extract `@listo/ui-core` from `frontend/src/{sdui,store,hooks,providers,lib}` | ✅ Done — pushed to GitHub |
+| **M7** | Extract `@listo/block-ui-sdk` | ✅ Done — pushed to GitHub |
+| **M8** | Move remaining `frontend/` → `listo-ai/studio` | ✅ Done — pushed to GitHub |
+| **M9** | Move `blocks/` → `listo-ai/blocks` | ✅ Done — pushed to GitHub |
+| **M10** | Rename `us` → `listo-ai/agent` (change remote, push to new GitHub repo) | ❌ Not started |
+| **M11** | Commit uncommitted fixes in `us` (`folder.yaml`, `station.yaml`, `pnpm-lock.yaml`) | ❌ Not started |
+| **M12** | Switch all Rust path deps → git deps (or crates.io) | ❌ Not started |
+| **M13** | Switch all TS `workspace:*` deps → npm version ranges | ❌ Not started |
+| **M14** | Push `ui-kit` tsc-alias build fix to GitHub | ❌ Not started |
+| **M15** | Fix `agent-sdk` back-reference to `us/crates/transport-grpc` | ❌ Not started |
+| **M16** | Set up GitHub Actions CI on all repos | ❌ Not started |
+| **M17** | npm/crates.io publish prep (`prepublishOnly`, changelogs, `integration.lock`) | ❌ Not started |
 
-**Why M1 is contracts, not the TS client:** The TS client's types mirror `spi`. Extracting the TS client first creates a window where TS types are hand-maintained copies with guaranteed drift. By extracting contracts first and shipping a codegen step, M2 (TS client) gets generated types from day 1 — one source of truth, zero hand sync.
+---
 
-**During migration**, the agent repo uses git deps for the extracted crates:
-```toml
-# agent/Cargo.toml
-spi = { git = "https://github.com/listo-ai/contracts", tag = "v0.1.0" }
-ui-ir = { git = "https://github.com/listo-ai/contracts", tag = "v0.1.0" }
+## Current state (April 2026)
+
+### What exists on GitHub under `listo-ai/`
+
+| Repo | Package name | Pushed | Builds standalone |
+|------|-------------|--------|------------------|
+| `listo-ai/contracts` | `listo-spi`, `listo-ui-ir` | ✅ | ✅ (`cargo check`) |
+| `listo-ai/agent-client-ts` | `@listo/agent-client` | ✅ | ✅ (`tsc`) |
+| `listo-ai/agent-sdk` | `listo-blocks-sdk`, `listo-blocks-sdk-macros` | ✅ | ✅ path dep to contracts |
+| `listo-ai/agent-client-rs` | `listo-agent-client` | ✅ | ✅ concrete versions |
+| `listo-ai/ui-kit` | `@listo/ui-kit` | ✅ | ✅ (`tsc + tsc-alias`) |
+| `listo-ai/ui-core` | `@listo/ui-core` | ✅ | ✅ (`tsc + tsc-alias`) |
+| `listo-ai/block-ui-sdk` | `@listo/block-ui-sdk` | ✅ | ✅ (`tsc`) |
+| `listo-ai/studio` | `@listo/studio` | ✅ | ✅ (Rsbuild dev server runs) |
+| `listo-ai/blocks` | example blocks | ✅ | path dep to agent-sdk |
+| `listo-ai/agent` | the backend | ❌ **empty** | — |
+
+### What `us` (`NubeDev/us`) currently is
+
+- All Rust backend crates remain in `us` with their original structure
+- `frontend/`, `blocks/`, `clients/ts`, `clients/rs`, `crates/spi`, `crates/ui-ir`, `crates/blocks-sdk*` have been `git rm`'d
+- `pnpm-workspace.yaml` wires `../../listo-repos/*` packages via `workspace:*` — **dev-only**, only works on this machine
+- `Cargo.toml` wires extracted crates via `path = "../../listo-repos/..."` — **dev-only**, only works on this machine
+- Uncommitted local changes: `crates/graph/manifests/folder.yaml`, `crates/graph/manifests/station.yaml`, `pnpm-lock.yaml`
+- Origin remote is still `https://github.com/NubeDev/us` — not yet pointed at `listo-ai/agent`
+
+### Known broken cross-repo references
+
+| Location | Problem |
+|----------|---------|
+| `us/Cargo.toml` | All Rust path deps use `../../listo-repos/...` — absolute to this machine |
+| `us/pnpm-workspace.yaml` | All TS deps use `../../listo-repos/...` — absolute to this machine |
+| `listo-repos/agent-sdk/Cargo.toml` | `transport-grpc` feature still points `path = "../../rust/us/crates/transport-grpc"` |
+| `listo-repos/blocks/*/Cargo.toml` | `blocks-sdk` path dep points to `../../agent-sdk/blocks-sdk` — works only in `listo-repos/` sibling layout |
+| `listo-repos/studio/rsbuild.config.ts` | MF types zip missing (`dist/@mf-types.zip`) — non-fatal warning in dev |
+
+---
+
+## Pending work — prioritised
+
+### P0 — finish the repo migration (this machine → GitHub)
+
+1. **M11** Commit + push the 3 uncommitted files in `us`:
+   - `crates/graph/manifests/folder.yaml` (added `- facet: isSystem` to `may_contain` so `sys.agent.fleet` seeds correctly)
+   - `crates/graph/manifests/station.yaml` (same fix)
+   - `pnpm-lock.yaml`
+
+2. **M10** Wire `us` to `listo-ai/agent` on GitHub:
+   ```bash
+   cd /home/user/code/rust/us
+   git remote set-url origin https://github.com/listo-ai/agent.git
+   git push -u origin master
+   ```
+
+3. **M14** Commit + push the `ui-kit` tsc-alias fix to `listo-ai/ui-kit`:
+   - `package.json` build script changed to `tsc && tsc-alias -p tsconfig.json`
+   - `tsc-alias` added to `devDependencies`
+
+### P1 — make deps portable (anyone can clone and build)
+
+4. **M12** Switch Rust path deps in `us/Cargo.toml` to git deps:
+   ```toml
+   spi     = { git = "https://github.com/listo-ai/contracts", package = "listo-spi" }
+   ui-ir   = { git = "https://github.com/listo-ai/contracts", package = "listo-ui-ir" }
+   blocks-sdk = { git = "https://github.com/listo-ai/agent-sdk", package = "listo-blocks-sdk" }
+   blocks-sdk-macros = { git = "https://github.com/listo-ai/agent-sdk", package = "listo-blocks-sdk-macros" }
+   agent-client = { git = "https://github.com/listo-ai/agent-client-rs", package = "listo-agent-client" }
+   ```
+
+5. **M13** Switch TS `workspace:*` deps in extracted packages to npm version ranges. Each package's `package.json` needs:
+   - `@listo/agent-client: "^0.1.0"` instead of `workspace:*`
+   - Requires publishing to npm (or GitHub Packages) first, or using `file:` paths in a released tarball
+
+6. **M15** Fix `agent-sdk/Cargo.toml` `transport-grpc` back-reference — either remove the `process` feature's hard dep or make it optional and document it.
+
+### P2 — CI
+
+7. **M16** Add GitHub Actions to each repo (start with `contracts` + `agent`):
+   - `contracts`: `cargo check`, `cargo test`
+   - `agent-sdk`: `cargo check --all-features`
+   - `agent-client-ts`: `pnpm build`, `pnpm test`
+   - `ui-kit`, `ui-core`, `block-ui-sdk`: `pnpm build`
+   - `studio`: `pnpm build:web`
+   - `agent`: `cargo check`, `cargo test`, `cargo nextest`
+
+### P3 — publish to registries
+
+8. **M17** Publishing prep:
+   - Tag `v0.1.0` on `contracts`, `agent-sdk`, `agent-client-rs`, `agent-client-ts`
+   - `cargo publish` for `listo-spi`, `listo-ui-ir`, `listo-blocks-sdk`, `listo-blocks-sdk-macros`, `listo-agent-client`
+   - `npm publish` for `@listo/agent-client`, `@listo/ui-kit`, `@listo/ui-core`, `@listo/block-ui-sdk`
+   - Switch all deps from git/workspace to published versions
+   - Add `integration.lock` to `agent`
+
+---
+
+## Next-session prompt
+
+```
+Context: Rust+React monorepo at `/home/user/code/rust/us` is mid-way through a
+multi-repo extraction into `github.com/listo-ai/`. The extraction of all source
+code is COMPLETE (M1–M9 done). What remains is wiring, portability, and CI.
+
+Repo layout on disk:
+- `/home/user/code/rust/us` — the backend monorepo (will become listo-ai/agent)
+- `/home/user/code/listo-repos/{contracts,agent-client-ts,agent-sdk,agent-client-rs,ui-kit,ui-core,block-ui-sdk,studio,blocks}` — all extracted repos, already pushed to GitHub
+
+Current blockers before anyone else can clone and build:
+1. `us` has 3 uncommitted files: `crates/graph/manifests/folder.yaml`,
+   `crates/graph/manifests/station.yaml`, `pnpm-lock.yaml` — commit + push
+2. `us` origin is still `NubeDev/us` — needs pointing at `listo-ai/agent` and pushing
+3. `listo-repos/ui-kit` has a local tsc-alias fix (build script + devDep) not yet
+   committed or pushed to listo-ai/ui-kit
+4. All Rust deps in `us/Cargo.toml` use `path = "../../listo-repos/..."` — must
+   become git deps (`git = "https://github.com/listo-ai/contracts"` etc.)
+5. All TS packages use `workspace:*` — must become npm version ranges once
+   packages are published
+
+Plan doc: `/home/user/code/rust/us/docs/sessions/REFACTOR-MULTI-REPO.md`
+  (read the "Pending work — prioritised" section for full task list)
+
+Please work through tasks in this order:
+  P0 (M11 → M10 → M14), then P1 (M12 → M13 → M15), then P2 (M16).
+
+Tech stack: Rust/Cargo workspaces, pnpm workspaces, React 19, Rsbuild, tsc,
+tsc-alias, GitHub CLI (`gh`). Rust toolchain 1.90, Node v22, pnpm v10.
 ```
 
-Once stabilised, switch to crates.io versions.
+---
+
+**Why M1 is contracts, not the TS client:** The TS client's types mirror `spi`. Extracting the TS client first creates a window where TS types are hand-maintained copies with guaranteed drift. By extracting contracts first and shipping a codegen step, M2 (TS client) gets generated types from day 1 — one source of truth, zero hand sync.
 
 ---
 
