@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/spi",
     "crates/query",
     "crates/auth",
     "crates/messaging",
@@ -26,7 +25,6 @@ members = [
     "crates/dashboard-nodes",
     "crates/dashboard-runtime",
     "crates/dashboard-transport",
-    "crates/ui-ir",
     "crates/transport-rest",
     "crates/transport-grpc",
     "crates/transport-nats",
@@ -53,7 +51,8 @@ publish = false
 
 [workspace.dependencies]
 # Shared internal crates — referenced via `workspace = true` in member manifests.
-spi = { path = "crates/spi" }
+# spi and ui-ir extracted to listo-ai/contracts (M1 migration)
+spi = { path = "../../listo-repos/contracts/spi", package = "listo-spi" }
 query = { path = "crates/query" }
 auth = { path = "crates/auth" }
 messaging = { path = "crates/messaging" }
@@ -79,7 +78,7 @@ domain-history = { path = "crates/domain-history" }
 dashboard-nodes = { path = "crates/dashboard-nodes" }
 dashboard-runtime = { path = "crates/dashboard-runtime" }
 dashboard-transport = { path = "crates/dashboard-transport" }
-ui-ir = { path = "crates/ui-ir" }
+ui-ir = { path = "../../listo-repos/contracts/ui-ir", package = "listo-ui-ir" }
 transport-rest = { path = "crates/transport-rest" }
 transport-grpc = { path = "crates/transport-grpc" }
 transport-nats = { path = "crates/transport-nats" }
