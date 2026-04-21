@@ -373,7 +373,7 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 | **M8** | Move remaining `frontend/` → `listo-ai/studio` | ✅ Done — pushed to GitHub |
 | **M9** | Move `blocks/` → `listo-ai/blocks` | ✅ Done — pushed to GitHub |
 | **M10** | Rename `us` → `listo-ai/agent` (change remote, push to new GitHub repo) | ❌ Not started |
-| **M11** | Commit uncommitted fixes in `us` (`folder.yaml`, `station.yaml`, `pnpm-lock.yaml`) | ❌ Not started |
+| **M11** | Commit uncommitted fixes in `us` (`folder.yaml`, `station.yaml`, `pnpm-lock.yaml`) | ✅ Done — committed + pushed |
 | **M12** | Switch all Rust path deps → git deps (or crates.io) | ❌ Not started |
 | **M13** | Switch all TS `workspace:*` deps → npm version ranges | ❌ Not started |
 | **M14** | Push `ui-kit` tsc-alias build fix to GitHub | ❌ Not started |
@@ -406,7 +406,7 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 - `frontend/`, `blocks/`, `clients/ts`, `clients/rs`, `crates/spi`, `crates/ui-ir`, `crates/blocks-sdk*` have been `git rm`'d
 - `pnpm-workspace.yaml` wires `../../listo-repos/*` packages via `workspace:*` — **dev-only**, only works on this machine
 - `Cargo.toml` wires extracted crates via `path = "../../listo-repos/..."` — **dev-only**, only works on this machine
-- Uncommitted local changes: `crates/graph/manifests/folder.yaml`, `crates/graph/manifests/station.yaml`, `pnpm-lock.yaml`
+- `crates/graph/manifests/folder.yaml`, `crates/graph/manifests/station.yaml`, `pnpm-lock.yaml` — committed and pushed (M11 ✅)
 - Origin remote is still `https://github.com/NubeDev/us` — not yet pointed at `listo-ai/agent`
 
 ### Known broken cross-repo references
@@ -425,10 +425,7 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 
 ### P0 — finish the repo migration (this machine → GitHub)
 
-1. **M11** Commit + push the 3 uncommitted files in `us`:
-   - `crates/graph/manifests/folder.yaml` (added `- facet: isSystem` to `may_contain` so `sys.agent.fleet` seeds correctly)
-   - `crates/graph/manifests/station.yaml` (same fix)
-   - `pnpm-lock.yaml`
+1. ~~**M11**~~ ✅ Already done — `folder.yaml`, `station.yaml`, `pnpm-lock.yaml` committed and pushed.
 
 2. **M10** Wire `us` to `listo-ai/agent` on GitHub:
    ```bash
@@ -484,28 +481,29 @@ Not everything moves at once. Sequence optimised for "unblocks others first":
 ```
 Context: Rust+React monorepo at `/home/user/code/rust/us` is mid-way through a
 multi-repo extraction into `github.com/listo-ai/`. The extraction of all source
-code is COMPLETE (M1–M9 done). What remains is wiring, portability, and CI.
+code is COMPLETE (M1–M11 done). What remains is wiring, portability, and CI.
 
 Repo layout on disk:
 - `/home/user/code/rust/us` — the backend monorepo (will become listo-ai/agent)
 - `/home/user/code/listo-repos/{contracts,agent-client-ts,agent-sdk,agent-client-rs,ui-kit,ui-core,block-ui-sdk,studio,blocks}` — all extracted repos, already pushed to GitHub
 
-Current blockers before anyone else can clone and build:
-1. `us` has 3 uncommitted files: `crates/graph/manifests/folder.yaml`,
-   `crates/graph/manifests/station.yaml`, `pnpm-lock.yaml` — commit + push
-2. `us` origin is still `NubeDev/us` — needs pointing at `listo-ai/agent` and pushing
-3. `listo-repos/ui-kit` has a local tsc-alias fix (build script + devDep) not yet
-   committed or pushed to listo-ai/ui-kit
-4. All Rust deps in `us/Cargo.toml` use `path = "../../listo-repos/..."` — must
-   become git deps (`git = "https://github.com/listo-ai/contracts"` etc.)
+Current blockers before anyone else can clone and build (in priority order):
+1. `us` origin is still `NubeDev/us` — needs pointing at `listo-ai/agent` and
+   pushing (M10)
+2. `listo-repos/ui-kit` has a local tsc-alias fix (build script + devDep) not
+   yet committed/pushed to listo-ai/ui-kit (M14)
+3. All Rust deps in `us/Cargo.toml` use `path = "../../listo-repos/..."` — must
+   become git deps (`git = "https://github.com/listo-ai/contracts"` etc.) (M12)
+4. `listo-repos/agent-sdk/Cargo.toml` still has a back-ref to
+   `../../rust/us/crates/transport-grpc` — must be removed or made optional (M15)
 5. All TS packages use `workspace:*` — must become npm version ranges once
-   packages are published
+   packages are published (M13)
 
 Plan doc: `/home/user/code/rust/us/docs/sessions/REFACTOR-MULTI-REPO.md`
   (read the "Pending work — prioritised" section for full task list)
 
 Please work through tasks in this order:
-  P0 (M11 → M10 → M14), then P1 (M12 → M13 → M15), then P2 (M16).
+  P0 (M10 → M14), then P1 (M12 → M15 → M13), then P2 (M16).
 
 Tech stack: Rust/Cargo workspaces, pnpm workspaces, React 19, Rsbuild, tsc,
 tsc-alias, GitHub CLI (`gh`). Rust toolchain 1.90, Node v22, pnpm v10.
