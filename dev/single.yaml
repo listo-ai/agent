@@ -1,0 +1,15 @@
+# Dev config — standalone agent (everything in one process).
+#
+# Run with:   make run
+# Or direct:  cargo run --bin agent -- run --config dev/single.yaml --http 127.0.0.1:8080
+#
+# Standalone is the default role — no fleet wiring, no Zenoh, SQLite only.
+# Useful for local development, demos, and single-node deployments.
+
+role: standalone
+database:
+  path: dev/single.db
+log:
+  filter: info,agent=debug,extensions_host=debug
+blocks:
+  dir: dev/single-blocks

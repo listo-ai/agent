@@ -18,7 +18,7 @@ export PATH := $(HOME)/.local/bin:$(HOME)/.bun/bin:$(HOME)/.npm-global/bin:$(HOM
 
 PNPM          := pnpm
 CLIENT_PKG    := @listo/agent-client
-FRONTEND_DIR  := ../../listo-repos/studio
+FRONTEND_DIR  := ../../workspace/studio
 AGENT_CLI_MANIFEST := ../agent-cli/Cargo.toml
 
 # ── release flag ──────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ install: ## Install all JS/TS dependencies (pnpm workspaces)
 	$(PNPM) install
 
 .PHONY: build-client
-build-client: ## Compile @listo/agent-client → listo-repos/agent-client-ts/dist/
+build-client: ## Compile @listo/agent-client → workspace/agent-client-ts/dist/
 	$(PNPM) --filter $(CLIENT_PKG) build
 
 # ── dev ───────────────────────────────────────────────────────────────────────
@@ -59,12 +59,16 @@ build: ## Build agent (debug by default; RELEASE=1 for release)
 	$(CARGO) build $(PROFILE_FLAG) --bin $(BIN)
 
 .PHONY: run
-run: ## Run edge agent on :8080 using dev/edge.yaml + dev/edge.db (RELEASE=1 for release)
-	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --config dev/edge.yaml --http 127.0.0.1:8080
+run: ## Run standalone agent on :8080 using dev/single.yaml (RELEASE=1 for release)
+	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --config dev/single.yaml --http 127.0.0.1:8080
 
 .PHONY: frontend
-frontend: build-client ## Start the Rsbuild dev server (builds client first)
-	$(PNPM) --filter @listo/studio dev
+frontend: build-client ## Start Studio dev server at :3000 pointing at standalone agent :8080
+	PUBLIC_AGENT_URL=http://localhost:8080 \
+	  $(PNPM) --filter @listo/studio dev --port 3000
+
+.PHONY: studio
+studio: frontend ## Alias for frontend (Studio at :3000 → agent :8080)
 
 .PHONY: frontend-build
 frontend-build: build-client ## Production web build of the Studio UI
@@ -86,18 +90,17 @@ run-edge: ## Run the edge agent on 127.0.0.1:8082 (config: dev/edge.yaml)
 	$(CARGO) run $(PROFILE_FLAG) --bin $(BIN) -- run --config dev/edge.yaml --http 127.0.0.1:8082
 
 .PHONY: studio-cloud
-studio-cloud: build-client ## Start Studio pointed at the cloud agent (http://localhost:3001)
+studio-cloud: build-client ## Start Studio pointed at cloud agent (http://localhost:3002)
 	PUBLIC_AGENT_URL=http://localhost:8081 \
-	  $(PNPM) --filter @listo/studio dev --port 3001
-
-.PHONY: studio-edge
-studio-edge: build-client ## Start Studio pointed at the edge agent (http://localhost:3002)
-	PUBLIC_AGENT_URL=http://localhost:8082 \
 	  $(PNPM) --filter @listo/studio dev --port 3002
 
+.PHONY: studio-edge
+studio-edge: build-client ## Start Studio pointed at edge agent (http://localhost:3010)
+	PUBLIC_AGENT_URL=http://localhost:8082 \
+	  $(PNPM) --filter @listo/studio dev --port 3010
 .PHONY: kill
-kill: ## Kill anything running on agent/studio ports (8080-8082, 3000-3002)
-	@for port in 8080 8081 8082 3000 3001 3002; do \
+kill: ## Kill anything running on agent/studio ports (8080-8082, 3000, 3002, 3010-3015)
+	@for port in 8080 8081 8082 3000 3002 3010 3011 3012 3013 3014 3015; do \
 	  pid=$$(lsof -ti tcp:$$port 2>/dev/null); \
 	  if [ -n "$$pid" ]; then kill -9 $$pid 2>/dev/null && echo "killed :$$port (pid $$pid)"; fi; \
 	done
@@ -105,9 +108,10 @@ kill: ## Kill anything running on agent/studio ports (8080-8082, 3000-3002)
 
 .PHONY: dev-reset
 dev-reset: ## Wipe dev/ databases and staged plugins (keeps configs)
-	rm -f dev/cloud.db dev/cloud.db-shm dev/cloud.db-wal
-	rm -f dev/edge.db  dev/edge.db-shm  dev/edge.db-wal
-	rm -rf dev/cloud-plugins/* dev/edge-plugins/*
+	rm -f dev/single.db dev/single.db-shm dev/single.db-wal
+	rm -f dev/cloud.db  dev/cloud.db-shm  dev/cloud.db-wal
+	rm -f dev/edge.db   dev/edge.db-shm   dev/edge.db-wal
+	rm -rf dev/single-blocks/* dev/cloud-blocks/* dev/edge-blocks/*
 	@echo "dev/ reset — next boot will seed fresh graphs."
 
 # ── mcp sync ──────────────────────────────────────────────────────────────────

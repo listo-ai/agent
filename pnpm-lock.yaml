@@ -6,7 +6,7 @@ settings:
 
 importers:
 
-  ../../listo-repos/agent-client-ts:
+  ../../workspace/agent-client-ts:
     dependencies:
       semver:
         specifier: ^7.6.0
@@ -34,7 +34,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)(lightningcss@1.30.2)
 
-  ../../listo-repos/block-ui-sdk:
+  ../../workspace/block-ui-sdk:
     dependencies:
       '@listo/agent-client':
         specifier: workspace:*
@@ -62,7 +62,7 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  ../../listo-repos/studio:
+  ../../workspace/studio:
     dependencies:
       '@listo/agent-client':
         specifier: workspace:*
@@ -198,7 +198,7 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
-  ../../listo-repos/ui-core:
+  ../../workspace/ui-core:
     dependencies:
       '@listo/agent-client':
         specifier: workspace:*
@@ -247,7 +247,7 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  ../../listo-repos/ui-kit:
+  ../../workspace/ui-kit:
     dependencies:
       '@radix-ui/react-popover':
         specifier: ^1.1.15
