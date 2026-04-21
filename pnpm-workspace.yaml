@@ -1,7 +1,8 @@
 # TS packages live in /home/user/code/workspace/ (listo-ai/workspace).
-# These entries let `pnpm --filter @listo/studio dev` work from us/ (the agent repo).
+# These entries let `pnpm --filter @listo/studio dev` work from agent/ (the agent repo).
 packages:
   - "../../workspace/studio"
+  - "examples/block-hello"
   - "../../workspace/agent-client-ts"
   - "../../workspace/ui-kit"
   - "../../workspace/ui-core"
