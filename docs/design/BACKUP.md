@@ -595,6 +595,48 @@ agent/crates/transport-fleet-zenoh/    # Existing. Carries template bundles as p
 No new repo. No new daemon. Backup is domain logic the agent already has the
 surfaces for.
 
+### 6.1 — Backup is independent of artifacts
+
+**`data-backup` has no dependency on `ArtifactStore` and no dependency on any
+`data-artifacts-*` crate.** This is load-bearing: a minimal single-device
+deployment (a Raspberry Pi running a standalone appliance, an air-gapped
+edge, a developer laptop) must be able to take, keep, and restore snapshots
+without linking any object-store code.
+
+`data-backup` writes to any `io::Write` — a local path, stdout, a pipe, or
+(when `artifacts-s3` / `artifacts-local` is compiled in and `domain-artifacts`
+adapts the sink) an `ArtifactStore`-backed writer. The bundle format and
+the writer are two separate concerns. The handoff is a file or a stream;
+nothing in `domain-backup` imports `ArtifactStore`.
+
+### 6.2 — Three operating modes
+
+| Build | What works | What doesn't |
+|---|---|---|
+| **Backup only** (no `artifacts-*` feature) | `agent backup snapshot export --to /var/backups/foo.listo-snapshot`, local-file restore, listod pre-apply hook, CLI import/export, `--as-template` downgrade, small fleet template push (≤ `smallest_edge_ram/10`) over Zenoh | Presigned upload to cloud, `--to s3://…`, multi-MB fleet template push, 3-2-1 off-site copy, ransomware-rollback guarantee (needs off-box co-sign + immutable-at-rest) |
+| **Backup + `artifacts-local`** | Everything above, plus "cloud" = a local directory. Useful for air-gapped sites, single-node deployments, dev loops | Real S3 / off-site replication |
+| **Backup + `artifacts-s3`** | Full story: edge → cloud snapshot upload, cloud → edge template push, Object Lock immutability, multi-tenant buckets, 3-2-1 rule, ransomware rollback (with co-sign per § 5.3) | — |
+
+**A Raspberry Pi running standalone gets automatic snapshots to
+`/var/backups/` with neither feature flag enabled.** That's the whole point
+of the layering.
+
+### 6.3 — What you lose going minimal
+
+Re-read § 5.3: the ransomware-rollback guarantee requires off-box co-signing
+*and* immutable-at-rest storage. In backup-only mode, bundles sit on local
+disk, and a sufficiently-compromised agent can rewrite its own backups.
+That's still the majority of real-world backup value — disk died, rolled
+back a bad edit, pre-OTA safety net — just not the ransomware story.
+
+Also lost without artifacts:
+
+- **Fleet template push** for bundles larger than the fleet-payload ceiling
+  (~`smallest_edge_ram/10` per [ARTIFACTS.md § 1](ARTIFACTS.md)). Small
+  templates fleet-push fine without artifacts; multi-MB ones don't.
+- **The 3-2-1 rule's "one off-site" copy** (§ 7 below) — local-only is
+  one-copy-two-media at best.
+
 ---
 
 ## 7 — Cadence, retention, drills

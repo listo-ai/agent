@@ -1,0 +1,35 @@
+[package]
+name = "data-artifacts-local"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Filesystem-backed ArtifactStore. For developer loops, single-node
+# deployments, air-gapped sites, and integration tests. Stores bytes
+# under a local directory; "presigned URLs" are path tokens the
+# in-process HTTP handler can redeem (never cryptographic).
+#
+# Compiled out by default — the parent agent enables via the
+# `artifacts-local` feature.
+[features]
+default = []
+
+[dependencies]
+spi = { workspace = true }
+async-trait = { workspace = true }
+bytes = "1"
+futures-core = "0.3"
+object_store = "0.11"
+serde = { workspace = true, features = ["derive"] }
+thiserror = "1"
+tokio = { workspace = true, features = ["sync", "time", "rt", "fs"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -2483,6 +2483,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "uom",
  "uuid",
 ]
 
@@ -5160,6 +5161,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "uom"
+version = "0.36.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffd36e5350a65d112584053ee91843955826bf9e56ec0d1351214e01f6d7cd9c"
+dependencies = [
+ "num-traits",
+ "typenum",
 ]
 
 [[package]]

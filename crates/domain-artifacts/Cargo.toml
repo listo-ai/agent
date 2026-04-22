@@ -1,0 +1,29 @@
+[package]
+name = "domain-artifacts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Pure logic crate: decide-to-fetch, verify sig+hash, cache GC.
+# No HTTP, no S3 SDK, no object_store dependency — those live in the
+# backend crates (data-artifacts-s3, data-artifacts-local) behind
+# feature flags.
+[dependencies]
+spi = { workspace = true }
+async-trait = { workspace = true }
+bytes = "1"
+futures-core = "0.3"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = "0.10"
+thiserror = "1"
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

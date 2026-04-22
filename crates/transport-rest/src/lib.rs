@@ -53,6 +53,7 @@ pub mod flows;
 pub mod history;
 pub mod preferences;
 pub mod ring;
+pub mod units_route;
 pub mod routes;
 pub mod search;
 pub mod seed;

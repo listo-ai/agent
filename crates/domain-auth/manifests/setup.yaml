@@ -1,0 +1,34 @@
+id: sys.auth.setup
+display_name: Auth Setup
+facets:
+  - isSystem
+containment:
+  must_live_under: []
+  may_contain: []
+  cardinality_per_parent: one_per_parent
+slots:
+  - name: status
+    role: status
+    writable: false
+    value_schema:
+      type: string
+      enum: [unconfigured, local, cloud_enrolled]
+  - name: mode
+    role: status
+    writable: false
+    value_schema:
+      type: string
+      enum: [standalone, edge, cloud]
+  - name: cloud_url
+    role: config
+    writable: false
+    nullable: true
+    value_schema:
+      type: string
+  - name: enrolled_at
+    role: status
+    writable: false
+    nullable: true
+    value_schema:
+      type: string
+      format: date-time
