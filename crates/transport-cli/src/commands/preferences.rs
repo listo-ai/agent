@@ -1,4 +1,8 @@
-//! `agent prefs …` — read + patch preference layers.
+//! `agent prefs …` — user + organisation preferences.
+//!
+//! Thin wrapper over `agent_client::Preferences`. The patch builder is
+//! a ~20-line parser over `--set key=value` / `--clear key` flags;
+//! nothing here is domain logic.
 
 use agent_client::{AgentClient, PreferencesPatch};
 use anyhow::Result;
@@ -8,12 +12,9 @@ use crate::output::{self, OutputFormat};
 
 #[derive(Debug, Subcommand)]
 pub enum PrefsCmd {
-    /// Resolved preferences for the current caller (`user ?? org ??
-    /// system default`). Every field is populated.
+    /// Resolved preferences (`user ?? org ?? system_default`).
     Get(GetArgs),
-    /// Patch the user-per-org layer. Use `--set key=value` for a
-    /// concrete value or `--clear key` to revert to inheriting from
-    /// the org layer.
+    /// Patch the user-per-org layer.
     Set(SetArgs),
     /// Read the org-layer row (admin only).
     OrgGet(OrgGetArgs),
@@ -30,27 +31,23 @@ pub struct GetArgs {
 
 #[derive(Debug, Args)]
 pub struct SetArgs {
-    /// Scope the update to this org id. Defaults to the caller's
-    /// active tenant.
     #[arg(long)]
     pub org: Option<String>,
     /// `key=value` assignment — repeat for multiple fields.
     #[arg(long = "set", value_name = "KEY=VALUE")]
     pub sets: Vec<String>,
-    /// Field name to clear (revert to inherit-from-org). Repeatable.
+    /// Revert `key` to inherit-from-org. Repeatable.
     #[arg(long = "clear", value_name = "KEY")]
     pub clears: Vec<String>,
 }
 
 #[derive(Debug, Args)]
 pub struct OrgGetArgs {
-    /// Org id to read.
     pub org: String,
 }
 
 #[derive(Debug, Args)]
 pub struct OrgSetArgs {
-    /// Org id to patch.
     pub org: String,
     #[arg(long = "set", value_name = "KEY=VALUE")]
     pub sets: Vec<String>,
@@ -96,22 +93,9 @@ pub async fn run(client: &AgentClient, fmt: OutputFormat, cmd: &PrefsCmd) -> Res
     Ok(())
 }
 
-fn build_patch(sets: &[String], clears: &[String]) -> Result<PreferencesPatch> {
-    let mut p = PreferencesPatch::default();
-    for raw in sets {
-        let (k, v) = raw.split_once('=').ok_or_else(|| {
-            anyhow::anyhow!("--set expects `key=value`, got `{raw}`")
-        })?;
-        ensure_known_field(k)?;
-        p = p.set(k, v);
-    }
-    for k in clears {
-        ensure_known_field(k)?;
-        p = p.clear(k);
-    }
-    Ok(p)
-}
-
+/// Every field name the server accepts. Kept in one place so a typo
+/// fails with a named list of valid options instead of a silent
+/// server-side reject.
 const KNOWN_FIELDS: &[&str] = &[
     "timezone",
     "locale",
@@ -127,7 +111,23 @@ const KNOWN_FIELDS: &[&str] = &[
     "theme",
 ];
 
-fn ensure_known_field(field: &str) -> Result<()> {
+fn build_patch(sets: &[String], clears: &[String]) -> Result<PreferencesPatch> {
+    let mut p = PreferencesPatch::default();
+    for raw in sets {
+        let (k, v) = raw
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("--set expects `key=value`, got `{raw}`"))?;
+        ensure_known(k)?;
+        p = p.set(k, v);
+    }
+    for k in clears {
+        ensure_known(k)?;
+        p = p.clear(k);
+    }
+    Ok(p)
+}
+
+fn ensure_known(field: &str) -> Result<()> {
     if KNOWN_FIELDS.contains(&field) {
         Ok(())
     } else {

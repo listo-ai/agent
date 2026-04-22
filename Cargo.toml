@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/query",
     "crates/auth",
+    "crates/auth-zitadel",
     "crates/messaging",
     "crates/audit",
     "crates/observability",
@@ -12,6 +13,8 @@ members = [
     "crates/data-sqlite",
     "crates/data-postgres",
     "crates/data-tsdb",
+    "crates/data-artifacts-local",
+    "crates/data-backup",
     "crates/domain-compute",
     "crates/domain-function",
     "crates/domain-logic",
@@ -23,6 +26,8 @@ members = [
     "crates/domain-presentation",
     "crates/domain-fleet",
     "crates/domain-history",
+    "crates/domain-artifacts",
+    "crates/domain-backup",
     "crates/dashboard-nodes",
     "crates/dashboard-runtime",
     "crates/dashboard-transport",
@@ -53,6 +58,7 @@ publish = false
 spi = { git = "https://github.com/listo-ai/contracts", branch = "main", package = "listo-spi" }
 query = { path = "crates/query" }
 auth = { path = "crates/auth" }
+auth-zitadel = { path = "crates/auth-zitadel" }
 messaging = { path = "crates/messaging" }
 audit = { path = "crates/audit" }
 observability = { path = "crates/observability" }
@@ -63,6 +69,8 @@ data-repos = { path = "crates/data-repos" }
 data-sqlite = { path = "crates/data-sqlite" }
 data-postgres = { path = "crates/data-postgres" }
 data-tsdb = { path = "crates/data-tsdb" }
+data-artifacts-local = { path = "crates/data-artifacts-local" }
+data-backup = { path = "crates/data-backup" }
 domain-compute = { path = "crates/domain-compute" }
 domain-function = { path = "crates/domain-function" }
 domain-logic = { path = "crates/domain-logic" }
@@ -74,6 +82,8 @@ domain-auth = { path = "crates/domain-auth" }
 domain-presentation = { path = "crates/domain-presentation" }
 domain-fleet = { path = "crates/domain-fleet" }
 domain-history = { path = "crates/domain-history" }
+domain-artifacts = { path = "crates/domain-artifacts" }
+domain-backup = { path = "crates/domain-backup" }
 dashboard-nodes = { path = "crates/dashboard-nodes" }
 dashboard-runtime = { path = "crates/dashboard-runtime" }
 dashboard-transport = { path = "crates/dashboard-transport" }
@@ -120,6 +130,20 @@ tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 schemars = { version = "0.8", features = ["derive"] }
 semver = { version = "1", features = ["serde"] }
+# Lock-free atomic swap of `Arc<T>` — backs `auth::ProviderCell`. No
+# upstream alternative; the trait object payload means we can't use
+# `std::sync::RwLock<Arc<dyn AuthProvider>>` without a write lock on
+# every swap that would serialise readers.
+arc-swap = "1"
+# Cryptographic RNG for setup-token generation. Scoped to
+# `domain-auth`; the workspace pin keeps every consumer on the same
+# major so `OsRng` / `rand::rng()` don't drift.
+rand = "0.9"
+# JWT signature verification + JWKS parsing. Used by
+# `auth-zitadel`. Pinned at workspace level so test fixtures (which
+# mint test-issued JWTs against a known keypair) share the same
+# algorithm-set / error types as the production verifier.
+jsonwebtoken = "9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 syn = { version = "2", features = ["full"] }
 quote = "1"

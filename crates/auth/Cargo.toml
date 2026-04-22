@@ -20,6 +20,7 @@ serde = { workspace = true, features = ["derive"] }
 spi = { workspace = true }
 tracing = { workspace = true }
 query = { workspace = true }
+arc-swap = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

@@ -47,4 +47,4 @@ pub use patch::NodePatch;
 pub use placement::placement_allowed;
 pub use search::{ScopeError, ScopeHits, SearchScope};
 pub use slot::{SlotMap, SlotValue};
-pub use store::GraphStore;
+pub use store::{GraphStore, WriteSlotOpts};

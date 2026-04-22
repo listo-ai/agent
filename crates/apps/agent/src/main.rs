@@ -217,7 +217,12 @@ async fn run_daemon(
     http: SocketAddr,
     fleet: Option<FleetOverlay>,
 ) -> Result<()> {
-    let cfg = resolve_config(role, config_path, db, log, blocks_dir, fleet)?;
+    let cfg = resolve_config(role, config_path.clone(), db, log, blocks_dir, fleet)?;
+
+    // Boot guards — must run BEFORE tracing init so refusals surface
+    // to the operator's shell unfiltered. See
+    // `docs/design/SYSTEM-BOOTSTRAP.md`.
+    enforce_boot_guards(&cfg, http)?;
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -272,9 +277,11 @@ async fn run_daemon(
         app_state = app_state.with_plugin_host(h.clone());
     }
 
-    // Resolve the identity provider. Absent / `dev_null` → default
-    // `DevNullProvider` stays; `static_token` → swap in a
-    // `StaticTokenProvider` populated from config.
+    // Resolve the identity provider. See SYSTEM-BOOTSTRAP.md —
+    // cloud/edge without an `auth:` block resolve to `SetupRequired`,
+    // which mounts an empty `StaticTokenProvider` so every
+    // authenticated route 401s until `SetupService` hot-swaps a real
+    // provider in via `AppState::auth_provider`.
     let auth_provider: Arc<dyn AuthProvider> = match &cfg.auth {
         AuthConfig::DevNull => {
             info!(provider = "dev_null", "auth provider resolved");
@@ -288,11 +295,98 @@ async fn run_daemon(
             );
             Arc::new(StaticTokenProvider::new(tokens.iter().cloned()))
         }
+        AuthConfig::SetupRequired => {
+            info!(
+                provider = "setup_required",
+                "first-boot setup mode — REST surface gated until \
+                 POST /api/v1/auth/setup runs",
+            );
+            // Empty-table provider. `StaticTokenProvider` gives us
+            // the right semantics (unknown token → 401 invalid
+            // credentials) without inventing a new "always fail"
+            // provider type. After setup, `SetupService::complete_local`
+            // hot-swaps this for a populated provider via the shared
+            // `ProviderCell`.
+            Arc::new(StaticTokenProvider::new(std::iter::empty()))
+        }
+        AuthConfig::Zitadel {
+            issuer,
+            jwks_url,
+            audience,
+            tenant_id,
+        } => {
+            info!(
+                provider = "zitadel",
+                issuer = %issuer,
+                audience = %audience,
+                tenant_id = tenant_id.as_deref().unwrap_or("<multi-tenant>"),
+                "auth provider resolved",
+            );
+            // Disk cache sits next to the database so an edge that
+            // boots without cloud access can still verify tokens
+            // against previously-fetched JWKS. Skipped for in-memory
+            // roles.
+            let cache = cfg
+                .database
+                .path
+                .as_ref()
+                .and_then(|db| db.parent().map(std::path::Path::to_path_buf))
+                .map(|dir| dir.join("zitadel-jwks.json"));
+            let mut zitadel_cfg =
+                auth_zitadel::ZitadelConfig::new(issuer, audience, jwks_url);
+            if let Some(t) = tenant_id {
+                zitadel_cfg = zitadel_cfg.with_tenant(t);
+            }
+            if let Some(c) = cache {
+                zitadel_cfg = zitadel_cfg.with_disk_cache(c);
+            }
+            let http = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .context("building reqwest client for JWKS fetch")?;
+            let source: Arc<dyn auth_zitadel::JwksSource> = Arc::new(
+                auth_zitadel::HttpJwksSource::new(&zitadel_cfg.jwks_url, http),
+            );
+            let provider = auth_zitadel::ZitadelProvider::new(zitadel_cfg, source)
+                .await
+                .context("initialising Zitadel provider")?;
+            // Spawn the JWKS refresh task so keys rotate without
+            // restart. The handle is intentionally dropped — the task
+            // is bound to the process lifetime.
+            let _ = provider.spawn_refresh();
+            Arc::new(provider) as Arc<dyn AuthProvider>
+        }
     };
     app_state = app_state.with_auth_provider(auth_provider);
 
+    // Construct and attach `SetupService` when the resolved config
+    // calls for first-boot setup. Seeds `/agent/setup` via the
+    // service itself so tests and transports have a single entry
+    // point; no string-literal duplication of the manifest path in
+    // the composition root.
+    if cfg.auth.is_setup_required() {
+        let writeback = choose_writeback(&cfg, config_path.as_deref());
+        let setup_svc = domain_auth::SetupService::new(
+            graph.clone(),
+            app_state.auth_provider.clone(),
+            writeback,
+        );
+        let mode = match cfg.role {
+            Role::Standalone => domain_auth::SetupMode::Standalone,
+            Role::Edge => domain_auth::SetupMode::Edge,
+            Role::Cloud => domain_auth::SetupMode::Cloud,
+        };
+        setup_svc
+            .seed(mode)
+            .context("seeding /agent/setup node")?;
+        app_state = app_state.with_setup_service(setup_svc);
+    }
+
     // Wire flow service when a DB path is configured.
     if let Some(ref path) = cfg.database.path {
+        // Expose the DB path for backup/restore operations.
+        app_state = app_state.with_db_path(path.clone());
+
         match SqliteFlowRevisionRepo::open_file(path) {
             Ok(repo) => {
                 let svc = FlowService::new(std::sync::Arc::new(repo));
@@ -614,6 +708,7 @@ async fn bootstrap(
     domain_function::register_kinds(&kinds);
     domain_logic::register_kinds(&kinds);
     domain_history::register_kinds(&kinds);
+    domain_backup::register_kinds(&kinds);
     domain_blocks::register_kinds(&kinds);
     domain_auth::register_kinds(&kinds);
     domain_fleet::register_kinds(&kinds);
@@ -810,6 +905,78 @@ fn seed_fleet_node(graph: &GraphStore, fleet: &FleetConfig) -> Result<()> {
 
     info!(%backend, %connection, "seeded /agent/fleet node");
     Ok(())
+}
+
+/// Startup refusals.
+///
+/// 1. `role=cloud` + `AuthConfig::DevNull` on release → bail. The
+///    config layer's role-aware default means no-`auth:` cloud
+///    resolves to `SetupRequired`, so hitting this arm means the
+///    operator spelled out `provider: dev_null`. CI can still
+///    override on debug builds.
+/// 2. `SetupRequired` + cloud/edge + non-loopback bind → bail. TLS is
+///    not wired in Phase A; binding a plaintext setup endpoint on a
+///    public address would leak the generated token on the wire. The
+///    operator must bind loopback (and tunnel) or complete setup
+///    before exposing the listener.
+fn enforce_boot_guards(cfg: &AgentConfig, http: SocketAddr) -> Result<()> {
+    if matches!(cfg.role, Role::Cloud)
+        && matches!(cfg.auth, AuthConfig::DevNull)
+        && !cfg!(debug_assertions)
+    {
+        anyhow::bail!(
+            "role=cloud with auth=dev_null is not allowed in release builds. \
+             Remove the `auth: {{ provider: dev_null }}` override (the default \
+             is `setup_required`) or set an explicit provider. See \
+             docs/design/SYSTEM-BOOTSTRAP.md."
+        );
+    }
+
+    if cfg.auth.is_setup_required()
+        && matches!(cfg.role, Role::Cloud | Role::Edge)
+        && !http.ip().is_loopback()
+    {
+        anyhow::bail!(
+            "role={} with auth=setup_required is bound to non-loopback `{}`. \
+             Phase A has no TLS support; bind 127.0.0.1 / ::1 for first-boot \
+             setup and tunnel in, or complete setup before exposing the \
+             listener. See SYSTEM-BOOTSTRAP.md § 'Transport security \
+             requirement'.",
+            cfg.role,
+            http,
+        );
+    }
+    Ok(())
+}
+
+/// Decide where [`domain_auth::SetupService`] should persist the
+/// generated `StaticToken` entry:
+///
+/// - **No `--config` flag**: the agent writes an `agent.yaml`
+///   alongside `agent.db` (or the current directory for in-memory
+///   roles). On next boot the file layer provides the token without
+///   going through setup again.
+/// - **`--config <path>` was given**: the agent refuses to rewrite
+///   the operator's config file. `serde_yml` does not preserve
+///   comments or formatting; rewriting would silently destroy
+///   operator intent. The handler returns `config_snippet` in the
+///   response for the operator to paste.
+fn choose_writeback(
+    cfg: &AgentConfig,
+    config_path: Option<&std::path::Path>,
+) -> domain_auth::SetupWriteback {
+    if config_path.is_some() {
+        domain_auth::SetupWriteback::Explicit
+    } else {
+        let yaml = cfg
+            .database
+            .path
+            .as_ref()
+            .and_then(|db| db.parent().map(std::path::Path::to_path_buf))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("agent.yaml");
+        domain_auth::SetupWriteback::Auto(yaml)
+    }
 }
 
 /// Spawn a background task that drains the fleet transport's [`HealthStream`]

@@ -9,6 +9,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Enable the local-filesystem artifact backend. When active, snapshot
+# export accepts `local://<path>` destination URLs and pipes the bundle
+# into `LocalArtifactStore` via `domain-artifacts::upload_stream`.
+artifacts-local = ["dep:data-artifacts-local", "dep:domain-artifacts"]
+
 [dependencies]
 spi = { workspace = true }
 auth = { workspace = true }
@@ -18,7 +24,11 @@ graph = { workspace = true }
 engine = { workspace = true }
 blocks-sdk = { workspace = true }
 blocks-host = { workspace = true }
+domain-backup = { workspace = true }
+domain-artifacts = { workspace = true, optional = true }
+data-artifacts-local = { workspace = true, optional = true }
 domain-flows = { workspace = true }
+domain-auth = { workspace = true }
 data-entities = { workspace = true }
 data-repos = { workspace = true }
 data-tsdb = { workspace = true }
@@ -36,9 +46,18 @@ thiserror = { workspace = true }
 semver = { workspace = true }
 uuid = { workspace = true }
 ui-ir = { workspace = true }
+tempfile = "3"
 
 [dev-dependencies]
 data-sqlite = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 transport-fleet-zenoh = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+# `ServiceExt::oneshot` for in-process HTTP round-trips in
+# integration tests. Feature-set minimal so the test build stays
+# lean.
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+# Direct `AuthConfig` construction in composition-root-mimicking
+# test helpers.
+config = { workspace = true }

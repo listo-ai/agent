@@ -36,6 +36,8 @@ Same pattern as [FLEET-TRANSPORT.md § "Backend selection"](FLEET-TRANSPORT.md):
 
 Features are additive. A cloud-tier build enables `artifacts-s3`; a dev build enables `artifacts-local`; a true standalone build enables neither and the subsystem simply isn't there.
 
+**Backup still works with no artifact backend.** `data-backup` has no dependency on `ArtifactStore` — it writes bundles to any `io::Write` (a local path, stdout, a pipe). A standalone Raspberry Pi with neither `artifacts-s3` nor `artifacts-local` compiled in gets `agent backup snapshot export --to /var/backups/foo.listo-snapshot` and the full disaster-recovery story. What it loses is cloud upload, off-site copies, and the ransomware-rollback guarantee (which needs immutable-at-rest storage). See [BACKUP.md § 6.2](BACKUP.md) for the three operating modes.
+
 Runtime config decides which compiled-in backend to use:
 
 ```yaml
@@ -429,6 +431,15 @@ for each (tenant, prefix) in retention_policies:
 
 The retention policy lives on a `sys.artifacts.retention` node per tenant, with slots per prefix (`snapshots.retention_days`, `templates.retention_days`, etc.) — same "observable state is a node" discipline as the rest of the platform.
 
+**Retention roles split between two nodes:**
+
+| Node | Owns |
+|---|---|
+| `sys.backup.config` ([BACKUP.md § 7.1](BACKUP.md)) | *Cadence of creation* and short-term floor ("keep at least the last 24h"). Per device. |
+| `sys.artifacts.retention` (this doc) | *Store-level expiry* for the artefact store. Per tenant, per prefix. |
+
+They're complementary, not overlapping. `sys.backup.config` says when to take snapshots and guarantees a minimum survival window; `sys.artifacts.retention` caps how long bytes linger in the store. Conflict rule: when a snapshot's age satisfies the expiry side but is still inside the backup floor, the backup floor wins — the retention job joins against the receipts table and skips floor-protected rows. See [BACKUP.md § 7.1](BACKUP.md).
+
 ### 10.2 — S3 lifecycle as belt-and-braces
 
 Configure S3 lifecycle to delete `snapshots/*` at `retention_days + 30` — a grace period that kicks in only if the app-owned job is broken for a month. Lifecycle is **never the primary deletion mechanism**; it exists to bound the blast radius of a stuck retention job.
@@ -523,6 +534,7 @@ Checklist of what exists:
 - [ ] CI smoke test against real Garage + R2 (deferred).
 - [ ] `SIGNING.md` companion doc (deferred; interim contract in § 8.5).
 - [ ] Retention job + orphan reconciliation implementation (deferred; contract in § 10).
+- [ ] **End-to-end integration test** — `data-backup` produces bundle → handler pipes via `tokio::io::duplex` → `ArtifactStore::put` → edge fetches via `presign-download` → `domain-artifacts::verify` succeeds. Runs against `artifacts-local` in unit-test scope and against Garage in CI. This is the test that catches integration-seam regressions ([BACKUP.md § 6.4](BACKUP.md)).
 
 ### 14.1 — Review feedback applied
 

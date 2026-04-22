@@ -3,10 +3,11 @@
 use std::sync::Arc;
 
 use ai_runner::{AiDefaults, Registry as AiRegistry};
-use auth::DevNullProvider;
+use auth::{DevNullProvider, ProviderCell};
 use blocks_host::{BlockHost, BlockRegistry};
 use data_repos::{HistoryRepo, PreferencesService};
 use data_tsdb::TelemetryRepo;
+use domain_auth::SetupService;
 use domain_flows::FlowService;
 use domain_history::Historizer;
 use engine::BehaviorRegistry;
@@ -35,10 +36,19 @@ pub struct AppState {
     /// router and `fleet::mount` without a second source of state.
     pub fleet: Arc<dyn FleetTransport>,
     /// Identity resolver consulted by the `AuthContext` axum extractor
-    /// and by fleet message-level auth. Defaults to `DevNullProvider`
-    /// which the agent refuses to launch with in `role=cloud` +
-    /// `--release` (see `docs/sessions/AUTH-SEAM.md`).
-    pub auth_provider: Arc<dyn AuthProvider>,
+    /// and by fleet message-level auth. Hot-swappable via
+    /// [`ProviderCell`] so the first-boot setup handler can replace
+    /// the initial `DevNullProvider` / empty-`StaticTokenProvider`
+    /// with a populated one without restarting the process.
+    ///
+    /// Callers read via `app_state.auth_provider.load()` — the double
+    /// Arc is hidden behind the cell.
+    pub auth_provider: ProviderCell,
+    /// First-boot setup orchestrator. `None` on roles / configs that
+    /// never enter setup mode (standalone with DevNull, cloud/edge
+    /// already configured via `StaticToken`). Present only when
+    /// `AuthConfig::SetupRequired` was resolved at boot.
+    pub setup: Option<SetupService>,
     /// Flow document + revision service.  `None` when the agent runs
     /// without a database path (in-memory, no persistence).
     pub flows: Option<FlowService>,
@@ -61,6 +71,12 @@ pub struct AppState {
     /// Defaults (provider selection, keys, model override) used when a
     /// caller doesn't supply its own.
     pub ai_defaults: AiDefaults,
+    /// Path to the live SQLite database file. `None` for in-memory
+    /// agents — backup endpoints return 400 in that case.
+    pub db_path: Option<std::path::PathBuf>,
+    /// Stable identity token for this device (from listod claim).
+    /// Falls back to hostname when listod hasn't yet claimed the device.
+    pub device_id: String,
 }
 
 impl AppState {
@@ -78,7 +94,8 @@ impl AppState {
             blocks,
             plugin_host: None,
             fleet: Arc::new(NullTransport),
-            auth_provider: Arc::new(DevNullProvider::new()),
+            auth_provider: ProviderCell::new(Arc::new(DevNullProvider::new())),
+            setup: None,
             flows: None,
             prefs: None,
             history_repo: None,
@@ -86,6 +103,8 @@ impl AppState {
             historizer: None,
             ai_registry: None,
             ai_defaults: AiDefaults::default(),
+            db_path: None,
+            device_id: hostname(),
         }
     }
 
@@ -107,7 +126,8 @@ impl AppState {
             blocks,
             plugin_host: None,
             fleet: Arc::new(NullTransport),
-            auth_provider: Arc::new(DevNullProvider::new()),
+            auth_provider: ProviderCell::new(Arc::new(DevNullProvider::new())),
+            setup: None,
             flows: None,
             prefs: None,
             history_repo: None,
@@ -115,6 +135,8 @@ impl AppState {
             historizer: None,
             ai_registry: None,
             ai_defaults: AiDefaults::default(),
+            db_path: None,
+            device_id: hostname(),
         }
     }
 
@@ -132,10 +154,28 @@ impl AppState {
         self
     }
 
-    /// Swap in a real identity provider (e.g. `StaticTokenProvider`,
-    /// future `ZitadelProvider`).
-    pub fn with_auth_provider(mut self, provider: Arc<dyn AuthProvider>) -> Self {
-        self.auth_provider = provider;
+    /// Seed the initial identity provider at boot. Stores into the
+    /// existing [`ProviderCell`], so every `AppState::clone()` sees
+    /// the new provider.
+    pub fn with_auth_provider(self, provider: Arc<dyn AuthProvider>) -> Self {
+        self.auth_provider.store(provider);
+        self
+    }
+
+    /// Replace the entire [`ProviderCell`] — use when the caller has
+    /// already constructed a cell (typically to share one between
+    /// `AppState` and `SetupService` so a hot-swap in the service
+    /// is observable through `AppState.auth_provider`). `main.rs`
+    /// could construct in either order; this lets either order work.
+    pub fn with_auth_provider_cell(mut self, cell: ProviderCell) -> Self {
+        self.auth_provider = cell;
+        self
+    }
+
+    /// Attach the first-boot setup service. Present only when
+    /// `AuthConfig::SetupRequired` was resolved.
+    pub fn with_setup_service(mut self, svc: SetupService) -> Self {
+        self.setup = Some(svc);
         self
     }
 
@@ -175,4 +215,23 @@ impl AppState {
         self.ai_defaults = defaults;
         self
     }
+
+    /// Provide the SQLite database path for backup/restore operations.
+    pub fn with_db_path(mut self, path: std::path::PathBuf) -> Self {
+        self.db_path = Some(path);
+        self
+    }
+
+    /// Override the device identity token (from listod claim).
+    pub fn with_device_id(mut self, id: String) -> Self {
+        self.device_id = id;
+        self
+    }
+}
+
+fn hostname() -> String {
+    std::fs::read_to_string("/etc/hostname")
+        .map(|s| s.trim().to_string())
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "unknown-host".to_string())
 }

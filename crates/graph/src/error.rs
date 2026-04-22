@@ -50,4 +50,11 @@ pub enum GraphError {
 
     #[error("generation mismatch: expected {expected}, current {current}")]
     GenerationMismatch { expected: u64, current: u64 },
+
+    /// Caller attempted to write a slot declared `writable: false` in
+    /// its kind manifest via a tenant-facing surface. See
+    /// [`crate::WriteSlotOpts::enforce_tenant_writable`] for the
+    /// internal escape hatch used by bootstrappers and seeders.
+    #[error("slot `{slot}` on `{path}` is declared writable: false")]
+    SlotNotWritable { path: NodePath, slot: String },
 }

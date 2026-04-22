@@ -45,6 +45,7 @@ impl FromRequestParts<AppState> for AuthContext {
         let headers = AxumHeaders(&parts.headers);
         state
             .auth_provider
+            .load()
             .resolve(&headers)
             .await
             .map_err(AuthErrorResponse)

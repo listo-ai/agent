@@ -59,11 +59,21 @@ pub fn mount(state: AppState) -> Router {
         .merge(crate::blocks::routes())
         .merge(crate::search::routes())
         .merge(crate::auth_routes::routes())
+        .merge(crate::auth_setup::routes())
         .merge(crate::flows::routes())
         .merge(crate::preferences::routes())
         .merge(crate::units_route::routes())
         .merge(crate::history::routes())
         .merge(crate::users::routes())
+        .merge(crate::backup::routes())
+        // 503 gate for setup mode. No-op on non-setup roles and once
+        // setup completes — the service self-reports via
+        // `is_configured()`. Layered after `.merge(...)` so every
+        // domain surface above is subject to the gate.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth_setup::gate_setup_mode,
+        ))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -101,9 +111,15 @@ pub(crate) fn get_node_core(
         .graph
         .get(&path)
         .ok_or_else(|| ApiError::not_found(format!("no node at `{path}`")))?;
-    let mut dto = NodeDto::from(snap);
+    // Fetch the manifest before building the DTO so slot-level
+    // `quantity`/`unit` metadata travels on every slot in the
+    // response — clients then format values using
+    // user-preference-driven conversion without a second round-trip.
+    let kind = KindId::new(snap.kind.as_str());
+    let manifest = state.graph.kinds().get(&kind);
+    let mut dto = NodeDto::from_snapshot(snap, manifest.as_ref());
     if !include_internal {
-        if let Some(manifest) = state.graph.kinds().get(&KindId::new(dto.kind.as_str())) {
+        if let Some(manifest) = manifest.as_ref() {
             let internal: std::collections::HashSet<&str> = manifest
                 .slots
                 .iter()
@@ -148,6 +164,19 @@ pub(crate) struct SlotSchemaDto {
     pub trigger: bool,
     pub is_internal: bool,
     pub emit_on_init: bool,
+    /// Physical quantity declared on the slot, if any. Absent for
+    /// dimensionless slots. Clients use this together with
+    /// [`SlotSchemaDto::unit`] to drive unit-picker UIs and
+    /// preference-aware rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantity: Option<spi::Quantity>,
+    /// Unit the stored value is expressed in — either the quantity's
+    /// canonical unit (normal case) or the declared `unit` override
+    /// (opt-out from ingest-time conversion).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensor_unit: Option<spi::Unit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<spi::Unit>,
 }
 
 impl From<&spi::SlotSchema> for SlotSchemaDto {
@@ -161,6 +190,9 @@ impl From<&spi::SlotSchema> for SlotSchemaDto {
             trigger: s.trigger,
             is_internal: s.is_internal,
             emit_on_init: s.emit_on_init,
+            quantity: s.quantity,
+            sensor_unit: s.sensor_unit,
+            unit: s.unit,
         }
     }
 }
@@ -272,7 +304,7 @@ struct WriteSlotResp {
 /// - `{ "status": "ok", "generation": N }` — write committed.
 /// - `{ "status": "generation_mismatch", "current_generation": N }` — CAS
 ///   conflict; caller should re-read and retry.
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub(crate) enum WriteSlotResult {
     Ok { generation: u64 },
@@ -281,6 +313,13 @@ pub(crate) enum WriteSlotResult {
 
 /// Core logic for `POST /api/v1/slots`. Shared by the axum handler and
 /// the fleet `api.v1.slots.write` handler — one function, two surfaces.
+///
+/// Goes through the **tenant-facing** graph API so the manifest's
+/// `writable: false` guard is enforced. Bootstrappers and engine
+/// writes that legitimately populate `writable: false` status slots
+/// (e.g. `/agent/setup.status`, `/agent/fleet.connection`) call
+/// `GraphStore::write_slot` directly and bypass this path.
+///
 /// Auth is the caller's responsibility (the axum handler checks
 /// `Scope::WriteSlots`; the fleet handler validates the bearer token
 /// forwarded as a message header).
@@ -289,12 +328,13 @@ pub(crate) fn write_slot_core(
     req: WriteSlotReq,
 ) -> Result<WriteSlotResult, ApiError> {
     let path = parse_path(&req.path)?;
-    let result = match req.expected_generation {
-        Some(expected) => state
-            .graph
-            .write_slot_expected(&path, &req.slot, req.value, expected),
-        None => state.graph.write_slot(&path, &req.slot, req.value),
+    let opts = match req.expected_generation {
+        Some(expected) => graph::WriteSlotOpts::tenant_expected(expected),
+        None => graph::WriteSlotOpts::tenant(),
     };
+    let result = state
+        .graph
+        .write_slot_with(&path, &req.slot, req.value, opts);
     match result {
         Ok(gen) => Ok(WriteSlotResult::Ok { generation: gen }),
         Err(graph::GraphError::GenerationMismatch { current, .. }) => {
@@ -572,8 +612,17 @@ impl ApiError {
     }
 
     pub(crate) fn from_graph(err: graph::GraphError) -> Self {
+        let status = match &err {
+            // Not-a-valid-tenant-op: the slot exists and is well-formed
+            // but the manifest declares it non-writable. 403 matches
+            // the semantic of "you don't have the right to mutate this
+            // on the tenant surface" even though the auth context
+            // itself is fine.
+            graph::GraphError::SlotNotWritable { .. } => StatusCode::FORBIDDEN,
+            _ => StatusCode::BAD_REQUEST,
+        };
         Self {
-            status: StatusCode::BAD_REQUEST,
+            status,
             error: err.to_string(),
         }
     }
@@ -767,4 +816,207 @@ mod tests {
 
     // `list_nodes_rejects_unknown_query_fields` lives in
     // `graph::nodes::scope::tests::rejects_unknown_rsql_field` now.
+
+    /// Phase 2 read path: a slot declared with `quantity: Temperature`
+    /// + `sensor_unit: Fahrenheit` must surface both fields on the
+    /// `GET /api/v1/node` response so clients (CLI, Studio, MCP)
+    /// format with the right user preference without a second call.
+    ///
+    /// Also proves ingest conversion (tested in depth in
+    /// `graph::tests::ingest_units`) — the stored value comes back as
+    /// canonical (°C), never the raw °F.
+    #[tokio::test]
+    async fn get_node_returns_quantity_and_unit_metadata() {
+        use spi::{
+            Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindManifest, Quantity,
+            SlotRole, SlotSchema, SlotValueKind, Unit,
+        };
+
+        let kinds = KindRegistry::new();
+        seed::register_builtins(&kinds);
+        kinds.register(KindManifest {
+            id: KindId::new("test.thermometer"),
+            display_name: None,
+            // `IsAnywhere` keeps the fixture tight — no need to teach
+            // the station's containment about a test kind.
+            facets: FacetSet::of([Facet::IsAnywhere]),
+            containment: ContainmentSchema {
+                must_live_under: vec![],
+                may_contain: vec![],
+                cardinality_per_parent: Cardinality::ManyPerParent,
+                cascade: CascadePolicy::Strict,
+            },
+            slots: vec![
+                SlotSchema::new("temp", SlotRole::Input)
+                    .with_kind(SlotValueKind::Number)
+                    .writable()
+                    .with_quantity(Quantity::Temperature)
+                    .with_sensor_unit(Unit::Fahrenheit),
+                // Dimensionless sibling — must return quantity/unit as
+                // absent, not as Null.
+                SlotSchema::new("dimensionless", SlotRole::Status)
+                    .with_kind(SlotValueKind::Number)
+                    .writable(),
+            ],
+            settings_schema: serde_json::Value::Null,
+            msg_overrides: Default::default(),
+            trigger_policy: Default::default(),
+            schema_version: 1,
+            views: Vec::new(),
+        });
+        let graph = Arc::new(GraphStore::new(kinds, Arc::new(graph::NullSink)));
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
+        graph
+            .create_child(&NodePath::root(), KindId::new("test.thermometer"), "t")
+            .unwrap();
+        let path = NodePath::root().child("t");
+        // °F on the wire → °C in storage via `normalize_for_storage`.
+        graph.write_slot(&path, "temp", serde_json::json!(72.4)).unwrap();
+        graph
+            .write_slot(&path, "dimensionless", serde_json::json!(7))
+            .unwrap();
+
+        let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
+        let (events, _) = broadcast::channel(16);
+        let state = AppState::new(graph, behaviors, events, BlockRegistry::new());
+
+        let dto = get_node_core(&state, "/t", false).unwrap();
+        let temp = dto.slots.iter().find(|s| s.name == "temp").unwrap();
+        assert_eq!(temp.quantity, Some(spi::Quantity::Temperature));
+        // Stored value is canonical (°C); `unit` on the DTO is the
+        // declared override, which is `None` here (canonical is
+        // implicit). Phase 3 serialisation middleware will add the
+        // resolved canonical; for now clients read `/api/v1/units` to
+        // fill the blank.
+        assert_eq!(temp.unit, None);
+        let stored = temp.value.as_f64().unwrap();
+        assert!(
+            (stored - 22.44).abs() < 0.01,
+            "expected ~22.44 °C stored, got {stored}",
+        );
+
+        let d = dto.slots.iter().find(|s| s.name == "dimensionless").unwrap();
+        assert_eq!(d.quantity, None);
+        assert_eq!(d.unit, None);
+    }
+
+    /// `POST /api/v1/slots` must refuse writes to manifest-declared
+    /// `writable: false` slots even when the caller holds
+    /// `Scope::WriteSlots`. Guards the bootstrap surface:
+    /// `/agent/setup.status` and `/agent/fleet.connection` are the
+    /// concrete tenants of this rule.
+    #[tokio::test]
+    async fn write_slot_core_rejects_non_writable_slot_with_403() {
+        use spi::{
+            Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindManifest, SlotRole,
+            SlotSchema, SlotValueKind,
+        };
+
+        let kinds = KindRegistry::new();
+        seed::register_builtins(&kinds);
+        kinds.register(KindManifest {
+            id: KindId::new("test.status_only"),
+            display_name: None,
+            // `IsAnywhere` lets the test keep the container wiring one
+            // line instead of teaching station containment.
+            facets: FacetSet::of([Facet::IsAnywhere]),
+            containment: ContainmentSchema {
+                must_live_under: vec![],
+                may_contain: vec![],
+                cardinality_per_parent: Cardinality::ManyPerParent,
+                cascade: CascadePolicy::Strict,
+            },
+            // Status slot is deliberately `writable: false`.
+            slots: vec![SlotSchema::new("status", SlotRole::Status)
+                .with_kind(SlotValueKind::String)],
+            settings_schema: serde_json::Value::Null,
+            msg_overrides: Default::default(),
+            trigger_policy: Default::default(),
+            schema_version: 1,
+            views: Vec::new(),
+        });
+        let graph = Arc::new(GraphStore::new(kinds, Arc::new(graph::NullSink)));
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
+        graph
+            .create_child(&NodePath::root(), KindId::new("test.status_only"), "n")
+            .unwrap();
+        // Bootstrap-style seed via the internal API — succeeds.
+        graph
+            .write_slot(
+                &NodePath::root().child("n"),
+                "status",
+                serde_json::json!("seeded"),
+            )
+            .unwrap();
+
+        let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
+        let (events, _) = broadcast::channel(16);
+        let state = AppState::new(graph, behaviors, events, BlockRegistry::new());
+
+        let req = WriteSlotReq {
+            path: "/n".to_string(),
+            slot: "status".to_string(),
+            value: serde_json::json!("overridden"),
+            expected_generation: None,
+        };
+        let err = write_slot_core(&state, req).unwrap_err();
+        assert_eq!(err.status, StatusCode::FORBIDDEN);
+        assert!(
+            err.error.contains("writable: false"),
+            "error should name the guard: {:?}",
+            err.error,
+        );
+    }
+
+    /// `writable: true` slots flow through normally — proves the new
+    /// enforcement path is a guard, not a blanket refusal.
+    #[tokio::test]
+    async fn write_slot_core_permits_writable_true_slot() {
+        use spi::{
+            Cardinality, CascadePolicy, ContainmentSchema, Facet, FacetSet, KindManifest, SlotRole,
+            SlotSchema, SlotValueKind,
+        };
+
+        let kinds = KindRegistry::new();
+        seed::register_builtins(&kinds);
+        kinds.register(KindManifest {
+            id: KindId::new("test.value_only"),
+            display_name: None,
+            facets: FacetSet::of([Facet::IsAnywhere]),
+            containment: ContainmentSchema {
+                must_live_under: vec![],
+                may_contain: vec![],
+                cardinality_per_parent: Cardinality::ManyPerParent,
+                cascade: CascadePolicy::Strict,
+            },
+            slots: vec![SlotSchema::new("value", SlotRole::Input)
+                .with_kind(SlotValueKind::Number)
+                .writable()],
+            settings_schema: serde_json::Value::Null,
+            msg_overrides: Default::default(),
+            trigger_policy: Default::default(),
+            schema_version: 1,
+            views: Vec::new(),
+        });
+        let graph = Arc::new(GraphStore::new(kinds, Arc::new(graph::NullSink)));
+        graph.create_root(KindId::new("sys.core.station")).unwrap();
+        graph
+            .create_child(&NodePath::root(), KindId::new("test.value_only"), "v")
+            .unwrap();
+        let (behaviors, _timers) = BehaviorRegistry::new(graph.clone());
+        let (events, _) = broadcast::channel(16);
+        let state = AppState::new(graph, behaviors, events, BlockRegistry::new());
+
+        let req = WriteSlotReq {
+            path: "/v".to_string(),
+            slot: "value".to_string(),
+            value: serde_json::json!(42),
+            expected_generation: None,
+        };
+        let result = write_slot_core(&state, req).unwrap();
+        match result {
+            WriteSlotResult::Ok { generation: _ } => {} // passes
+            WriteSlotResult::GenerationMismatch { .. } => panic!("unexpected generation mismatch"),
+        }
+    }
 }

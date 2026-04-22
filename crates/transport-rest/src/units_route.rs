@@ -48,5 +48,36 @@ mod tests {
         let temp = &dto.quantities[0];
         assert_eq!(temp.id, spi::Quantity::Temperature);
         assert!(temp.allowed.contains(&spi::Unit::Celsius));
+        assert_eq!(temp.label, "Temperature");
+        // Flat units table is populated with labels + symbols so
+        // clients (Studio, CLI, block-ui-sdk) can render without
+        // hard-coding.
+        assert!(!dto.units.is_empty(), "units table empty");
+        let celsius = dto
+            .units
+            .iter()
+            .find(|u| u.id == spi::Unit::Celsius)
+            .expect("Celsius present in flat units table");
+        assert_eq!(celsius.symbol, "°C");
+        assert_eq!(celsius.label, "Degrees Celsius");
+        // Celsius is temperature's canonical → identity coefficients.
+        let coeffs = celsius
+            .to_canonical
+            .expect("allowed units carry affine coefficients");
+        assert!((coeffs.scale - 1.0).abs() < 1e-12);
+        assert!(coeffs.offset.abs() < 1e-12);
+
+        // Fahrenheit → known non-identity coefficients (5/9 and
+        // −160/9). Round-trip test against the server's own
+        // `spi::default_registry()` is already covered in
+        // `listo-spi::units::tests`; here we just assert the wire
+        // shape has them, so a drop in serialisation would fail
+        // fast at this level too.
+        let f = dto
+            .units
+            .iter()
+            .find(|u| u.id == spi::Unit::Fahrenheit)
+            .unwrap();
+        assert!(f.to_canonical.is_some());
     }
 }

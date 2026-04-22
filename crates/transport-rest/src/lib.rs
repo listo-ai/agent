@@ -45,6 +45,8 @@ pub mod ai;
 pub mod analyze;
 pub mod auth;
 pub mod auth_routes;
+pub mod auth_setup;
+pub mod backup;
 pub mod blocks;
 pub mod capabilities;
 pub mod event;

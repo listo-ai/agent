@@ -27,6 +27,43 @@ use crate::link::{Link, LinkId, SlotRef};
 use crate::node::{NodeRecord, NodeSnapshot};
 use crate::persist;
 
+/// Options for [`GraphStore::write_slot_with`]. Default = neither
+/// CAS nor tenant-writable enforcement (internal callers).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct WriteSlotOpts {
+    /// Optional Compare-And-Swap: when `Some(gen)`, the write returns
+    /// [`GraphError::GenerationMismatch`] unless the current slot
+    /// generation matches.
+    pub expected: Option<u64>,
+    /// When `true`, reject with [`GraphError::SlotNotWritable`] if
+    /// the slot's manifest declares `writable: false`. Tenant-facing
+    /// transports set this; system seeders / engine writes leave it
+    /// `false` so they can populate `writable: false` status slots
+    /// internally. See `docs/design/SYSTEM-BOOTSTRAP.md` for the
+    /// `sys.auth.setup` case that motivates the split.
+    pub enforce_tenant_writable: bool,
+}
+
+impl WriteSlotOpts {
+    /// Opts for a tenant-facing write: enforce the manifest's
+    /// `writable: false` guard. No CAS. Shortcut for the common
+    /// transport case.
+    pub fn tenant() -> Self {
+        Self {
+            expected: None,
+            enforce_tenant_writable: true,
+        }
+    }
+
+    /// Opts for a tenant-facing CAS write.
+    pub fn tenant_expected(expected: u64) -> Self {
+        Self {
+            expected: Some(expected),
+            enforce_tenant_writable: true,
+        }
+    }
+}
+
 pub struct GraphStore {
     kinds: KindRegistry,
     pub(crate) sink: Arc<dyn EventSink>,
@@ -426,18 +463,45 @@ impl GraphStore {
         value: JsonValue,
         expected: u64,
     ) -> Result<u64, GraphError> {
-        self.write_slot_inner(path, slot, value, Some(expected))
+        self.write_slot_inner(
+            path,
+            slot,
+            value,
+            WriteSlotOpts {
+                expected: Some(expected),
+                ..WriteSlotOpts::default()
+            },
+        )
     }
 
-    /// Write a value to a slot. The slot must exist on the node and be
-    /// declared `writable` by the kind manifest.
+    /// Write a value to a slot. Does **not** enforce the manifest's
+    /// tenant-surface `writable` flag — used by system bootstrappers
+    /// and seeders that legitimately populate `writable: false`
+    /// status slots (e.g. `/agent/setup.status`, `/agent/fleet.connection`).
+    ///
+    /// Tenant-facing surfaces (REST, CLI, fleet, MCP) should call
+    /// [`Self::write_slot_with`] with
+    /// [`WriteSlotOpts::tenant`] so a misuse returns
+    /// [`GraphError::SlotNotWritable`] instead of silently mutating.
     pub fn write_slot(
         &self,
         path: &NodePath,
         slot: &str,
         value: JsonValue,
     ) -> Result<u64, GraphError> {
-        self.write_slot_inner(path, slot, value, None)
+        self.write_slot_inner(path, slot, value, WriteSlotOpts::default())
+    }
+
+    /// General-purpose slot write. See [`WriteSlotOpts`] — callers opt
+    /// into CAS (`expected`) and tenant-writable enforcement.
+    pub fn write_slot_with(
+        &self,
+        path: &NodePath,
+        slot: &str,
+        value: JsonValue,
+        opts: WriteSlotOpts,
+    ) -> Result<u64, GraphError> {
+        self.write_slot_inner(path, slot, value, opts)
     }
 
     fn write_slot_inner(
@@ -445,7 +509,7 @@ impl GraphStore {
         path: &NodePath,
         slot: &str,
         value: JsonValue,
-        expected: Option<u64>,
+        opts: WriteSlotOpts,
     ) -> Result<u64, GraphError> {
         let mut g = self.write_inner();
         let id = *g
@@ -466,6 +530,23 @@ impl GraphStore {
             .ok_or_else(|| {
                 GraphError::BadLink(format!("slot `{slot}` not declared on `{path}`"))
             })?;
+        // Tenant-surface writability check. Declared `writable: false`
+        // means: operators, flow authors, MCP tools, and fleet peers
+        // cannot PATCH this slot. System seeders and the engine bypass
+        // the check by using `write_slot` directly (default opts).
+        if opts.enforce_tenant_writable && !schema.writable {
+            return Err(GraphError::SlotNotWritable {
+                path: path.clone(),
+                slot: slot.to_string(),
+            });
+        }
+        // Ingest-time unit normalisation. Passthrough unless the
+        // schema declares `quantity` + `sensor_unit` that differ from
+        // the target storage unit. Rules + tests live with the helper
+        // in `spi::units::normalize_for_storage`. Applied before
+        // `repo_save_slot` so both memory and DB observe the
+        // canonical (or `slot.unit`-override) value.
+        let value = spi::normalize_for_storage(&schema, value, spi::default_registry());
         let rec = g
             .by_id
             .get_mut(&id)
@@ -473,7 +554,7 @@ impl GraphStore {
         let current = rec.slots.current_generation(slot).ok_or_else(|| {
             GraphError::BadLink(format!("slot `{slot}` not declared on `{path}`"))
         })?;
-        if let Some(expected) = expected {
+        if let Some(expected) = opts.expected {
             if expected != current {
                 return Err(GraphError::GenerationMismatch { expected, current });
             }

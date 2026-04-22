@@ -1,0 +1,31 @@
+[package]
+name = "domain-backup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Pure domain-logic crate: export/import orchestration, template vs
+# snapshot, conflict resolver, device_id derivation, portability
+# filter. No HTTP, no SQL — see CODE-LAYOUT.md.
+
+[dependencies]
+spi = { workspace = true }
+graph = { workspace = true }
+data-backup = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+sha2 = "0.10"
+hex = "0.4"
+tar = "0.4"
+zstd = "0.13"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+tempfile = "3"

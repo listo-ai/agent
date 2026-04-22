@@ -1,0 +1,43 @@
+[package]
+name = "data-backup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Data-layer crate: DB dump helpers (SQLite VACUUM INTO + integrity
+# check), tar + zstd bundling, manifest writing, SHA-256 hashing.
+# Snapshot only — template bundles are pure JSON and don't need DB
+# dumps.
+#
+# Writes to any `io::Write` — a local path, stdout, or (when
+# domain-artifacts adapts the sink) a duplex pipe. No dependency on
+# ArtifactStore. See BACKUP.md § 6.1.
+
+[dependencies]
+spi = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# SQLite dump via VACUUM INTO against an online WAL.
+rusqlite = { version = "0.32", features = ["bundled"] }
+# Archive format — the signed tarball that is the bundle envelope.
+tar = "0.4"
+# Zstandard compression for the payload.
+zstd = "0.13"
+# SHA-256 of the payload, covered by the manifest signature.
+sha2 = "0.10"
+# Hex encoding for hash output.
+hex = "0.4"
+# Tokio only for spawn_blocking in async wrappers, not runtime coupling.
+tokio = { workspace = true, features = ["rt", "sync"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

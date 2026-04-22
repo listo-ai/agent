@@ -3,6 +3,13 @@
 First-boot setup and provisioning for cloud and edge agents — ensuring
 that neither role starts in an open, unconfigured state.
 
+> **Current status (2026-04-22):** Phase A + Phase B.1/B.2/B.4 shipped.
+> Only Phase B.3 (cloud-side enrolment) is outstanding — blocked on
+> live Zitadel access. See
+> [`sessions/2026-04-22-bootstrap-prefs-zitadel-status.md`](../sessions/2026-04-22-bootstrap-prefs-zitadel-status.md)
+> for the end-to-end "what shipped / what's deferred / clear path to
+> add the deferred pieces" breakdown.
+
 Companion docs:
 - [AUTH.md](AUTH.md) — identity model, Zitadel, JWT verification, RBAC.
 - [OVERVIEW.md](OVERVIEW.md) — deployment profiles and the role model.
@@ -394,20 +401,70 @@ Operator  →  POST /api/v1/auth/enroll { cloud_url, enrollment_token }
 | `agent auth setup` + `agent auth enroll` CLI commands | `transport-cli` |
 | Client methods: `client.auth.setup()` + `client.auth.enroll()` | `agent-client-rs`, `agent-client-ts` |
 
-**Phase B — Zitadel provider (separate scope)**
+**Phase B — Zitadel provider**
 
-- `crates/auth-zitadel/`: `ZitadelProvider` — JWKS fetch, disk cache,
-  offline JWT verification, deny-list consumption.
-- `POST /api/v1/agents/enroll` on the cloud side (creates a Zitadel service
-  account for the enrolling edge).
-- Hot-swap from `StaticToken` → `ZitadelProvider` after enroll completes.
-- `AuthConfig::Zitadel` wired into `run_daemon()` (Phase A leaves a
-  `todo!()` at that branch since `ZitadelProvider` doesn't exist yet).
-  Phase A gates the unreachable arm with `#[allow(dead_code)]` on the
-  variant's associated fields (or a `zitadel` cargo feature gated off by
-  default) to keep `cargo clippy -- -D warnings` green while the provider
-  crate is absent. The allow-lint / feature gate is removed in Phase B
-  when the arm becomes live.
+Landed in B.1 + B.2; B.3 + B.4 remain scoped out.
+
+### B.1 — `crates/auth-zitadel/` ✅ shipped
+
+- `ZitadelProvider` implementing `spi::AuthProvider`. Offline JWT
+  verification (signature + iss + aud + exp + nbf), `kid`-missed
+  one-shot rotation refresh guarded by a single-flight mutex,
+  background refresh task spawned via
+  `ZitadelProvider::spawn_refresh()`.
+- `JwksSource` trait with `HttpJwksSource` (reqwest) and
+  `StaticJwksSource` (tests + cache fallback) implementations.
+- `DiskCache` at `<db-dir>/zitadel-jwks.json` — atomic temp+rename
+  writes; boot prefers live fetch, falls back to cache if the network
+  is offline, fails `new()` only if neither is available. The edge
+  use case is the whole point: a disconnected edge must be able to
+  verify tokens signed with previously-seen keys.
+- Claim → `AuthContext` mapping: `sub` → `NodeId` (UUID parse, with
+  a deterministic UUIDv5-from-namespace fallback for non-UUID
+  subjects so the same Zitadel user maps to the same NodeId across
+  restarts without persisting state); `tenant_claim` → `TenantId`;
+  `scopes_claim` (array) → `ScopeSet` (defaults to `[ReadNodes]`
+  when absent).
+- Tenant pinning: `AuthConfig::Zitadel.tenant_id = Some(_)` rejects
+  tokens from other orgs with `AuthError::WrongTenant`.
+- 14 integration tests mint JWTs against a throwaway RSA keypair
+  (`rsa 0.9` + `jsonwebtoken`) covering every security-critical
+  path: wrong iss, wrong aud, expired, bad signature, unknown `kid`,
+  tenant mismatch, disk-cache fallback.
+
+### B.2 — `AuthConfig::Zitadel` wired into `run_daemon` ✅ shipped
+
+Previously a hard `anyhow::bail!`. Now constructs `ZitadelProvider`
+with the resolved config, spawns the refresh task, and installs via
+`ProviderCell`. Disk cache defaults to sit next to `agent.db`.
+
+### B.3 — Cloud-side `POST /api/v1/agents/enroll` ⏳ deferred
+
+The cloud-side endpoint that mints a Zitadel service account for an
+enrolling edge requires Zitadel admin-API access, which is
+infrastructure-dependent and can't meaningfully be unit-tested
+without a live Zitadel. The Phase A stub at
+`POST /api/v1/auth/enroll` still returns `501`; replacing it depends
+on this endpoint landing.
+
+### B.4 — Deny-list consumption ✅ trait + StaticDenyList shipped; polled HTTP source deferred
+
+- `DenyList` trait (async `is_denied(sub) -> bool`) + `StaticDenyList`
+  for config-driven revocations.
+- `ZitadelProvider::with_deny_list(Arc<dyn DenyList>)` builder.
+  Check runs **after** signature + claim validation so denied
+  subjects can't be enumerated by probing — an unauthenticated or
+  signature-invalid token never reaches the deny-list check.
+- Wire-side, deny-list hits surface as `InvalidCredentials` (same
+  as bad signature) — revocation state is not observable by the
+  caller; server logs distinguish via `ZitadelError::SubjectDenied`.
+- 4 lib tests + 3 integration tests covering hit, miss, and
+  sig-failure-before-deny-check ordering.
+
+The HTTP-polled deny-list (cloud endpoint publishing revoked
+subjects) lands with B.3 — the shape already fits through the
+`DenyList` trait, so nothing in `ZitadelProvider` changes when it
+arrives.
 
 ---
 

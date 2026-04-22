@@ -21,3 +21,23 @@ pub struct TenantNode;
     behavior = "none"
 )]
 pub struct UserNode;
+
+/// First-boot setup status. Seeded at `/agent/setup` when
+/// `AuthConfig::SetupRequired` is resolved.
+///
+/// The `status` slot drives the REST 503 gate and the `SetupService`
+/// single-flight check. Slots are `writable: false` on the tenant
+/// surface — operators and flows cannot PATCH them through the normal
+/// slot API. The bootstrapper and `SetupService` write them internally
+/// via `GraphStore` (which does not enforce tenant-surface
+/// writability).
+///
+/// See `docs/design/SYSTEM-BOOTSTRAP.md` for the full state-machine
+/// transitions.
+#[derive(blocks_sdk::NodeKind)]
+#[node(
+    kind = "sys.auth.setup",
+    manifest = "manifests/setup.yaml",
+    behavior = "none"
+)]
+pub struct SetupNode;

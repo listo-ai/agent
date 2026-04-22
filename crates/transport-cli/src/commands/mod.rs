@@ -9,9 +9,11 @@ use crate::output::OutputFormat;
 
 mod ai;
 mod auth;
+mod backup;
 mod blocks;
 mod capabilities;
 mod config;
+mod find;
 mod flows;
 mod health;
 mod kinds;
@@ -19,11 +21,13 @@ mod lifecycle;
 mod links;
 pub mod meta;
 mod nodes;
+mod preferences;
 mod schema;
 mod seed;
 mod slots;
 mod tags;
 mod ui;
+mod units;
 mod users;
 
 /// Global options shared by every CLI subcommand.
@@ -99,6 +103,11 @@ pub enum CliCommand {
     #[command(subcommand)]
     Auth(auth::AuthCmd),
 
+    /// User + organisation preferences — locale, timezone, units,
+    /// formats, theme. See docs/design/USER-PREFERENCES.md.
+    #[command(subcommand)]
+    Prefs(preferences::PrefsCmd),
+
     /// Dashboard UI operations.
     #[command(subcommand)]
     Ui(ui::UiCmd),
@@ -118,6 +127,17 @@ pub enum CliCommand {
     /// AI runner operations — list providers, run one-shot prompts.
     #[command(subcommand)]
     Ai(ai::AiCmd),
+
+    /// Unit registry — list all quantities and their units.
+    #[command(subcommand)]
+    Units(units::UnitsCmd),
+
+    /// Backup & restore — snapshot export/import.
+    #[command(subcommand)]
+    Backup(backup::BackupCmd),
+
+    /// Unified search across nodes, flows, blocks, kinds and links.
+    Find(find::FindCmd),
 
     /// Seed a preset graph for testing.
     Seed {
@@ -148,11 +168,15 @@ impl CliCommand {
             Self::Kinds(sub) => sub.command_name(),
             Self::Plugins(sub) => sub.command_name(),
             Self::Auth(sub) => sub.command_name(),
+            Self::Prefs(sub) => sub.command_name(),
             Self::Ui(sub) => sub.command_name(),
             Self::Flows(sub) => sub.command_name(),
             Self::Tags(sub) => sub.command_name(),
             Self::Users(sub) => sub.command_name(),
             Self::Ai(sub) => sub.command_name(),
+            Self::Units(sub) => sub.command_name(),
+            Self::Backup(sub) => sub.command_name(),
+            Self::Find(_) => "find",
             Self::Lifecycle { .. } => "lifecycle",
             Self::Seed { .. } => "seed",
             Self::Schema { .. } => "schema",
@@ -172,11 +196,15 @@ pub async fn dispatch(client: &AgentClient, global: &GlobalOpts, cmd: &CliComman
         CliCommand::Kinds(sub) => kinds::run(client, fmt, sub).await,
         CliCommand::Plugins(sub) => blocks::run(client, fmt, sub).await,
         CliCommand::Auth(sub) => auth::run(client, fmt, sub).await,
+        CliCommand::Prefs(sub) => preferences::run(client, fmt, sub).await,
         CliCommand::Ui(sub) => ui::run(client, fmt, sub).await,
         CliCommand::Flows(sub) => flows::run(client, fmt, sub).await,
         CliCommand::Tags(sub) => tags::run(client, fmt, sub).await,
         CliCommand::Users(sub) => users::run(client, fmt, sub).await,
         CliCommand::Ai(sub) => ai::run(client, fmt, sub).await,
+        CliCommand::Units(sub) => units::run(client, fmt, sub).await,
+        CliCommand::Backup(sub) => backup::run(client, fmt, sub).await,
+        CliCommand::Find(cmd) => find::run(client, fmt, cmd).await,
         CliCommand::Lifecycle { path, to } => lifecycle::run(client, fmt, path, to).await,
         CliCommand::Seed { preset } => seed::run(client, fmt, preset).await,
         CliCommand::Schema { all, command } => schema::run(fmt, *all, command),

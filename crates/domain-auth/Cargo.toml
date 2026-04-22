@@ -15,3 +15,23 @@ graph = { workspace = true }
 blocks-sdk = { workspace = true }
 domain-tags = { workspace = true }
 thiserror = { workspace = true }
+# SetupService owns:
+#   - the single-flight mutex over the check-generate-write-swap sequence
+#   - token generation (32 bytes via `OsRng`)
+#   - YAML round-trip via `serde_yml`
+#   - the hot-swap via `auth::ProviderCell`
+# Transport handlers never touch these directly — they call methods on
+# `SetupService`. See SYSTEM-BOOTSTRAP.md § Phases.
+auth = { workspace = true }
+config = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yml = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+tempfile = "3"

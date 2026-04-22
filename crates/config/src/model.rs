@@ -23,18 +23,57 @@ pub struct AgentConfig {
     pub auth: AuthConfig,
 }
 
-/// Resolved identity-provider configuration. See
-/// `docs/sessions/AUTH-SEAM.md` § "Providers live behind Cargo features".
+/// Resolved identity-provider configuration.
+///
+/// See `docs/sessions/AUTH-SEAM.md` § "Providers live behind Cargo
+/// features" and `docs/design/SYSTEM-BOOTSTRAP.md` for the setup-mode
+/// flow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthConfig {
     /// Dev-only: every request is stamped as `(DevNull, default, Admin)`.
-    /// The agent refuses to boot with this in `role=cloud` + `--release`
-    /// (per AUTH-SEAM.md; guard to be implemented alongside cloud TLS).
+    /// The agent refuses to boot with this in `role=cloud` on release
+    /// builds — enforced by the boot guard in `apps/agent/src/main.rs`.
     DevNull,
     /// Bearer-token table loaded from config. Token material never
-    /// leaves the agent's config file; issuance is out-of-band (`agent
-    /// auth issue-token`, future).
+    /// leaves the agent's config file; issuance on first boot is via
+    /// the setup flow (see `SYSTEM-BOOTSTRAP.md`), which writes a
+    /// single entry back to disk.
     StaticToken { tokens: Vec<auth::StaticTokenEntry> },
+    /// First-boot marker. Agent mounts only `POST /api/v1/auth/setup`
+    /// and 503s every other route until setup completes. The setup
+    /// handler then hot-swaps the provider to `StaticToken` and writes
+    /// the token back to disk so a restart does not loop back into
+    /// setup. Role-aware default for `role=cloud` and `role=edge` when
+    /// no `auth:` block is present.
+    SetupRequired,
+    /// Zitadel-backed OIDC provider. `tenant_id = Some(_)` pins a
+    /// single-tenant (edge) install; `None` = multi-tenant cloud.
+    ///
+    /// Not consumable in Phase A — the provider crate lands in Phase
+    /// B, and the boot path in `apps/agent` bails with a clear error
+    /// until then. The fields are held so the YAML parses cleanly
+    /// (an operator may pre-stage cloud config before Phase B ships).
+    Zitadel {
+        #[allow(dead_code)]
+        issuer: String,
+        #[allow(dead_code)]
+        jwks_url: String,
+        #[allow(dead_code)]
+        audience: String,
+        #[allow(dead_code)]
+        tenant_id: Option<String>,
+    },
+}
+
+impl AuthConfig {
+    /// `true` while first-boot setup has not completed.
+    ///
+    /// Consulted by the boot path (seed `/agent/setup` + attach
+    /// `SetupService` only if true) and by the REST 503-gate
+    /// middleware.
+    pub fn is_setup_required(&self) -> bool {
+        matches!(self, AuthConfig::SetupRequired)
+    }
 }
 
 /// Resolved fleet-transport configuration. See
@@ -116,16 +155,41 @@ pub struct AgentConfigOverlay {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "provider", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AuthOverlay {
-    /// Explicit dev-null. Same as omitting the `auth:` block entirely.
+    /// Explicit dev-null. Bypasses the role-aware `SetupRequired`
+    /// default; operators must opt in by spelling this out — the
+    /// standalone role treats this as its natural state, cloud/edge
+    /// treat it as an override (and the boot guard vetoes
+    /// cloud+DevNull in release).
     DevNull,
     /// Static token table — see `crates/auth/src/static_token.rs`.
     StaticToken(StaticTokenOverlay),
+    /// Explicit setup-required. Rarely written by hand; the
+    /// role-aware default produces this for cloud/edge when no
+    /// `auth:` block is present. Kept explicit so YAML written by
+    /// `config::to_file` round-trips unambiguously.
+    SetupRequired,
+    /// Zitadel provider — Phase B. Boot path refuses to start in
+    /// Phase A.
+    Zitadel(ZitadelAuthOverlay),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StaticTokenOverlay {
     pub tokens: Vec<auth::StaticTokenEntry>,
+}
+
+/// Overlay form of `AuthConfig::Zitadel`. Fields mirror the resolved
+/// variant 1-to-1.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ZitadelAuthOverlay {
+    pub issuer: String,
+    pub jwks_url: String,
+    pub audience: String,
+    /// `Some` = single-tenant (edge). `None` = multi-tenant cloud.
+    #[serde(default)]
+    pub tenant_id: Option<String>,
 }
 
 /// Overlay form for fleet transport. Tagged on `backend` so the YAML
@@ -224,9 +288,26 @@ impl AgentConfigOverlay {
                 agent_id: z.agent_id.unwrap_or_else(default_agent_id),
             },
         };
+        // Role-aware auth default: cloud/edge with no `auth:` block
+        // resolves to `SetupRequired` so first boot is never open.
+        // Standalone keeps the historical `DevNull` default — the
+        // "just run it" experience that dev + appliance flows expect.
+        // Explicit `provider: dev_null` always wins — that's the CI /
+        // operator override path.
         let auth = match self.auth {
-            None | Some(AuthOverlay::DevNull) => AuthConfig::DevNull,
+            None => match role {
+                Role::Standalone => AuthConfig::DevNull,
+                Role::Cloud | Role::Edge => AuthConfig::SetupRequired,
+            },
+            Some(AuthOverlay::DevNull) => AuthConfig::DevNull,
             Some(AuthOverlay::StaticToken(t)) => AuthConfig::StaticToken { tokens: t.tokens },
+            Some(AuthOverlay::SetupRequired) => AuthConfig::SetupRequired,
+            Some(AuthOverlay::Zitadel(z)) => AuthConfig::Zitadel {
+                issuer: z.issuer,
+                jwks_url: z.jwks_url,
+                audience: z.audience,
+                tenant_id: z.tenant_id,
+            },
         };
         AgentConfig {
             role,

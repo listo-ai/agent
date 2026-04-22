@@ -11,8 +11,18 @@ configuration**, separated by lifecycle.
 
 Read first: [EVERYTHING-AS-NODE.md](EVERYTHING-AS-NODE.md),
 [STORAGE-TIERS.md](STORAGE-TIERS.md), [VERSIONING.md](VERSIONING.md),
-[FLEET-TRANSPORT.md](FLEET-TRANSPORT.md), and
+[FLEET-TRANSPORT.md](FLEET-TRANSPORT.md),
+[ARTIFACTS.md](ARTIFACTS.md) (where bundles land and travel in cloud
+builds — see § 6.2 for the three operating modes and § 6.4 for the
+integration seam), and
 [listod/SCOPE.md](../../../listod/SCOPE.md) (the signed-bundle format we reuse).
+
+This doc owns: **bundle format** (snapshot vs template, envelope,
+manifest, portability rules), **export/import/restore logic**, and
+**retention cadence** (when to snap, how often). Distribution — upload
+to object storage, presigning, fetch, tenant bucketing, store-level
+retention — lives in [ARTIFACTS.md](ARTIFACTS.md). See § 6.4 on how
+the two meet.
 
 ---
 
@@ -637,9 +647,164 @@ Also lost without artifacts:
 - **The 3-2-1 rule's "one off-site" copy** (§ 7 below) — local-only is
   one-copy-two-media at best.
 
+### 6.4 — The integration seam (where the two systems meet)
+
+When both `data-backup` and an `artifacts-*` feature are compiled in,
+*something* has to take the `io::Write` stream `data-backup` produces
+and hand it to `ArtifactStore::put` as a `ByteStream`. The invariant
+is strict:
+
+- `data-backup` has **no** dependency on `ArtifactStore`.
+- `data-artifacts-*` has **no** dependency on `data-backup` or any
+  bundle type.
+
+**The wiring lives in the handler layer, not in a new crate.** The
+REST and CLI handlers in `transport-rest/src/backup.rs` and
+`transport-cli/src/commands/backup.rs` already import both
+subsystems (they're the policy boundary where "where the bytes go"
+is decided — see [HOW-TO-ADD-CODE.md Rule I](../../../HOW-TO-ADD-CODE.md)).
+The handler creates a `tokio::io::duplex()` pair, spawns
+`data-backup::export` writing to the write half, and feeds the read
+half as a `ByteStream` to `ArtifactStore::put`. No new crate, no
+new trait — ~15 lines of glue per handler. Tested end-to-end as § 6.6.
+
+In code layout terms:
+
+```
+agent/crates/transport-rest/src/backup.rs       # one seam (REST)
+agent/crates/transport-cli/src/commands/backup.rs # second seam (CLI)
+    ↓ feature-gated by artifacts-*
+        tokio::io::duplex → domain-artifacts::upload_stream
+```
+
+A thin helper — `domain-artifacts::upload_stream(store, key, reader)
+-> Result` — wraps the duplex dance so both handlers share the same
+five lines. That helper is the closest thing to an "integration
+point" and lives in `domain-artifacts` (which already imports neither
+`data-backup` nor bundle types — it just consumes any `AsyncRead`).
+
+### 6.5 — CLI flag behaviour under feature combinations
+
+`agent backup snapshot export --to <destination>` accepts three
+destination forms. Which are advertised depends on compile-time
+features:
+
+| Build | `--to /path/...` | `--to s3://...` | `--to local://...` |
+|---|---|---|---|
+| Backup only (no `artifacts-*`) | ✅ shown in `--help` | ❌ not in `--help`; rejected at parse time | ❌ same |
+| `artifacts-local` | ✅ | ❌ same | ✅ shown |
+| `artifacts-s3` | ✅ | ✅ shown | ❌ not unless also `artifacts-local` |
+
+The flag surface itself is gated — `clap` value parsers for
+destination schemes are registered behind `#[cfg(feature = "...")]`.
+A user on a minimal build running `agent backup snapshot export --to
+s3://…` gets:
+
+```
+error: invalid value 's3://bucket/key.listo-snapshot' for '--to <DEST>':
+  scheme 's3' is not supported by this build.
+  Rebuild with `--features artifacts-s3` or use a local path.
+```
+
+Not a runtime panic, not a silent fail. The help text only lists
+schemes that work. This matches the Cargo-feature philosophy used
+elsewhere (a feature that isn't compiled in doesn't exist from the
+user's perspective).
+
+### 6.6 — Capability advertisement
+
+Pushing back on the symmetric-with-artifacts framing: **backup is
+unconditionally compiled.** There is no `backup: null` mode, no
+`NullBackupStore` in `spi`, no build that ships without the ability
+to produce a local-file snapshot.
+
+Why the asymmetry: artifacts is a *distribution* subsystem whose
+absence is a real operating mode (standalone Pi, no cloud). Backup
+is *core domain logic* — every agent that has a database has a
+backup subsystem, because every agent can dump its DB to a file.
+Shipping a build with backup disabled would silently degrade DR for
+no engineering benefit; the DB-dump code is small, the bundle logic
+is pure, and the feature costs nothing to carry.
+
+The agent therefore **always advertises `backup.v1`** in its
+capability map. Clients never see `backup.null.v1`. The dimensions
+that *do* vary — and that clients must check — are:
+
+| Capability | Meaning |
+|---|---|
+| `backup.v1` | Always present. Local-file export/import works. |
+| `artifacts.<id>.v1` | Absent / null / real. Gates cloud upload UIs. |
+| `fleet.<id>.v1` | Absent / null / real. Gates fleet-template-push UIs. |
+
+Studio's backup page asks "does this agent have `artifacts.s3.v1`?"
+to decide whether to show the "upload to cloud" button — not
+"does it have backup?". The backup button is always there because
+backup is always there.
+
+### 6.7 — Routing: fleet vs artifacts for template push
+
+Pushing a template from edge A to edges B…N has two possible
+transports:
+
+- **Fleet-carried** — the template bytes ride as the payload of a
+  Zenoh control message. Cheap, no artifact store needed, but
+  bounded by the fleet payload limit (~`smallest_edge_ram/10`).
+- **Artifact-carried** — the template uploads to the tenant bucket
+  via `artifacts-s3`, the fleet message carries only a key + hash
+  + signature, receivers fetch via `presign-download`. Unbounded.
+
+**The routing decision lives in the handler**, not in domain code.
+`transport-rest/src/backup.rs` (and the CLI equivalent) measures the
+serialised template size and picks:
+
+```
+if size <= fleet_payload_ceiling and artifacts store is null:
+    publish via FleetTransport (direct payload)
+elif artifacts store is present:
+    upload via ArtifactStore, publish key + hash via FleetTransport
+else:
+    error: "template exceeds fleet payload limit; rebuild with artifacts-s3"
+```
+
+This keeps `domain-backup` transport-agnostic (no `FleetTransport`
+dep, no `ArtifactStore` dep) and puts the policy decision where
+policy decisions go ([HOW-TO-ADD-CODE.md Rule I](../../../HOW-TO-ADD-CODE.md)).
+Same pattern as the handler deciding between `io::Write` to a local
+file and `ArtifactStore::put` for snapshot export (§ 6.4).
+
 ---
 
 ## 7 — Cadence, retention, drills
+
+### 7.1 — Two retention concerns, two nodes
+
+There are two distinct retention questions, and they're owned by
+different nodes. Confusing them is the retention-drift bug
+[ARTIFACTS.md § 10](ARTIFACTS.md) warns about.
+
+| Node | Owns | Scope |
+|---|---|---|
+| `sys.backup.config` | **Cadence of creation.** When to take a snapshot (hourly / daily / pre-apply), what to include, minimum retention floor (e.g. "never delete snapshots younger than 24h"). | Per device. |
+| `sys.artifacts.retention` | **Store-level expiry.** Per-prefix TTL for objects in the artefact store (`snapshots/…` → 30d, `templates/…` → forever, `firmware/…` → 180d). Drives the retention job + S3 lifecycle backstop. | Per tenant. |
+
+They complement, they don't overlap: `sys.backup.config` says *take
+one every hour and keep at least the last 24*; `sys.artifacts.retention`
+says *delete anything older than 30 days from the store*. Neither
+contradicts the other because `sys.backup.config`'s floor is
+short-term ("enough to survive a bad day") and `sys.artifacts.retention`'s
+ceiling is long-term ("don't pay for months of bytes").
+
+**Conflict resolution rule:** when a snapshot falls inside the backup
+floor *and* past the artifact expiry, the backup floor wins — the
+retention job skips objects that `sys.backup.config` still considers
+floor-protected. This is expressed as a predicate on the retention job
+(§ 10.1 of ARTIFACTS.md) that joins against the receipts table on
+`created_at`. In a minimal build with no artifacts subsystem,
+`sys.artifacts.retention` is absent and `sys.backup.config` governs
+alone — files in `/var/backups/` are pruned by `data-backup`'s own
+local-file sweep based purely on the cadence node.
+
+### 7.2 — Defaults
 
 Operational defaults, per 2025/26 common practice:
 

@@ -14,11 +14,11 @@ mod model;
 mod role;
 
 pub use error::ConfigError;
-pub use loader::{from_env, from_file};
+pub use loader::{from_env, from_file, to_file, WriteBackError};
 pub use model::{
     default_agent_id, AgentConfig, AgentConfigOverlay, AuthConfig, AuthOverlay, DatabaseConfig,
     DatabaseOverlay, Defaults, FleetConfig, FleetOverlay, LogConfig, LogOverlay, PluginsConfig,
-    PluginsOverlay, StaticTokenOverlay, ZenohFleetOverlay,
+    PluginsOverlay, StaticTokenOverlay, ZenohFleetOverlay, ZitadelAuthOverlay,
 };
 pub use role::{Role, UnknownRole};
 

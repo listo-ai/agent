@@ -23,6 +23,8 @@ tracing-subscriber = { workspace = true }
 
 spi = { workspace = true }
 auth = { workspace = true }
+auth-zitadel = { workspace = true }
+reqwest = { workspace = true }
 messaging = { workspace = true }
 graph = { workspace = true }
 engine = { workspace = true }
@@ -39,6 +41,7 @@ domain-compute = { workspace = true }
 domain-function = { workspace = true }
 domain-logic = { workspace = true }
 domain-history = { workspace = true }
+domain-backup = { workspace = true }
 domain-blocks = { workspace = true }
 domain-auth = { workspace = true }
 domain-fleet = { workspace = true }

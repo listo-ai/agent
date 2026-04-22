@@ -1,5 +1,14 @@
 # User Preferences
 
+> **Current status (2026-04-22):** Phase 0 (spi enums) + Phase 1
+> (backend + clients + CLI) + Phase 2 (ingest normalisation + read-path
+> metadata) shipped. Phase 3 (server-side `Accept-Units` middleware)
+> and Phase 4 (Studio UI) deferred with clear paths documented in
+> [`sessions/2026-04-22-bootstrap-prefs-zitadel-status.md`](../sessions/2026-04-22-bootstrap-prefs-zitadel-status.md)
+> § D-1 and § D-2. Current behaviour: stored values are canonical
+> (°C, kPa, etc.), reads carry `quantity` + `unit` metadata per slot,
+> clients can convert themselves via `GET /api/v1/units` + prefs.
+
 ## What it is
 
 Per-user (and per-org) preferences for locale, timezone, units, date/time format, language, and a handful of UI bits. Applied at the API/presentation edge, never in storage.
@@ -380,11 +389,26 @@ Default is `units=preferred` (conversion applied). MCP clients and CLI scripts s
 
 This lands incrementally, not as a big-bang greenfield change.
 
-- **Phase 0** — land the conventions. Timestamps already UTC epoch-ms (verify and document). Document `Quantity`/`Unit` enums in `spi`. No behavioural change.
-- **Phase 1** — schema + API. Add `org_preferences` / `user_preferences` tables, `GET`/`PATCH` endpoints, JWT claim block for `timezone`/`locale`/`language`. Clients that don't know about preferences keep working (server returns current US defaults, which is the status quo).
-- **Phase 2** — slot-level units. Add `quantity`/`unit` to `SlotSchema`. Existing slots default to `None` → no conversion, no behaviour change. Block authors can start annotating.
-- **Phase 3** — conversion middleware. REST serialisation applies unit prefs when both (a) the slot declares a quantity and (b) the caller's pref differs from canonical. Add `Accept: ...; units=canonical` support.
-- **Phase 4** — i18n. Wire Fluent into Studio; move backend error messages to message codes; add first non-English bundle on demand.
+- **Phase 0** ✅ *shipped 2026-04-22.* `spi::units::{Quantity, Unit,
+  QuantityDef, UnitRegistry}` + `uom`-backed `StaticRegistry` +
+  `normalize_for_storage` helper + `registry_dto` for
+  `GET /api/v1/units`.
+- **Phase 1** ✅ *shipped — backend pre-existing; clients +
+  CLI added 2026-04-22.* `org_preferences` / `user_preferences`
+  tables, all four endpoints, 3-layer resolution, agent-client-rs +
+  agent-client-ts + `agent prefs` CLI. JWT claim block for
+  `timezone`/`locale`/`language` deferred (needs Zitadel custom
+  claims — see §D-6 in the status doc).
+- **Phase 2** ✅ *shipped 2026-04-22.* `SlotSchema` carries
+  `quantity` / `sensor_unit` / `unit`; `graph::write_slot_inner`
+  calls `spi::normalize_for_storage` — canonical-only storage;
+  `SlotDto` + `SlotSchemaDto` expose metadata on the wire.
+- **Phase 3** ⏳ *deferred.* `Accept-Units` middleware. Read-path
+  already carries everything the middleware needs; implementation
+  is straightforward. See status doc § D-1 for the clear path.
+- **Phase 4** ⏳ *deferred — frontend track.* Studio UI,
+  `PreferencesProvider`, `formatters.ts`, `react-intl`. See status
+  doc § D-2.
 
 Each phase is independently deployable and reversible. No client is forced to upgrade to keep working.
 
